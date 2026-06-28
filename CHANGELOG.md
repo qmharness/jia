@@ -4,6 +4,12 @@ All notable changes to Jia (甲) will be documented in this file.
 
 ## [Unreleased]
 
+### CLI
+- `jia` (bare, no subcommand) now launches TUI directly; `jia tui` still works for compatibility
+- `--config` moved to top-level option, shared by all subcommands
+
+
+
 ### Native Tools API
 - openai/anthropic/gemini providers now use native function calling / tool_use API
 - `StreamChunk::NativeToolCall` for structured tool calls from providers

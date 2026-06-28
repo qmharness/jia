@@ -33,7 +33,7 @@ async fn main() {
     // control stream and corrupt the rendered frame (e.g. blank rows above the
     // welcome box). Suppress the stderr layer for `tui`; file logging remains.
     #[cfg(feature = "tui")]
-    let log_to_stderr = !matches!(args.command, Commands::Tui { .. });
+    let log_to_stderr = !matches!(args.command, Some(Commands::Tui));
     #[cfg(not(feature = "tui"))]
     let log_to_stderr = true;
 
@@ -79,7 +79,10 @@ async fn main() {
         default_hook(info);
     }));
 
-    match args.command {
+    // Default to TUI when no subcommand given
+    let command = args.command.unwrap_or(Commands::Tui);
+
+    match command {
         Commands::Gateway { action } => match action {
             GatewayAction::Start {
                 config_path,
@@ -137,11 +140,11 @@ async fn main() {
             }
         },
         #[cfg(feature = "tui")]
-        Commands::Tui { config_path } => {
-            run_tui(config_path).await;
+        Commands::Tui => {
+            run_tui(args.config_path).await;
         }
-        Commands::Doctor { config_path } => {
-            run_doctor(config_path);
+        Commands::Doctor => {
+            run_doctor(args.config_path);
         }
     }
 }

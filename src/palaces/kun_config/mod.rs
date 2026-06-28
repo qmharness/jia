@@ -9,8 +9,12 @@ use crate::error::JiaError;
 #[derive(Parser, Debug)]
 #[command(name = "jia", about = "甲 — AI Agent runtime based on Qimen Dunjia")]
 pub struct CliArgs {
+    /// Config file path (default: config.toml in current directory)
+    #[arg(long = "config", env = "JIA_CONFIG")]
+    pub config_path: Option<PathBuf>,
+
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -22,19 +26,11 @@ pub enum Commands {
     },
     /// WeChat QR login setup — scan with WeChat to obtain bot credentials
     WechatSetup,
-    /// Launch the terminal UI
+    /// Launch the terminal UI (explicit, same as bare `jia`)
     #[cfg(feature = "tui")]
-    Tui {
-        /// Config file path (default: config.toml in current directory)
-        #[arg(long = "config", env = "JIA_CONFIG")]
-        config_path: Option<PathBuf>,
-    },
+    Tui,
     /// Diagnose installation health: config, LLM, data dir, SQLite, disk
-    Doctor {
-        /// Config file path (default: config.toml in current directory)
-        #[arg(long = "config", env = "JIA_CONFIG")]
-        config_path: Option<PathBuf>,
-    },
+    Doctor,
 }
 
 #[derive(Subcommand, Debug)]
