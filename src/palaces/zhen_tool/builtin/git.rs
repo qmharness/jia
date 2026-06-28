@@ -1,0 +1,112 @@
+// ── Git Tool — Execute safe git commands ─────────────────────
+
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use serde_json::Value;
+
+use crate::palaces::qian_permission::PermissionMatrix;
+use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::CeremoniesIntent;
+use crate::stems::intent::ExecAction;
+
+/// Safe git subcommands (read-only or non-destructive).
+const ALLOWED_COMMANDS: &[&str] = &[
+    "status", "diff", "log", "branch", "add", "commit", "checkout", "stash", "show", "blame", "tag",
+];
+
+const DANGEROUS_PATTERNS: &[&str] = &["push --force", "reset --hard", "clean -f", "clean -d"];
+
+pub struct GitTool {
+    permissions: Arc<PermissionMatrix>,
+}
+
+impl GitTool {
+    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
+        Self { permissions }
+    }
+}
+
+#[async_trait]
+impl BaseTool for GitTool {
+    fn name(&self) -> &str {
+        "git"
+    }
+
+    fn description(&self) -> String {
+        "Execute a git subcommand. Allowed: status, diff, log, branch, add, commit, checkout, stash, show, blame, tag. Dangerous operations (push --force, reset --hard, clean -f) are blocked.".to_string()
+    }
+
+    fn category(&self) -> &str {
+        "system"
+    }
+
+    fn ceremony(&self) -> CeremoniesIntent {
+        CeremoniesIntent::Geng(ExecAction {
+            command: "git".into(),
+        })
+    }
+
+    fn parameters_schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "subcommand": {
+                    "type": "string",
+                    "description": "Git subcommand to execute, e.g. 'status', 'diff', 'log --oneline -5'"
+                }
+            },
+            "required": ["subcommand"]
+        })
+    }
+
+    fn is_concurrency_safe(&self) -> bool {
+        false
+    }
+
+    async fn execute(&self, input: Value) -> Result<String, String> {
+        let subcmd = input["subcommand"]
+            .as_str()
+            .ok_or("Missing 'subcommand' parameter")?;
+
+        let first_word = subcmd.split_whitespace().next().unwrap_or("");
+        if !ALLOWED_COMMANDS.contains(&first_word) {
+            return Err(format!(
+                "Git subcommand '{}' is not allowed. Allowed: {}",
+                first_word,
+                ALLOWED_COMMANDS.join(", "),
+            ));
+        }
+
+        for pattern in DANGEROUS_PATTERNS {
+            if subcmd.contains(pattern) {
+                return Err(format!("Dangerous git operation '{}' is blocked.", pattern));
+            }
+        }
+
+        let project_root = &self.permissions.sandbox.project_root;
+
+        let output = tokio::process::Command::new("git")
+            .args(subcmd.split_whitespace())
+            .current_dir(project_root)
+            .output()
+            .await
+            .map_err(|e| format!("git error: {e}"))?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        if !output.status.success() {
+            return Err(format!("git failed ({}): {}", output.status, stderr.trim()));
+        }
+
+        let out = stdout.trim().to_string();
+        if out.is_empty() && !stderr.trim().is_empty() {
+            Ok(stderr.trim().to_string())
+        } else if out.is_empty() {
+            Ok("(no output)".into())
+        } else {
+            Ok(out)
+        }
+    }
+}

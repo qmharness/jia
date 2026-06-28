@@ -1,0 +1,12 @@
+/target
+.env
+jia.toml
+*.log
+.DS_Store
+.jia-backups/
+*.db
+config.toml
+architecture.md
+store.db
+store.db-shm
+store.db-wal

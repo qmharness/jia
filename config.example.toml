@@ -1,0 +1,84 @@
+# 甲 (Jia) — 多模型配置
+# 复制为 config.toml 并填入真实 API key
+
+# ── 工作区配置（可选） ─────────────────────────────────────────
+# [workspace]
+# path = "/path/to/your/project"   # Agent shell 执行根目录，默认 ~/.jia/workspace
+
+[server]
+host = "127.0.0.1"
+port = 3000
+
+# 默认大模型
+default_provider = "deepseek"  # kind is "openai" (OpenAI-compatible)
+
+# DeepSeek
+[providers.deepseek]
+kind = "openai"
+models = ["deepseek-v4-pro", "deepseek-v4-flash"]
+default_model = "deepseek-v4-pro"
+aux_model = "deepseek-v4-flash"
+api_key = "sk-..."
+base_url = "https://api.deepseek.com"
+
+# BigModel
+[providers.bigmodel]
+kind = "anthropic"
+models = ["GLM-5.2", "GLM-4.5-Air"]
+default_model = "GLM-5.2"
+aux_model = "GLM-4.5-Air"
+api_key = "YOUR_API_KEY"
+base_url = "https://open.bigmodel.cn/api/anthropic"
+
+# ── 安全沙箱配置（可选，以下为默认值） ───────────────────────────
+# [security]
+# project_root = "/path/to/project"     # 沙箱根目录（默认：当前工作目录）
+# allowed_paths = ["/tmp"]              # 根目录外的允许路径
+# blocked_path_prefixes = [".git", ".env"]  # 始终阻止的路径前缀
+# command_allowlist = []                # 如果非空，仅允许这些 shell 命令
+# command_blocklist = ["rm -rf /", "mkfs.", "dd if=", "sudo rm"]  # 阻止的 shell 命令模式
+# confirmation_timeout_secs = 30        # 用户确认超时（秒）
+# sandbox_disabled = false              # true = 沙箱降至 Guarded 模式
+# max_context_tokens = 8192             # 上下文窗口 token 预算
+# compaction_threshold = 0.75            # 触发上下文裁剪的阈值（0.0–1.0）
+#
+# [security.sandbox]
+# backend = "process"                    # 沙箱后端: process | docker | seatbelt | landlock
+# timeout_seconds = 30                   # 命令执行超时（秒）
+# memory_limit_mb = 512                  # 内存限制（MB）
+# max_processes = 50                     # 最大子进程数
+# file_size_limit_mb = 100               # 最大输出文件大小（MB）
+# network_enabled = false                # 是否允许网络访问（Docker only）
+# docker_image = "alpine:3.20"           # Docker 沙箱镜像
+# cpu_limit = 1.0                        # CPU 核数限制（Docker only）
+
+# ── MCP 协议集成（可选） ──────────────────────────────────────
+# 连接 MCP (Model Context Protocol) 服务器，发现并注册其工具
+#
+# [[mcp_server]]
+# name = "filesystem"
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+#
+# [[mcp_server]]
+# name = "sqlite"
+# command = "uvx"
+# args = ["mcp-server-sqlite", "--db-path", "test.db"]
+
+# ── IM 机器人（可选） ─────────────────────────────────────────
+#
+# [bots.telegram]
+# token = "YOUR_BOT_TOKEN"
+#
+# [bots.discord]
+# token = "YOUR_BOT_TOKEN"
+# application_id = "YOUR_APP_ID"
+# public_key = "YOUR_PUBLIC_KEY"
+#
+# [bots.wechat]
+# account_id = "wxid_..."           # iLink Bot 账户 ID
+# token = "YOUR_BOT_TOKEN"           # iLink Bot Token
+# base_url = "https://ilinkai.weixin.qq.com"
+# dm_policy = "open"
+# group_policy = "disabled"
+# allowed_users = "wxid_aaa,wxid_bbb"  # DM 白名单（dm_policy=allowlist 时生效）

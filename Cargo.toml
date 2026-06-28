@@ -1,0 +1,135 @@
+[package]
+name = "jia"
+version = "0.1.0"
+edition = "2024"
+description = "甲 (Jia) — AI Agent runtime based on Qimen Dunjia architecture"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.24" }
+
+# POSIX syscalls (setsid for daemonization)
+libc = "0.2"
+
+# HTTP server
+axum = { version = "0.8", features = ["json", "macros"] }
+tower-http = { version = "0.6", features = ["cors", "fs", "limit"] }
+
+# HTTP client (LLM API calls)
+reqwest = { version = "0.12", features = ["json", "stream", "blocking"] }
+url = "2"
+percent-encoding = "2"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Regex (P4 user-hook tool_pattern matching)
+regex = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+
+# Config
+dotenvy = "0.15"
+toml = "0.8"
+
+# Shell command parsing (verify_command)
+shell-words = "1"
+
+# Error handling
+thiserror = "2"
+
+# IDs
+uuid = { version = "1", features = ["v4", "v5", "serde"] }
+
+# SSE streaming
+tokio-stream = "0.1"
+futures = "0.3"
+
+# YAML frontmatter for SKILL.md
+serde_yaml = "0.9"
+
+# Glob pattern matching for conditional skill activation
+glob = "0.3"
+
+# Cancellation tokens
+tokio-util = "0.7"
+
+# Async trait support
+async-trait = "0.1"
+
+# Tokenizer (cl100k_base for context window)
+tiktoken = "3"
+
+# SQLite persistence
+rusqlite = { version = "0.39", features = ["bundled"] }
+r2d2 = "0.8"
+r2d2_sqlite = "0.33"
+
+# Prometheus metrics
+prometheus = { version = "0.13", features = ["process"] }
+
+# File system walk
+walkdir = "2"
+
+# File system watcher
+notify = { version = "7", default-features = false, features = ["macos_kqueue"] }
+
+# Discord bot signature verification
+ed25519-dalek = "2"
+hex = "0.4"
+time = { version = "0.3.47", features = ["local-offset"] }
+
+# WeChat bot QR code rendering
+qrcode = "0.14"
+
+# macOS desktop control (public APIs, no private SPI)
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-graphics = { version = "0.3", features = ["CGEvent", "CGEventTypes", "CGImage", "CGWindow", "CGDataProvider", "libc"] }
+objc2-app-kit = { version = "0.3", features = ["NSWorkspace", "NSRunningApplication"] }
+objc2-application-services = { version = "0.3", features = ["HIServices", "libc"] }
+objc2-core-foundation = { version = "0.3" }
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png"] }
+imageproc = "0.25"
+wasmtime = { version = "28", optional = true }
+wasmtime-wasi = { version = "28", optional = true }
+
+# TUI (terminal user interface)
+ratatui = { version = "0.29", optional = true }
+crossterm = { version = "0.28", optional = true }
+tui-scrollview = { version = "0.5", optional = true }
+unicode-width = { version = "0.2", optional = true }
+pulldown-cmark = { version = "0.12", optional = true }
+
+[features]
+default = ["web-search", "git", "cron", "mcp", "agent-tool", "tui"]
+web-search = []
+git = []
+cron = []
+mcp = []
+agent-tool = []
+sandbox-docker = []
+wasm-plugin = ["wasmtime", "wasmtime-wasi"]
+tui = ["ratatui", "crossterm", "tui-scrollview", "unicode-width", "pulldown-cmark"]
+test-utils = []
+
+[dev-dependencies]
+tempfile = "3"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "benchmarks"
+harness = false
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
