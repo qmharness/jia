@@ -33,9 +33,12 @@ export JIA_DEFAULT_PROVIDER="anthropic"
 ## 运行
 
 ```bash
-jia gateway start    # 启动 HTTP/SSE 网关
-jia dashboard        # 打开 Web 界面
-jia run "你好，甲"    # 单次推理
+jia                  # 启动 TUI（终端界面）
+jia gateway start    # 后台启动 HTTP/SSE 网关
+jia gateway stop     # 停止网关
+jia gateway status   # 查看网关状态
+jia doctor           # 诊断安装健康
+jia tui              # 显式启动 TUI（同 bare jia）
 ```
 
 ## Docker
