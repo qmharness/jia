@@ -154,6 +154,9 @@ impl super::Agent {
                         .filter_map(|(i, e)| if e.is_message() { Some(i) } else { None })
                         .collect();
                     let (start, count) = self.context_window.victim_range(&compact_msgs);
+                    // Clamp to msg_indices: compact_msgs may include entries
+                    // (e.g. ToolCall → User) absent from msg_indices.
+                    let count = count.min(msg_indices.len().saturating_sub(start));
                     if count > 0 {
                         let messages_before = self.history.len();
                         let rebuild = |h: &Vec<HistoryEntry>| {
