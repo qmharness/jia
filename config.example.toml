@@ -12,6 +12,7 @@ port = 3000
 # 默认大模型
 [llm]
 default_main_model_provider = "deepseek"  # kind is "openai" (OpenAI-compatible)
+default_aux_model_provider = "deepseek"
 
 # DeepSeek
 [providers.deepseek]
