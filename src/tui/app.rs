@@ -243,6 +243,10 @@ pub async fn run_app(
                         tokio::time::Instant::now() + std::time::Duration::from_millis(500),
                     );
                     app.lines.push(ChatLine {
+                        text: String::new(),
+                        style: Style::default(),
+                    });
+                    app.lines.push(ChatLine {
                         text: "✗ Disconnected from daemon, reconnecting…".to_string(),
                         style: StatusIcon::Disconnected.style(),
                     });
