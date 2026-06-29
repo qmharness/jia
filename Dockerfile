@@ -40,10 +40,10 @@ RUN mkdir -p /data && chown jia:jia /data
 WORKDIR /data
 USER jia
 
-ENV JIA_PORT=8080
+ENV JIA_PORT=3000
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
-    CMD curl -sf http://localhost:8080/health || exit 1
+    CMD curl -sf http://localhost:3000/health || exit 1
 
-EXPOSE 8080
+EXPOSE 3000
 ENTRYPOINT ["jia"]
 CMD ["gateway", "start"]
