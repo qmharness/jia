@@ -47,8 +47,8 @@ fn real_profile() -> Option<ProviderProfile> {
         return Some(ProviderProfile {
             kind: "openai".into(),
             models: vec![model],
-            default_model: None,
-            aux_model: None,
+            default_main_model: None,
+            default_aux_model: None,
             api_key: key,
             base_url: base,
             max_tokens: Some(1024),
@@ -76,7 +76,7 @@ fn real_profile() -> Option<ProviderProfile> {
     };
     match config.provider("default") {
         Ok(p) => {
-            let model: String = p.default_model().to_string();
+            let model: String = p.default_main_model().to_string();
             eprintln!("e2e: using provider model={} base={}", model, p.base_url);
             Some(p)
         }
@@ -113,8 +113,8 @@ fn temp_earth(store: Arc<Store>, temp_dir: &std::path::Path) -> Arc<EarthPlate> 
         host: "127.0.0.1".into(),
         port: 8080,
         providers: std::collections::HashMap::new(), // unused — core is separate
-        default_provider: None,
-        default_aux_provider: None,
+        default_main_model_provider: None,
+        default_aux_model_provider: None,
         security: security.clone(),
         mcp_servers: vec![],
         bots: Default::default(),
@@ -137,8 +137,8 @@ fn temp_earth(store: Arc<Store>, temp_dir: &std::path::Path) -> Arc<EarthPlate> 
     let dummy_profile = ProviderProfile {
         kind: "openai".into(),
         models: vec!["dummy".into()],
-        default_model: None,
-        aux_model: None,
+        default_main_model: None,
+        default_aux_model: None,
         api_key: "sk-dummy".into(),
         base_url: "http://localhost:1/v1".into(),
         max_tokens: Some(256),
@@ -232,7 +232,7 @@ async fn e2e_simple_chat() {
     let store = temp_store();
     let dir = tempfile::tempdir().unwrap();
     let earth = temp_earth(store.clone(), dir.path());
-    let core = JiaCore::new(&profile, profile.default_model());
+    let core = JiaCore::new(&profile, profile.default_main_model());
     let human = HumanPlate::default();
     let eb = EventBus::new();
 
@@ -280,7 +280,7 @@ async fn e2e_tool_read_file() {
     std::fs::write(&file_path, "Hello from e2e test!").unwrap();
 
     let earth = temp_earth(store.clone(), dir.path());
-    let core = JiaCore::new(&profile, profile.default_model());
+    let core = JiaCore::new(&profile, profile.default_main_model());
     let human = HumanPlate::default();
     let eb = EventBus::new();
 
@@ -332,7 +332,7 @@ async fn e2e_tool_error_handling() {
     let store = temp_store();
     let dir = tempfile::tempdir().unwrap();
     let earth = temp_earth(store.clone(), dir.path());
-    let core = JiaCore::new(&profile, profile.default_model());
+    let core = JiaCore::new(&profile, profile.default_main_model());
     let human = HumanPlate::default();
     let eb = EventBus::new();
 
@@ -368,7 +368,7 @@ async fn e2e_tool_write_and_read() {
     let store = temp_store();
     let dir = tempfile::tempdir().unwrap();
     let earth = temp_earth(store.clone(), dir.path());
-    let core = JiaCore::new(&profile, profile.default_model());
+    let core = JiaCore::new(&profile, profile.default_main_model());
     let human = HumanPlate::default();
     let eb = EventBus::new();
 
@@ -419,7 +419,7 @@ async fn e2e_post_loop_memory() {
     let store = temp_store();
     let dir = tempfile::tempdir().unwrap();
     let earth = temp_earth(store.clone(), dir.path());
-    let core = JiaCore::new(&profile, profile.default_model());
+    let core = JiaCore::new(&profile, profile.default_main_model());
     let human = HumanPlate::default();
     let eb = EventBus::new();
 
@@ -483,7 +483,7 @@ async fn e2e_cancel_mid_stream() {
     let store = temp_store();
     let dir = tempfile::tempdir().unwrap();
     let earth = temp_earth(store.clone(), dir.path());
-    let core = JiaCore::new(&profile, profile.default_model());
+    let core = JiaCore::new(&profile, profile.default_main_model());
     let human = HumanPlate::default();
     let eb = EventBus::new();
 
