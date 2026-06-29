@@ -207,8 +207,6 @@ pub async fn run_app(
 
         // ── Wait for event ──────────────────────────────
         let should_reconnect = tokio::select! {
-            biased;
-
             _ = cancel.cancelled() => {
                 app.quit = true;
                 false
