@@ -163,7 +163,7 @@ pub struct ProviderProfile {
     /// Default model to use when none is specified. Falls back to models[0] if set.
     pub default_main_model: Option<String>,
     /// Model override when this provider is used as the aux provider.
-    /// Falls back to default_model if not set.
+    /// Falls back to default_main_model if not set.
     pub default_aux_model: Option<String>,
     pub api_key: String,
     #[serde(alias = "api_base")]
