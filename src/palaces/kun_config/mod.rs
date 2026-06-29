@@ -101,6 +101,8 @@ pub enum GatewayAction {
 pub struct JiaToml {
     #[serde(default)]
     pub server: ServerSection,
+    #[serde(default)]
+    pub llm: LlmSection,
     /// Named provider profiles: [providers.default], [providers.claude], etc.
     /// Required — must be defined in config.toml.
     pub providers: HashMap<String, ProviderProfile>,
@@ -135,7 +137,12 @@ pub struct ServerSection {
     pub host: String,
     #[serde(default = "default_port")]
     pub port: u16,
-    /// Name of the default provider (must match a key in [providers]).
+}
+
+/// LLM configuration section ([llm] in config.toml).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct LlmSection {
+    /// Name of the default main model provider (must match a key in [providers]).
     /// If unset, the first provider key alphabetically is used.
     #[serde(default)]
     pub default_main_model_provider: Option<String>,
@@ -467,8 +474,6 @@ impl Default for ServerSection {
         Self {
             host: default_host(),
             port: default_port(),
-            default_main_model_provider: None,
-            default_aux_model_provider: None,
         }
     }
 }
@@ -531,7 +536,7 @@ impl AppConfig {
             }
         }
 
-        if let Some(ref dp) = toml.server.default_main_model_provider
+        if let Some(ref dp) = toml.llm.default_main_model_provider
             && !toml.providers.contains_key(dp.as_str())
         {
             return Err(JiaError::Config(format!(
@@ -574,8 +579,8 @@ impl AppConfig {
             host,
             port,
             providers: toml.providers,
-            default_main_model_provider: toml.server.default_main_model_provider,
-            default_aux_model_provider: toml.server.default_aux_model_provider,
+            default_main_model_provider: toml.llm.default_main_model_provider,
+            default_aux_model_provider: toml.llm.default_aux_model_provider,
             security,
             mcp_servers: toml.mcp_servers,
             bots: toml.bots,
