@@ -63,6 +63,14 @@ impl BaseTool for AskUserQuestionTool {
         })
     }
 
+    fn is_destructive(&self) -> bool {
+        false // asking the user is read-only
+    }
+
+    fn is_concurrency_safe(&self) -> bool {
+        false
+    }
+
     fn parameters_schema(&self) -> Value {
         serde_json::json!({
             "type": "object",
@@ -80,10 +88,6 @@ impl BaseTool for AskUserQuestionTool {
             },
             "required": ["question"]
         })
-    }
-
-    fn is_concurrency_safe(&self) -> bool {
-        false
     }
 
     async fn execute(&self, _input: Value) -> Result<String, String> {
