@@ -166,7 +166,7 @@ pub struct ProviderProfile {
     /// Falls back to default_main_model if not set.
     pub default_aux_model: Option<String>,
     pub api_key: String,
-    #[serde(alias = "api_base")]
+    
     pub base_url: String,
     /// Max output tokens per request. Defaults to 4096 if unset.
     #[serde(default)]
