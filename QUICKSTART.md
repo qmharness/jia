@@ -23,12 +23,11 @@ cp config.example.toml config.toml
 ```
 
 ```bash
-# 方式二：环境变量
-export JIA_ANTHROPIC_API_KEY="sk-..."
-export JIA_DEFAULT_PROVIDER="anthropic"
+# 方式二：环境变量指定配置文件路径
+export JIA_CONFIG="/path/to/config.toml"
 ```
 
-配置文件支持四层优先级：环境变量 > `.env` > CLI 参数 > `config.toml`。
+API key 等敏感信息在 `config.toml` 中配置。
 
 ## 运行
 
