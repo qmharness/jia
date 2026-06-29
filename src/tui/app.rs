@@ -241,7 +241,9 @@ pub async fn run_app(
                     app.connection = None;
                     app.status = StatusIcon::Disconnected;
                     app.reconnect_attempts = 0;
-                    next_reconnect = Some(tokio::time::Instant::now());
+                    next_reconnect = Some(
+                        tokio::time::Instant::now() + std::time::Duration::from_millis(500),
+                    );
                     app.lines.push(ChatLine {
                         text: "✗ Disconnected from daemon, reconnecting…".to_string(),
                         style: StatusIcon::Disconnected.style(),
