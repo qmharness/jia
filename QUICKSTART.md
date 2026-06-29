@@ -44,7 +44,7 @@ jia tui              # 显式启动 TUI（同 bare jia）
 
 ```bash
 docker build -t jia .
-docker run -p 8080:8080 -e JIA_ANTHROPIC_API_KEY="sk-..." jia
+docker run -p 3000:3000 -v ./config.toml:/data/config.toml jia
 ```
 
 ## IM 机器人
