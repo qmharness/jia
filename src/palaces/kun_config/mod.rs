@@ -138,12 +138,12 @@ pub struct ServerSection {
     /// Name of the default provider (must match a key in [providers]).
     /// If unset, the first provider key alphabetically is used.
     #[serde(default)]
-    pub default_provider: Option<String>,
+    pub default_main_model_provider: Option<String>,
     /// Name of the aux provider for background tasks (consolidation,
     /// distillation, skill reflection). If unset, aux_core is None and
     /// all aux tasks fall back to main_core.
     #[serde(default)]
-    pub aux_provider: Option<String>,
+    pub default_aux_model_provider: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -154,10 +154,10 @@ pub struct ProviderProfile {
     #[serde(default)]
     pub models: Vec<String>,
     /// Default model to use when none is specified. Falls back to models[0] if set.
-    pub default_model: Option<String>,
+    pub default_main_model: Option<String>,
     /// Model override when this provider is used as the aux provider.
     /// Falls back to default_model if not set.
-    pub aux_model: Option<String>,
+    pub default_aux_model: Option<String>,
     pub api_key: String,
     #[serde(alias = "api_base")]
     pub base_url: String,
@@ -171,8 +171,8 @@ pub struct ProviderProfile {
 }
 
 impl ProviderProfile {
-    pub fn default_model(&self) -> &str {
-        self.default_model
+    pub fn default_main_model(&self) -> &str {
+        self.default_main_model
             .as_deref()
             .unwrap_or_else(|| self.models.first().map(|s| s.as_str()).unwrap_or(""))
     }
@@ -467,8 +467,8 @@ impl Default for ServerSection {
         Self {
             host: default_host(),
             port: default_port(),
-            default_provider: None,
-            aux_provider: None,
+            default_main_model_provider: None,
+            default_aux_model_provider: None,
         }
     }
 }
@@ -478,8 +478,8 @@ pub struct AppConfig {
     pub host: String,
     pub port: u16,
     pub providers: HashMap<String, ProviderProfile>,
-    pub default_provider: Option<String>,
-    pub default_aux_provider: Option<String>,
+    pub default_main_model_provider: Option<String>,
+    pub default_aux_model_provider: Option<String>,
     pub security: SecuritySection,
     pub mcp_servers: Vec<McpServerConfig>,
     pub bots: BotsSection,
@@ -531,7 +531,7 @@ impl AppConfig {
             }
         }
 
-        if let Some(ref dp) = toml.server.default_provider
+        if let Some(ref dp) = toml.server.default_main_model_provider
             && !toml.providers.contains_key(dp.as_str())
         {
             return Err(JiaError::Config(format!(
@@ -574,8 +574,8 @@ impl AppConfig {
             host,
             port,
             providers: toml.providers,
-            default_provider: toml.server.default_provider,
-            default_aux_provider: toml.server.aux_provider,
+            default_main_model_provider: toml.server.default_main_model_provider,
+            default_aux_model_provider: toml.server.default_aux_model_provider,
             security,
             mcp_servers: toml.mcp_servers,
             bots: toml.bots,
@@ -585,8 +585,8 @@ impl AppConfig {
     }
 
     /// The effective default provider name (configured value or first alphabetically).
-    pub fn default_provider_name(&self) -> &str {
-        self.default_provider.as_deref().unwrap_or_else(|| {
+    pub fn default_main_provider_name(&self) -> &str {
+        self.default_main_model_provider.as_deref().unwrap_or_else(|| {
             let mut keys: Vec<&String> = self.providers.keys().collect();
             keys.sort();
             keys.first().expect("no providers configured").as_str()
@@ -594,14 +594,14 @@ impl AppConfig {
     }
 
     /// Resolve the default provider profile.
-    pub fn default_provider(&self) -> Result<ProviderProfile, JiaError> {
-        let name = self.default_provider_name().to_string();
+    pub fn default_main_provider(&self) -> Result<ProviderProfile, JiaError> {
+        let name = self.default_main_provider_name().to_string();
         self.provider(&name)
     }
 
     /// Resolve a provider profile by name (falls back to the configured default_provider).
     pub fn provider(&self, name: &str) -> Result<ProviderProfile, JiaError> {
-        let default_name = self.default_provider_name();
+        let default_name = self.default_main_provider_name();
         self.providers
             .get(name)
             .or_else(|| self.providers.get(default_name))
@@ -639,7 +639,7 @@ impl ConfigLoader {
         self.app_config.provider(name)
     }
 
-    pub fn default_provider(&self) -> Result<ProviderProfile, JiaError> {
-        self.app_config.default_provider()
+    pub fn default_main_provider(&self) -> Result<ProviderProfile, JiaError> {
+        self.app_config.default_main_provider()
     }
 }

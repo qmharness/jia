@@ -134,21 +134,21 @@ impl EarthPlate {
 
         let default_profile = config_loader
             .app_config
-            .default_provider()
+            .default_main_provider()
             .expect("no default provider configured");
-        let default_model = default_profile.default_model().to_string();
+        let default_model = default_profile.default_main_model().to_string();
         let main_core = Arc::new(JiaCore::new(&default_profile, &default_model));
         let aux_core = config_loader
             .app_config
-            .default_aux_provider
+            .default_aux_model_provider
             .as_ref()
             .and_then(
                 |aux_name| match config_loader.app_config.provider(aux_name) {
                     Ok(aux_profile) => {
                         let aux_model = aux_profile
-                            .aux_model
+                            .default_aux_model
                             .as_deref()
-                            .unwrap_or_else(|| aux_profile.default_model())
+                            .unwrap_or_else(|| aux_profile.default_main_model())
                             .to_string();
                         Some(Arc::new(JiaCore::new(&aux_profile, &aux_model)))
                     }

@@ -670,7 +670,7 @@ fn run_doctor(config_path: Option<std::path::PathBuf>) {
         Ok(content) => match toml::from_str::<jia::config::JiaToml>(&content) {
             Ok(cfg) => {
                 let n = cfg.providers.len();
-                let dp = cfg.server.default_provider.as_deref().unwrap_or("(none)");
+                let dp = cfg.server.default_main_model_provider.as_deref().unwrap_or("(none)");
                 println!(
                     "\u{1b}[32mOK\u{1b}[0m    {} provider(s), default: {}",
                     n, dp

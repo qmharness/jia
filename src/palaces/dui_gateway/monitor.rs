@@ -34,7 +34,7 @@ pub async fn handle_metrics() -> String {
 pub async fn handle_monitor(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let ctx_window = state
         .providers
-        .get(&state.default_provider_name)
+        .get(&state.default_main_provider_name)
         .and_then(|p| p.context_window)
         .unwrap_or(8192);
 

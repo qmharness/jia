@@ -15,7 +15,7 @@ pub async fn handle_providers(State(state): State<Arc<AppState>>) -> Json<Vec<se
                 "name": name,
                 "kind": p.kind,
                 "models": p.models,
-                "default_model": p.default_model(),
+                "default_model": p.default_main_model(),
             })
         })
         .collect();

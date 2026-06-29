@@ -343,7 +343,7 @@ mod integration_tests {
         let profile = config_loader
             .provider("default")
             .expect("No default provider in config.toml");
-        let core = crate::palaces::zhong_core::JiaCore::new(&profile, profile.default_model());
+        let core = crate::palaces::zhong_core::JiaCore::new(&profile, profile.default_main_model());
 
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(Store::open(&dir.path().join("test.db").to_string_lossy()));
@@ -711,7 +711,7 @@ mod integration_tests {
         let profile = config_loader
             .provider("default")
             .expect("No default provider in config.toml");
-        let core = crate::palaces::zhong_core::JiaCore::new(&profile, profile.default_model());
+        let core = crate::palaces::zhong_core::JiaCore::new(&profile, profile.default_main_model());
 
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(Store::open(&dir.path().join("test.db").to_string_lossy()));
@@ -1143,7 +1143,7 @@ mod integration_tests {
         let profile = config_loader
             .provider("default")
             .expect("No default provider in config.toml");
-        let core = crate::palaces::zhong_core::JiaCore::new(&profile, profile.default_model());
+        let core = crate::palaces::zhong_core::JiaCore::new(&profile, profile.default_main_model());
 
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(Store::open(&dir.path().join("stress.db").to_string_lossy()));

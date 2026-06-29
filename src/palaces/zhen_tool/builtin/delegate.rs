@@ -477,14 +477,14 @@ mod tests {
         let profile = ProviderProfile {
             kind: "openai".into(),
             models: vec!["gpt-4".into()],
-            aux_model: None,
-            default_model: None,
+            default_aux_model: None,
+            default_main_model: None,
             api_key: "sk-test".into(),
             base_url: "https://api.openai.com/v1".into(),
             max_tokens: Some(256),
             context_window: None,
         };
-        Arc::new(JiaCore::new(&profile, profile.default_model()))
+        Arc::new(JiaCore::new(&profile, profile.default_main_model()))
     }
 
     fn test_subtools() -> Arc<ToolRegistry> {

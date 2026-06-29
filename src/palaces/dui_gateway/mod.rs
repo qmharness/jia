@@ -97,8 +97,8 @@ impl SessionTokens {
 
 pub struct AppState {
     pub providers: HashMap<String, ProviderProfile>,
-    pub default_provider_name: String,
-    pub default_aux_provider: Option<String>,
+    pub default_main_provider_name: String,
+    pub default_aux_model_provider: Option<String>,
     pub system_prompt: String,
     pub earth: Option<Arc<EarthPlate>>,
     pub pending_confirmations: Arc<Mutex<HashMap<String, PendingConfirmation>>>,
@@ -210,8 +210,8 @@ pub fn build_router(state: Arc<AppState>, web_dir: String) -> Router {
 pub fn create_app(config: &AppConfig, web_dir: String) -> Router {
     let state = Arc::new(AppState {
         providers: config.providers.clone(),
-        default_provider_name: config.default_provider_name().to_string(),
-        default_aux_provider: config.default_aux_provider.clone(),
+        default_main_provider_name: config.default_main_provider_name().to_string(),
+        default_aux_model_provider: config.default_aux_model_provider.clone(),
         system_prompt: "You are Jia (甲), a helpful AI assistant. Respond concisely and directly."
             .into(),
         earth: None,
@@ -228,7 +228,7 @@ pub fn create_app(config: &AppConfig, web_dir: String) -> Router {
 
 pub fn create_app_with_earth(web_dir: String, earth: Arc<EarthPlate>) -> Router {
     let providers = earth.config.app_config.providers.clone();
-    let default_provider_name = earth.config.app_config.default_provider_name().to_string();
+    let default_main_provider_name = earth.config.app_config.default_main_provider_name().to_string();
     let discord_public_key = earth
         .config
         .app_config
@@ -242,11 +242,11 @@ pub fn create_app_with_earth(web_dir: String, earth: Arc<EarthPlate>) -> Router 
     let rate_limiter = Arc::new(RateLimiter::new(
         earth.config.app_config.security.rate_limit_per_minute,
     ));
-    let default_aux_provider = earth.config.app_config.default_aux_provider.clone();
+    let default_aux_model_provider = earth.config.app_config.default_aux_model_provider.clone();
     let state = Arc::new(AppState {
         providers,
-        default_provider_name,
-        default_aux_provider,
+        default_main_provider_name,
+        default_aux_model_provider,
         system_prompt: "You are Jia (甲), a helpful AI assistant. Respond concisely and directly."
             .into(),
         earth: Some(earth),
@@ -369,8 +369,8 @@ mod tests {
             host: "127.0.0.1".into(),
             port: 3000,
             providers: HashMap::new(),
-            default_provider: None,
-            default_aux_provider: None,
+            default_main_model_provider: None,
+            default_aux_model_provider: None,
             security: SecuritySection::default(),
             mcp_servers: vec![],
             bots: BotsSection::default(),
@@ -380,8 +380,8 @@ mod tests {
         let profile = ProviderProfile {
             kind: "openai".into(),
             models: vec!["test".into()],
-            aux_model: None,
-            default_model: Some("test".into()),
+            default_aux_model: None,
+            default_main_model: Some("test".into()),
             api_key: "sk-test".into(),
             base_url: "http://localhost:1234/v1".into(),
             max_tokens: Some(1024),
@@ -413,8 +413,8 @@ mod tests {
 
         Arc::new(AppState {
             providers: HashMap::new(),
-            default_provider_name: "test".into(),
-            default_aux_provider: None,
+            default_main_provider_name: "test".into(),
+            default_aux_model_provider: None,
             system_prompt: "test".into(),
             earth: Some(Arc::new(earth)),
             pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
@@ -466,8 +466,8 @@ mod tests {
     async fn handle_skills_evolution_no_earth_returns_error() {
         let app = Arc::new(AppState {
             providers: HashMap::new(),
-            default_provider_name: String::new(),
-            default_aux_provider: None,
+            default_main_provider_name: String::new(),
+            default_aux_model_provider: None,
             system_prompt: String::new(),
             earth: None,
             pending_confirmations: Arc::new(Mutex::new(HashMap::new())),

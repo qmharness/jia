@@ -371,11 +371,11 @@ async fn handle_rin_connection(
 
                 // Register for cancellation
                 let config = &earth.config.app_config;
-                let provider_name = config.default_provider.clone().unwrap_or_default();
+                let provider_name = config.default_main_model_provider.clone().unwrap_or_default();
                 let model = config
                     .providers
                     .get(&provider_name)
-                    .map(|p: &crate::config::ProviderProfile| p.default_model().to_string())
+                    .map(|p: &crate::config::ProviderProfile| p.default_main_model().to_string())
                     .unwrap_or_default();
                 session_tokens.register(sid.clone(), agent_token.clone(), provider_name, model);
 
@@ -636,11 +636,11 @@ async fn handle_rin_connection(
 
             "model_info" => {
                 let config = &earth.config.app_config;
-                let provider = config.default_provider_name().to_string();
+                let provider = config.default_main_provider_name().to_string();
                 let model = config
-                    .default_provider()
+                    .default_main_provider()
                     .ok()
-                    .and_then(|p| p.default_model.clone().or_else(|| p.models.first().cloned()))
+                    .and_then(|p| p.default_main_model.clone().or_else(|| p.models.first().cloned()))
                     .unwrap_or_default();
                 let resp = serde_json::json!({
                     "type": "model_info",

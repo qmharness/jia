@@ -72,11 +72,11 @@ pub struct AgentRequest {
     /// Session ID for cross-request memory persistence
     #[serde(default)]
     pub session_id: Option<String>,
-    /// Override aux provider. Falls back to server-configured aux_provider.
+    /// Override aux provider. Falls back to server-configured default_aux_model_provider.
     #[serde(default)]
     pub aux_provider: Option<String>,
     /// Override aux model for consolidation/distillation/reflection.
-    /// Falls back to the aux_provider's default model if unset.
+    /// Falls back to the aux provider's default_main_model if unset.
     #[serde(default)]
     pub aux_model: Option<String>,
     /// Workspace directory for this session (project path)

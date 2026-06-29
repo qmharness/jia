@@ -31,7 +31,7 @@ pub async fn handle_chat(
     let profile = state
         .providers
         .get(&req.provider)
-        .or_else(|| state.providers.get(&state.default_provider_name))
+        .or_else(|| state.providers.get(&state.default_main_provider_name))
         .cloned();
     let requested_model = req.model.clone();
 
@@ -41,7 +41,7 @@ pub async fn handle_chat(
     {
         let model: &str = requested_model
             .as_deref()
-            .unwrap_or_else(|| profile.default_model());
+            .unwrap_or_else(|| profile.default_main_model());
         let llm: Box<dyn LlmProvider> = provider::create_provider(&profile, model);
 
         let mut messages = vec![Message::text(Role::System, state.system_prompt.clone())];
@@ -97,23 +97,23 @@ pub async fn handle_agent(
     let profile = state
         .providers
         .get(&req.provider)
-        .or_else(|| state.providers.get(&state.default_provider_name))
+        .or_else(|| state.providers.get(&state.default_main_provider_name))
         .cloned();
     let model = req
         .model
         .as_deref()
-        .unwrap_or_else(|| profile.as_ref().map(|p| p.default_model()).unwrap_or(""))
+        .unwrap_or_else(|| profile.as_ref().map(|p| p.default_main_model()).unwrap_or(""))
         .to_string();
     let effective_aux_provider: Option<String> = req
         .aux_provider
         .clone()
-        .or_else(|| state.default_aux_provider.clone());
+        .or_else(|| state.default_aux_model_provider.clone());
     let aux_model: Option<String> = req.aux_model.clone().or_else(|| {
         effective_aux_provider.as_ref().and_then(|aux_name| {
             state
                 .providers
                 .get(aux_name)
-                .map(|p| p.default_model().to_string())
+                .map(|p| p.default_main_model().to_string())
         })
     });
     let has_provider = profile.is_some();
@@ -163,7 +163,7 @@ pub async fn handle_agent(
                     Some(aux_profile) => {
                         let m = aux_model
                             .as_deref()
-                            .unwrap_or_else(|| aux_profile.default_model());
+                            .unwrap_or_else(|| aux_profile.default_main_model());
                         Some(crate::palaces::zhong_core::JiaCore::new(aux_profile, m))
                     }
                     None => aux_model
@@ -348,8 +348,8 @@ mod tests {
                 host: "127.0.0.1".into(),
                 port: 3000,
                 providers: HashMap::new(),
-                default_provider: None,
-                default_aux_provider: None,
+                default_main_model_provider: None,
+                default_aux_model_provider: None,
                 security: SecuritySection::default(),
                 mcp_servers: vec![],
                 bots: BotsSection::default(),
@@ -377,8 +377,8 @@ mod tests {
         };
         Arc::new(AppState {
             providers: HashMap::new(),
-            default_provider_name: "test".into(),
-            default_aux_provider: None,
+            default_main_provider_name: "test".into(),
+            default_aux_model_provider: None,
             system_prompt: "test".into(),
             earth: Some(Arc::new(earth)),
             pending_confirmations: Arc::new(Mutex::new(HashMap::new())),

@@ -796,8 +796,8 @@ async fn test_real_llm_evolution_pipeline() {
     let profile = crate::config::ProviderProfile {
         kind: "openai".to_string(),
         models: vec!["qwen3.6-35b-a3b-ud-mlx".to_string()],
-        aux_model: None,
-        default_model: Some("qwen3.6-35b-a3b-ud-mlx".to_string()),
+        default_aux_model: None,
+        default_main_model: Some("qwen3.6-35b-a3b-ud-mlx".to_string()),
         api_key: "sk-test-key".to_string(),
         base_url: "http://localhost:1234/v1".to_string(),
         max_tokens: Some(4096),
@@ -913,8 +913,8 @@ async fn test_real_llm_reflection_only() {
     let profile = crate::config::ProviderProfile {
         kind: "openai".to_string(),
         models: vec!["qwen3.6-35b-a3b-ud-mlx".to_string()],
-        aux_model: None,
-        default_model: Some("qwen3.6-35b-a3b-ud-mlx".to_string()),
+        default_aux_model: None,
+        default_main_model: Some("qwen3.6-35b-a3b-ud-mlx".to_string()),
         api_key: "sk-test-key".to_string(),
         base_url: "http://localhost:1234/v1".to_string(),
         max_tokens: Some(2048),

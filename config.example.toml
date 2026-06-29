@@ -10,14 +10,14 @@ host = "127.0.0.1"
 port = 3000
 
 # 默认大模型
-default_provider = "deepseek"  # kind is "openai" (OpenAI-compatible)
+default_main_model_provider = "deepseek"  # kind is "openai" (OpenAI-compatible)
 
 # DeepSeek
 [providers.deepseek]
 kind = "openai"
 models = ["deepseek-v4-pro", "deepseek-v4-flash"]
-default_model = "deepseek-v4-pro"
-aux_model = "deepseek-v4-flash"
+default_main_model = "deepseek-v4-pro"
+default_aux_model = "deepseek-v4-flash"
 api_key = "sk-..."
 base_url = "https://api.deepseek.com"
 
@@ -25,8 +25,8 @@ base_url = "https://api.deepseek.com"
 [providers.bigmodel]
 kind = "anthropic"
 models = ["GLM-5.2", "GLM-4.5-Air"]
-default_model = "GLM-5.2"
-aux_model = "GLM-4.5-Air"
+default_main_model = "GLM-5.2"
+default_aux_model = "GLM-4.5-Air"
 api_key = "YOUR_API_KEY"
 base_url = "https://open.bigmodel.cn/api/anthropic"
 
