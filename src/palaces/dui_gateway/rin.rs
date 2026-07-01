@@ -535,6 +535,7 @@ async fn handle_rin_connection(
                     let (pcwd, pid) = tokio::select! {
                         _ = agent_token.cancelled() => {
                             resolve_abort.abort();
+                            if is_new { let _ = store.delete_session(&sid); }
                             session_tokens_clone.remove(&sid);
                             return;
                         }
@@ -546,6 +547,7 @@ async fn handle_rin_connection(
                     // Phase 2: race session lock against cancellation
                     tokio::select! {
                         _ = agent_token.cancelled() => {
+                            if is_new { let _ = store.delete_session(&sid); }
                             session_tokens_clone.remove(&sid);
                         }
                         guard = session_lock.lock() => {
