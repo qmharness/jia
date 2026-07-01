@@ -528,9 +528,18 @@ async fn handle_rin_connection(
                 let permissions = earth.permissions.clone();
                 let pending_confirmations = earth.pending_confirmations.clone();
                 tokio::spawn(async move {
-                    // Resolve project cwd and project_id
-                    let (pcwd, pid) = resolve_handle.await.unwrap_or((String::new(), String::new()));
+                    // Phase 1: race project resolution against cancellation
+                    let (pcwd, pid) = tokio::select! {
+                        _ = agent_token.cancelled() => {
+                            session_tokens_clone.remove(&sid);
+                            return;
+                        }
+                        resolved = resolve_handle => {
+                            resolved.unwrap_or((String::new(), String::new()))
+                        }
+                    };
 
+                    // Phase 2: race session lock against cancellation
                     tokio::select! {
                         _ = agent_token.cancelled() => {
                             session_tokens_clone.remove(&sid);
