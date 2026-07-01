@@ -184,7 +184,7 @@ async fn resolve_project(
     let confirm_id = uuid::Uuid::new_v4().to_string();
     let confirm_token = uuid::Uuid::new_v4().to_string();
 
-    let (_sender, mut receiver) = tokio::sync::oneshot::channel::<bool>();
+    let (_sender, receiver) = tokio::sync::oneshot::channel::<bool>();
     {
         let mut pending = earth.pending_confirmations.lock().unwrap();
         pending.insert(
@@ -196,21 +196,18 @@ async fn resolve_project(
         );
     }
 
-    // Send confirmation to TUI
+    // Send confirmation to TUI (no timeout — user must explicitly approve or deny)
     tracing::info!(cwd = %cwd, confirm_id = %confirm_id, "rin: sending project confirmation to TUI");
     let _ = tx.send(AgentEvent::ConfirmRequest {
         id: confirm_id.clone(),
         tool: "jia_init".into(),
         reason: format!("Create Jia project in '{cwd}'?"),
-        timeout_secs: 60,
+        timeout_secs: 0,
         token: confirm_token,
     });
 
-    // Wait for user response (60s timeout)
-    let approved = matches!(
-        tokio::time::timeout(std::time::Duration::from_secs(60), &mut receiver).await,
-        Ok(Ok(true))
-    );
+    // Wait indefinitely for user response
+    let approved = matches!(receiver.await, Ok(true));
 
     // Clean up pending confirmation
     {
@@ -325,6 +322,17 @@ async fn handle_rin_connection(
                     });
                     let (pcwd, pid) = resolve_project(&earth_clone, &cwd, hello_tx).await;
                     tracing::info!(cwd = %pcwd, project_id = %pid, "rin: hello project resolved");
+                    // Send result back to TUI
+                    let approved = !pid.is_empty();
+                    let resp = serde_json::json!({
+                        "type": "project_resolved",
+                        "cwd": pcwd,
+                        "project_id": pid,
+                        "approved": approved,
+                    });
+                    let mut w = w.lock().await;
+                    let _ = w.write_all(resp.to_string().as_bytes()).await;
+                    let _ = w.write_all(b"\n").await;
                 });
             }
             "agent" => {
@@ -353,30 +361,13 @@ async fn handle_rin_connection(
 
                 let is_new = msg["session_id"].as_str().is_none_or(|s| s.is_empty());
 
-                // Extract cwd and project_id from the message
+                // Extract cwd and project_id from the message.
+                // Project resolution already happened in the "hello" handler.
                 let msg_cwd = msg["cwd"].as_str().unwrap_or(".").to_string();
                 let msg_pid = msg["project_id"].as_str().unwrap_or("").to_string();
 
-                // Channel and cancellation setup (outside lock — needed for
-                // event forwarding and cancel-aware lock acquisition).
+                // Channel and cancellation setup
                 let (tx, rx) = mpsc::unbounded_channel::<AgentEvent>();
-
-                // Resolve project for new sessions (async — requires tx for confirmations).
-                // For existing sessions, cwd/pid are stored on the session row.
-                let earth_for_resolve = earth.clone();
-                let resolve_tx = tx.clone();
-                let resolve_cwd = msg_cwd.clone();
-                let resolve_pid = msg_pid.clone();
-                let resolve_handle = tokio::spawn(async move {
-                    if !resolve_pid.is_empty() {
-                        // project_id provided by client — trust it
-                        return (resolve_cwd, resolve_pid);
-                    }
-                    if !resolve_cwd.is_empty() && resolve_cwd != "." {
-                        return resolve_project(&earth_for_resolve, &resolve_cwd, resolve_tx).await;
-                    }
-                    (String::new(), String::new())
-                });
 
                 if is_new {
                     let title = messages
@@ -528,23 +519,6 @@ async fn handle_rin_connection(
                 let permissions = earth.permissions.clone();
                 let pending_confirmations = earth.pending_confirmations.clone();
                 tokio::spawn(async move {
-                    // Phase 1: race project resolution against cancellation.
-                    // Pre-extract the abort handle so we can abort the resolve task
-                    // even after resolve_handle is moved into the select branch.
-                    let resolve_abort = resolve_handle.abort_handle();
-                    let (pcwd, pid) = tokio::select! {
-                        _ = agent_token.cancelled() => {
-                            resolve_abort.abort();
-                            if is_new { let _ = store.delete_session(&sid); }
-                            session_tokens_clone.remove(&sid);
-                            return;
-                        }
-                        resolved = resolve_handle => {
-                            resolved.unwrap_or((String::new(), String::new()))
-                        }
-                    };
-
-                    // Phase 2: race session lock against cancellation
                     tokio::select! {
                         _ = agent_token.cancelled() => {
                             if is_new { let _ = store.delete_session(&sid); }
@@ -566,13 +540,12 @@ async fn handle_rin_connection(
                                 .unwrap_or_default();
                             let distilled_hashes = store.load_distilled_hashes(&sid);
 
-                            // Resolve effective cwd: prefer resolved project cwd, then
-                            // fallback for old sessions where cwd="." — look up via project_id.
-                            let effective_cwd = if !pcwd.is_empty() && pcwd != "." {
-                                pcwd.clone()
-                            } else if !pid.is_empty() {
-                                // Old session: try reverse-lookup cwd from project
-                                store.get_project(&pid).ok().flatten()
+                            // Resolve effective cwd from message (project already resolved by "hello")
+                            let effective_cwd = if !msg_cwd.is_empty() && msg_cwd != "." {
+                                msg_cwd.clone()
+                            } else if !msg_pid.is_empty() {
+                                // Old session: reverse-lookup cwd from project
+                                store.get_project(&msg_pid).ok().flatten()
                                     .and_then(|p| p.get("cwd").and_then(|v| v.as_str()).map(String::from))
                                     .unwrap_or_default()
                             } else {

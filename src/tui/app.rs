@@ -785,6 +785,13 @@ impl App {
                     });
                 }
             }
+            SocketEvent::ProjectResolved { project_id, approved, .. } => {
+                if approved {
+                    self.project_id = project_id;
+                } else {
+                    self.quit = true;
+                }
+            }
         }
     }
 

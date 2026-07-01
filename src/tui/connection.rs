@@ -44,6 +44,12 @@ pub enum SocketEvent {
     AnswerResolved { id: String, resolved: bool },
     /// Daemon model info (provider + model name).
     ModelInfo { provider: String, model: String },
+    /// Project resolution result from "hello".
+    ProjectResolved {
+        cwd: String,
+        project_id: String,
+        approved: bool,
+    },
 }
 
 /// Parsed StreamEvent — mirrors `crate::types::StreamEvent` but implements
@@ -274,6 +280,11 @@ impl Connection {
                     "model_info" => SocketEvent::ModelInfo {
                         provider: value["provider"].as_str().unwrap_or("").to_string(),
                         model: value["model"].as_str().unwrap_or("").to_string(),
+                    },
+                    "project_resolved" => SocketEvent::ProjectResolved {
+                        cwd: value["cwd"].as_str().unwrap_or("").to_string(),
+                        project_id: value["project_id"].as_str().unwrap_or("").to_string(),
+                        approved: value["approved"].as_bool().unwrap_or(false),
                     },
                     // All StreamEvent types
                     _ => match StreamEvent::from_value(&value) {
