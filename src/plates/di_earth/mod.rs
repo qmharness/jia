@@ -126,8 +126,8 @@ impl EarthPlate {
 
         let config_loader = Arc::new(ConfigLoader::from_app_config(config));
 
-        // Ensure workspace and backup directories exist before tools try to use them
-        std::fs::create_dir_all(&config_loader.app_config.workspace_path)
+        // Ensure workspace dir for cron/bot agents exists
+        std::fs::create_dir_all(&data_dir.join("workspace"))
             .unwrap_or_else(|e| tracing::warn!("cannot create workspace dir: {e}"));
         std::fs::create_dir_all(&backup_dir)
             .unwrap_or_else(|e| tracing::warn!("cannot create backup dir: {e}"));
@@ -163,7 +163,7 @@ impl EarthPlate {
         let permissions = Arc::new(
             PermissionMatrix::from_config(
                 &config_loader.app_config.security,
-                &config_loader.app_config.workspace_path,
+                &data_dir.join("workspace"),
                 backup_dir.clone(),
             )
             .with_sandbox(&config_loader.app_config.security.sandbox),
@@ -545,12 +545,15 @@ impl EarthPlate {
                 earth.pending_confirmations.clone(),
             );
             let distilled_hashes = earth.store.load_distilled_hashes(&session_id);
+            let workspace = earth.data_dir.join("workspace");
+            let scoped_tools = earth.rebuild_tools_for_root(&workspace);
             let mut agent = Agent::with_session(
                 session_id.clone(),
                 earth.clone(),
                 Vec::new(),
                 Manas::default(),
                 distilled_hashes,
+                scoped_tools,
             );
             let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
 
@@ -742,12 +745,15 @@ async fn run_io_agent(earth: Arc<EarthPlate>, input: crate::palaces::kan_io::Cha
         earth.pending_confirmations.clone(),
     );
     let distilled_hashes = earth.store.load_distilled_hashes(&session_id);
+    let workspace = earth.data_dir.join("workspace");
+    let scoped_tools = earth.rebuild_tools_for_root(&workspace);
     let mut agent = Agent::with_session(
         session_id.clone(),
         earth.clone(),
         history,
         manas,
         distilled_hashes,
+        scoped_tools,
     );
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
 

@@ -1,9 +1,6 @@
 # 甲 (Jia) — 多模型配置
 # 复制为 config.toml 并填入真实 API key
-
-# ── 工作区配置（可选） ─────────────────────────────────────────
-# [workspace]
-# path = "/path/to/your/project"   # Agent shell 执行根目录，默认 ~/.jia/workspace
+# Jia 项目由 .jia/ 目录标识，运行 `jia init [path]` 或通过 TUI 首次使用自动创建。
 
 [server]
 host = "127.0.0.1"

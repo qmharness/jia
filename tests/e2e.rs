@@ -118,7 +118,6 @@ fn temp_earth(store: Arc<Store>, temp_dir: &std::path::Path) -> Arc<EarthPlate> 
         security: security.clone(),
         mcp_servers: vec![],
         bots: Default::default(),
-        workspace_path: temp_dir.join("workspace"),
         hooks: vec![],
     };
     let config_loader = Arc::new(jia::palaces::kun_config::ConfigLoader::from_app_config(
@@ -236,7 +235,7 @@ async fn e2e_simple_chat() {
     let human = HumanPlate::default();
     let eb = EventBus::new();
 
-    let mut agent = Agent::new("e2e-chat".into(), earth.clone());
+    let mut agent = Agent::new("e2e-chat".into(), earth.clone(), earth.tools.clone());
     let events = run_agent(
         &mut agent,
         &core,
@@ -284,7 +283,7 @@ async fn e2e_tool_read_file() {
     let human = HumanPlate::default();
     let eb = EventBus::new();
 
-    let mut agent = Agent::new("e2e-read".into(), earth.clone());
+    let mut agent = Agent::new("e2e-read".into(), earth.clone(), earth.tools.clone());
     let msg = format!(
         "Read the file at {}/hello.txt using the read_file tool.",
         dir.path().display()
@@ -336,7 +335,7 @@ async fn e2e_tool_error_handling() {
     let human = HumanPlate::default();
     let eb = EventBus::new();
 
-    let mut agent = Agent::new("e2e-err".into(), earth.clone());
+    let mut agent = Agent::new("e2e-err".into(), earth.clone(), earth.tools.clone());
     let _nonexistent = dir.path().join("does_not_exist.txt");
     let msg = format!(
         "Read the file at {}/does_not_exist.txt using the read_file tool.",
@@ -372,7 +371,7 @@ async fn e2e_tool_write_and_read() {
     let human = HumanPlate::default();
     let eb = EventBus::new();
 
-    let mut agent = Agent::new("e2e-wr".into(), earth.clone());
+    let mut agent = Agent::new("e2e-wr".into(), earth.clone(), earth.tools.clone());
     let _out_file = dir.path().join("output.txt");
     let msg = format!(
         "Write the text 'e2e write test content' to {}/output.txt using write_file, \
@@ -423,7 +422,7 @@ async fn e2e_post_loop_memory() {
     let human = HumanPlate::default();
     let eb = EventBus::new();
 
-    let mut agent = Agent::new("e2e-mem".into(), earth.clone());
+    let mut agent = Agent::new("e2e-mem".into(), earth.clone(), earth.tools.clone());
     // Set a small working memory buffer and populate snapshots so L2 consolidation triggers
     agent.working_memory = jia::vijnana::mano::WorkingMemory::new(3);
     // Manually create a few snapshots to trigger consolidation
@@ -487,7 +486,7 @@ async fn e2e_cancel_mid_stream() {
     let human = HumanPlate::default();
     let eb = EventBus::new();
 
-    let mut agent = Agent::new("e2e-cancel".into(), earth.clone());
+    let mut agent = Agent::new("e2e-cancel".into(), earth.clone(), earth.tools.clone());
     let cancel = CancellationToken::new();
 
     // Cancel after a short delay to interrupt the LLM stream

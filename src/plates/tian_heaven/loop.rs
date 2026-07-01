@@ -500,7 +500,7 @@ impl super::Agent {
                         }
                     } else if tc.name == "exit_worktree" {
                         if let Some(wt) = self.worktree_root.take() {
-                            self.active_tools = self.earth.tools.clone();
+                            self.active_tools = self.base_tools.clone();
                             let action = tc
                                 .parameters
                                 .get("action")

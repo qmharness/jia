@@ -25,31 +25,30 @@ pub async fn handle_list_projects(
 
 #[derive(serde::Deserialize)]
 pub struct CreateProjectBody {
-    name: String,
-    #[serde(default)]
-    cwd: Option<String>,
+    pub name: String,
+    pub cwd: String,
 }
 
 pub async fn handle_create_project(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateProjectBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let base = body.cwd.unwrap_or_else(|| {
-        state
-            .earth
-            .as_ref()
-            .map(|e| e.config.app_config.workspace_path.display().to_string())
-            .unwrap_or_default()
-    });
-    let cwd = format!("{}/{}", base, body.name);
+    // Validate cwd is an absolute path
+    if !std::path::Path::new(&body.cwd).is_absolute() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("'cwd' must be an absolute path, got: {}", body.cwd),
+        ));
+    }
+    let cwd = &body.cwd;
     // Create directories
-    std::fs::create_dir_all(&cwd).map_err(|e| {
+    std::fs::create_dir_all(cwd).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to create directory: {}", e),
         )
     })?;
-    std::fs::create_dir_all(format!("{}/.jia", &cwd)).map_err(|e| {
+    std::fs::create_dir_all(format!("{cwd}/.jia")).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to create .jia: {}", e),
@@ -58,7 +57,7 @@ pub async fn handle_create_project(
     // Generate project
     let id = uuid::Uuid::new_v4().to_string();
     std::fs::write(
-        format!("{}/.jia/config.toml", &cwd),
+        format!("{cwd}/.jia/config.toml"),
         format!("[project]\nid = \"{}\"\nname = \"{}\"\n", id, body.name),
     )
     .map_err(|e| {
@@ -73,7 +72,7 @@ pub async fn handle_create_project(
         .ok_or((StatusCode::SERVICE_UNAVAILABLE, "Not ready".into()))?;
     earth
         .store
-        .ensure_project(&id, &cwd, &body.name, "", "[]")
+        .ensure_project(&id, cwd, &body.name, "", "[]")
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(
         serde_json::json!({ "id": id, "cwd": cwd, "name": body.name }),
@@ -177,7 +176,14 @@ mod tests {
         let b: CreateProjectBody =
             serde_json::from_str(r#"{"name": "test", "cwd": "/tmp"}"#).unwrap();
         assert_eq!(b.name, "test");
-        assert_eq!(b.cwd, Some("/tmp".into()));
+        assert_eq!(b.cwd, "/tmp");
+    }
+
+    #[test]
+    fn create_project_body_requires_cwd() {
+        let b: Result<CreateProjectBody, _> =
+            serde_json::from_str(r#"{"name": "test"}"#);
+        assert!(b.is_err());
     }
 
     #[test]

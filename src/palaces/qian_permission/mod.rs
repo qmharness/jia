@@ -159,14 +159,14 @@ impl PermissionMatrix {
     /// Build the permission matrix from security configuration.
     pub fn from_config(
         security: &SecuritySection,
-        workspace_path: &Path,
+        default_root: &Path,
         backup_dir: PathBuf,
     ) -> Self {
         let project_root = security
             .project_root
             .as_deref()
             .map(PathBuf::from)
-            .unwrap_or_else(|| workspace_path.to_path_buf());
+            .unwrap_or_else(|| default_root.to_path_buf());
 
         let project_root = project_root
             .canonicalize()

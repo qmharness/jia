@@ -374,7 +374,6 @@ mod tests {
             security: SecuritySection::default(),
             mcp_servers: vec![],
             bots: BotsSection::default(),
-            workspace_path: dirs.data_path.join("workspace"),
             hooks: vec![],
         };
         let profile = ProviderProfile {

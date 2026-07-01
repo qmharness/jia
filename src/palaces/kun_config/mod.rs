@@ -31,6 +31,12 @@ pub enum Commands {
     Tui,
     /// Diagnose installation health: config, LLM, data dir, SQLite, disk
     Doctor,
+    /// Initialize a Jia project in a directory (creates .jia/config.toml)
+    Init {
+        /// Path to initialize (default: current directory)
+        #[arg(default_value = ".")]
+        path: PathBuf,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -114,21 +120,9 @@ pub struct JiaToml {
     /// IM bot configuration
     #[serde(default)]
     pub bots: BotsSection,
-    /// Workspace configuration (project root for agent operations)
-    #[serde(default)]
-    pub workspace: WorkspaceSection,
     /// P4 · user-configurable hooks ([[hooks]] array)
     #[serde(default)]
     pub hooks: Vec<HookConfig>,
-}
-
-/// Workspace configuration — where agent shell commands execute.
-#[derive(Debug, Clone, Deserialize, Default)]
-pub struct WorkspaceSection {
-    /// Project root directory for agent file operations.
-    /// Defaults to `~/.jia/workspace` if unset.
-    #[serde(default)]
-    pub path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -488,7 +482,6 @@ pub struct AppConfig {
     pub security: SecuritySection,
     pub mcp_servers: Vec<McpServerConfig>,
     pub bots: BotsSection,
-    pub workspace_path: PathBuf,
     /// P4 · user-configurable hooks (人盘门规 / 神盘观测). Default empty.
     pub hooks: Vec<HookConfig>,
 }
@@ -568,13 +561,6 @@ impl AppConfig {
         let host = host_override.unwrap_or(toml.server.host);
         let port = port_override.unwrap_or(toml.server.port);
 
-        let workspace_path = toml.workspace.path.map(PathBuf::from).unwrap_or_else(|| {
-            let home = std::env::var("HOME")
-                .or_else(|_| std::env::var("USERPROFILE"))
-                .unwrap_or_else(|_| ".".into());
-            PathBuf::from(home).join("Documents").join("jia")
-        });
-
         Ok(Self {
             host,
             port,
@@ -584,7 +570,6 @@ impl AppConfig {
             security,
             mcp_servers: toml.mcp_servers,
             bots: toml.bots,
-            workspace_path,
             hooks: toml.hooks,
         })
     }

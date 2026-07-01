@@ -353,9 +353,30 @@ async fn handle_rin_connection(
 
                 let is_new = msg["session_id"].as_str().is_none_or(|s| s.is_empty());
 
+                // Extract cwd and project_id from the message
+                let msg_cwd = msg["cwd"].as_str().unwrap_or(".").to_string();
+                let msg_pid = msg["project_id"].as_str().unwrap_or("").to_string();
+
                 // Channel and cancellation setup (outside lock — needed for
                 // event forwarding and cancel-aware lock acquisition).
                 let (tx, rx) = mpsc::unbounded_channel::<AgentEvent>();
+
+                // Resolve project for new sessions (async — requires tx for confirmations).
+                // For existing sessions, cwd/pid are stored on the session row.
+                let earth_for_resolve = earth.clone();
+                let resolve_tx = tx.clone();
+                let resolve_cwd = msg_cwd.clone();
+                let resolve_pid = msg_pid.clone();
+                let resolve_handle = tokio::spawn(async move {
+                    if !resolve_pid.is_empty() {
+                        // project_id provided by client — trust it
+                        return (resolve_cwd, resolve_pid);
+                    }
+                    if !resolve_cwd.is_empty() && resolve_cwd != "." {
+                        return resolve_project(&earth_for_resolve, &resolve_cwd, resolve_tx).await;
+                    }
+                    (String::new(), String::new())
+                });
 
                 if is_new {
                     let title = messages
@@ -363,7 +384,9 @@ async fn handle_rin_connection(
                         .find(|m| m.role == Role::User)
                         .map(|m| crate::utils::truncate_title(&m.content))
                         .unwrap_or_default();
-                    let _ = earth.store.create_session(&session_id, &title, ".", "");
+                    let init_cwd = if msg_cwd.is_empty() || msg_cwd == "." { "" } else { &msg_cwd };
+                    let init_pid = if msg_pid.is_empty() { "" } else { &msg_pid };
+                    let _ = earth.store.create_session(&session_id, &title, init_cwd, init_pid);
                 }
                 let cancel_token = tokio_util::sync::CancellationToken::new();
                 let agent_token = cancel_token.clone();
@@ -505,6 +528,9 @@ async fn handle_rin_connection(
                 let permissions = earth.permissions.clone();
                 let pending_confirmations = earth.pending_confirmations.clone();
                 tokio::spawn(async move {
+                    // Resolve project cwd and project_id
+                    let (pcwd, pid) = resolve_handle.await.unwrap_or((String::new(), String::new()));
+
                     tokio::select! {
                         _ = agent_token.cancelled() => {
                             session_tokens_clone.remove(&sid);
@@ -525,7 +551,35 @@ async fn handle_rin_connection(
                                 .unwrap_or_default();
                             let distilled_hashes = store.load_distilled_hashes(&sid);
 
-                            let mut agent = Agent::with_session(sid.clone(), earth.clone(), history, manas, distilled_hashes);
+                            // Resolve effective cwd: prefer resolved project cwd, then
+                            // fallback for old sessions where cwd="." — look up via project_id.
+                            let effective_cwd = if !pcwd.is_empty() && pcwd != "." {
+                                pcwd.clone()
+                            } else if !pid.is_empty() {
+                                // Old session: try reverse-lookup cwd from project
+                                store.get_project(&pid).ok().flatten()
+                                    .and_then(|p| p.get("cwd").and_then(|v| v.as_str()).map(String::from))
+                                    .unwrap_or_default()
+                            } else {
+                                String::new()
+                            };
+
+                            // Reject if no valid project directory
+                            if effective_cwd.is_empty() {
+                                let _ = tx.send(AgentEvent::Error(
+                                    "No valid project directory. Create a Jia project first with `jia init`.".into()
+                                ));
+                                let _ = tx.send(AgentEvent::Done);
+                                session_tokens_clone.remove(&sid);
+                                return;
+                            }
+
+                            // Build session-scoped tools for this project
+                            let scoped_tools = earth.rebuild_tools_for_root(
+                                std::path::Path::new(&effective_cwd)
+                            );
+
+                            let mut agent = Agent::with_session(sid.clone(), earth.clone(), history, manas, distilled_hashes, scoped_tools);
                             // P3 · apply user-set interaction mode (from /plan slash)
                             if let Some(mode) = earth.session_modes.lock().unwrap().get(&sid).copied() {
                                 agent.interaction_mode = mode;

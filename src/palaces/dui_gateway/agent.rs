@@ -137,6 +137,12 @@ pub async fn handle_agent(
             };
 
             // Insert placeholder row immediately so session appears in list
+            // Resolve effective cwd: validate the request cwd, and for old sessions
+            // where cwd="." fall back to project_id reverse-lookup.
+            let req_cwd = req.cwd.clone().unwrap_or_default();
+            let req_pid = req.project_id.clone().unwrap_or_default();
+
+            // Store in session row for new sessions
             if is_new {
                 let title = req
                     .messages
@@ -144,11 +150,9 @@ pub async fn handle_agent(
                     .find(|m| m.role == Role::User)
                     .map(|m| truncate_title(&m.content))
                     .unwrap_or_default();
-                let cwd = req.cwd.as_deref().unwrap_or("");
-                let project_id = req.project_id.as_deref().unwrap_or("");
                 let _ = earth
                     .store
-                    .create_session(&session_id, &title, cwd, project_id);
+                    .create_session(&session_id, &title, &req_cwd, &req_pid);
             }
 
             // Send session ID immediately so client can persist it
@@ -217,7 +221,36 @@ pub async fn handle_agent(
                             .unwrap_or_default();
                         let distilled_hashes = earth_for_spawn.store.load_distilled_hashes(&sid);
 
-                        let mut agent = Agent::with_session(sid.clone(), earth_for_spawn.clone(), history, manas, distilled_hashes);
+                        // Resolve effective cwd
+                        let effective_cwd = if !req_cwd.is_empty() && req_cwd != "." {
+                            req_cwd.clone()
+                        } else if !req_pid.is_empty() {
+                            // Old session: reverse-lookup cwd from project
+                            earth_for_spawn.store.get_project(&req_pid).ok().flatten()
+                                .and_then(|p| p.get("cwd").and_then(|v| v.as_str()).map(String::from))
+                                .unwrap_or_default()
+                        } else {
+                            String::new()
+                        };
+
+                        // Validate: cwd must be a valid Jia project directory
+                        let config_path = std::path::Path::new(&effective_cwd)
+                            .join(".jia").join("config.toml");
+                        if effective_cwd.is_empty() || !config_path.exists() {
+                            let _ = tx.send(AgentEvent::Error(
+                                "cwd must be a valid Jia project directory (with .jia/config.toml)".into()
+                            ));
+                            let _ = tx.send(AgentEvent::Done);
+                            session_tokens.remove(&sid);
+                            return;
+                        }
+
+                        // Build session-scoped tools for this project
+                        let scoped_tools = earth_for_spawn.rebuild_tools_for_root(
+                            std::path::Path::new(&effective_cwd)
+                        );
+
+                        let mut agent = Agent::with_session(sid.clone(), earth_for_spawn.clone(), history, manas, distilled_hashes, scoped_tools);
                         let human_plate = HumanPlate::with_state(permissions, pending_confirmations);
 
                         let _start = std::time::Instant::now();
@@ -353,7 +386,6 @@ mod tests {
                 security: SecuritySection::default(),
                 mcp_servers: vec![],
                 bots: BotsSection::default(),
-                workspace_path: dirs.path().join("ws"),
                 hooks: vec![],
             })),
             tools: Arc::new(ToolRegistry::new()),

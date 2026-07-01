@@ -146,6 +146,38 @@ async fn main() {
         Commands::Doctor => {
             run_doctor(args.config_path);
         }
+        Commands::Init { path } => {
+            let abs_path = std::path::absolute(&path).unwrap_or_else(|_| path.clone());
+            let jia_dir = abs_path.join(".jia");
+            std::fs::create_dir_all(&jia_dir).unwrap_or_else(|e| {
+                eprintln!("Failed to create .jia directory: {e}");
+                std::process::exit(1);
+            });
+            let project_id = uuid::Uuid::new_v4().to_string();
+            let dir_name = abs_path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let config_content = format!(
+                "[project]\nid = \"{}\"\nname = \"{}\"\n",
+                project_id, dir_name
+            );
+            std::fs::write(jia_dir.join("config.toml"), &config_content).unwrap_or_else(|e| {
+                eprintln!("Failed to write .jia/config.toml: {e}");
+                std::process::exit(1);
+            });
+            // Register in SQLite so `GET /projects` sees it immediately
+            let data_dir = jia::palaces::kun_config::default_data_dir();
+            let db_path = data_dir.join("store.db");
+            let store = jia::palaces::gen_store::Store::open(db_path.to_str().unwrap_or(":memory:"));
+            let cwd_str = abs_path.to_string_lossy().to_string();
+            if let Err(e) = store.ensure_project(&project_id, &cwd_str, &dir_name, "", "[]") {
+                eprintln!("Warning: project created on disk but failed to register in database: {e}");
+            }
+            println!("Initialized Jia project in {}", abs_path.display());
+            println!("  Project ID: {project_id}");
+            println!("  Project name: {dir_name}");
+        }
     }
 }
 

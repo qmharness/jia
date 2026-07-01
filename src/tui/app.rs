@@ -989,7 +989,7 @@ impl App {
             messages: vec![msg],
             session_id: self.session_id.clone(),
             cwd,
-            project_id: None,
+            project_id: if self.project_id.is_empty() { None } else { Some(self.project_id.clone()) },
         };
         let conn = conn.clone();
         tokio::spawn(async move {

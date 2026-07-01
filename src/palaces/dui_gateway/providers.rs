@@ -147,8 +147,6 @@ pub async fn handle_config(State(state): State<Arc<AppState>>) -> Json<serde_jso
             "host": app.host,
             "port": app.port,
         });
-        config["workspace_path"] = serde_json::json!(app.workspace_path.display().to_string());
-
         config["mcp_servers"] = serde_json::json!(
             app.mcp_servers
                 .iter()
