@@ -528,9 +528,13 @@ async fn handle_rin_connection(
                 let permissions = earth.permissions.clone();
                 let pending_confirmations = earth.pending_confirmations.clone();
                 tokio::spawn(async move {
-                    // Phase 1: race project resolution against cancellation
+                    // Phase 1: race project resolution against cancellation.
+                    // Pre-extract the abort handle so we can abort the resolve task
+                    // even after resolve_handle is moved into the select branch.
+                    let resolve_abort = resolve_handle.abort_handle();
                     let (pcwd, pid) = tokio::select! {
                         _ = agent_token.cancelled() => {
+                            resolve_abort.abort();
                             session_tokens_clone.remove(&sid);
                             return;
                         }
