@@ -78,7 +78,6 @@ pub struct WelcomeSpec<'a> {
 /// prepended to the message stream inside `render_messages`.
 pub fn welcome_lines(spec: &WelcomeSpec) -> Vec<ChatLine> {
     let cyan = Style::default().fg(Color::Cyan);
-    let white = Style::default().fg(Color::White);
     let dim = Style::default().fg(Color::Indexed(245));
 
     let model_label = if spec.model.is_empty() {
@@ -103,7 +102,7 @@ pub fn welcome_lines(spec: &WelcomeSpec) -> Vec<ChatLine> {
         },
         ChatLine {
             text: format!("▝▀▀▀▘  {}", model_label),
-            style: white,
+            style: dim,
         },
         ChatLine {
             text: format!("  █    {}", path_label),
