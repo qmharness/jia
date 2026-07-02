@@ -79,7 +79,7 @@ pub struct WelcomeSpec<'a> {
 pub fn welcome_lines(spec: &WelcomeSpec) -> Vec<ChatLine> {
     let cyan = Style::default().fg(Color::Cyan);
     let white = Style::default().fg(Color::White);
-    let dim = Style::default().fg(Color::DarkGray);
+    let dim = Style::default().fg(Color::Indexed(245));
 
     let model_label = if spec.model.is_empty() {
         spec.provider.to_string()
@@ -183,7 +183,7 @@ fn inline_code_style() -> Style {
 
 fn blockquote_style() -> Style {
     Style::default()
-        .fg(Color::DarkGray)
+        .fg(Color::Indexed(242))
         .add_modifier(Modifier::ITALIC)
 }
 
@@ -363,7 +363,7 @@ fn parse_markdown_to_spans(text: &str) -> Vec<Line<'static>> {
             Event::Rule => {
                 lines.push(Line::from(Span::styled(
                     "─".repeat(40),
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(Color::Indexed(242)),
                 )));
             }
 
@@ -674,7 +674,7 @@ pub fn render_info_bar(
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(
             left_text,
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(Color::Indexed(245)),
         ))),
         left,
     );
@@ -701,7 +701,7 @@ pub fn render_input(f: &mut Frame, area: Rect, composer: &Composer) -> Option<(u
     .areas(area);
 
     let sep_line = "─".repeat(area.width as usize);
-    let sep_style = Style::default().fg(Color::DarkGray);
+    let sep_style = Style::default().fg(Color::Cyan);
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(&sep_line, sep_style))),
         top_sep,
@@ -745,7 +745,7 @@ pub fn format_tool_result(
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             "✗",
         ),
-        _ => (Style::default().fg(Color::DarkGray), "·"),
+        _ => (Style::default().fg(Color::Indexed(245)), "·"),
     };
 
     let geju_str = geju.unwrap_or("");
@@ -959,7 +959,7 @@ pub fn render_security_guide(f: &mut Frame, area: Rect, cwd: &str, selected: usi
     let sel = Style::default()
         .fg(Color::Cyan)
         .add_modifier(Modifier::BOLD);
-    let dim = Style::default().fg(Color::DarkGray);
+    let dim = Style::default().fg(Color::Indexed(245));
 
     let lines = vec![
         Line::from(Span::styled(&hr, dim)),
