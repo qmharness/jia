@@ -1126,7 +1126,6 @@ fn render_frame_with_cursor(
             Mode::Welcome { .. } => "",
         };
         if !matches!(app.mode, Mode::Welcome { .. }) {
-            let is_reasoning = matches!(app.agent_phase, crate::plates::tian_heaven::AgentPhase::Reasoning);
             render::render_status_bar(
                 f,
                 areas.status_bar,
@@ -1139,7 +1138,6 @@ fn render_frame_with_cursor(
                 },
                 app.reconnect_attempts,
                 app.spinner_idx,
-                is_reasoning,
             );
             cursor = render::render_input(f, areas.input, &app.composer);
             render::render_info_bar(

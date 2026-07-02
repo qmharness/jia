@@ -610,21 +610,12 @@ pub fn render_status_bar(
     elapsed_secs: u64,
     reconnect_attempts: u32,
     spinner_idx: usize,
-    is_reasoning: bool,
 ) {
     let (icon, icon_style) = if status == StatusIcon::Working {
-        if is_reasoning {
-            // Purple ✻ during thinking — Claude Code style
-            (
-                "✻".to_string(),
-                Style::default().fg(Color::Indexed(183)),
-            )
-        } else {
-            (
-                SPINNER[spinner_idx % 10].to_string(),
-                Style::default().fg(Color::Yellow),
-            )
-        }
+        (
+            SPINNER[spinner_idx % 10].to_string(),
+            Style::default().fg(Color::Yellow),
+        )
     } else {
         (status.as_str().to_string(), status.style())
     };
@@ -640,13 +631,12 @@ pub fn render_status_bar(
         format!(" {geju} ·")
     };
 
-    let text_style = Style::default().fg(Color::Indexed(245));
     f.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled(icon, icon_style),
             Span::styled(
                 format!("{mid}{tail}"),
-                text_style,
+                Style::default().fg(Color::Indexed(245)),
             ),
         ])),
         area,
