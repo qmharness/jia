@@ -1022,9 +1022,9 @@ mod tests {
         assert_eq!(lines.len(), 4, "rows: {:?}", lines);
 
         assert!(
-            lines[0].text.contains("Jia v0.2.0"),
-            "head: {:?}",
-            lines[0].text
+            lines[1].text.contains("Jia v0.2.0"),
+            "head with version: {:?}",
+            lines[1].text
         );
         assert!(
             lines[0].text.contains('▗'),

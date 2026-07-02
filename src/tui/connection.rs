@@ -46,7 +46,6 @@ pub enum SocketEvent {
     ModelInfo { provider: String, model: String },
     /// Project resolution result from "hello".
     ProjectResolved {
-        cwd: String,
         project_id: String,
         approved: bool,
     },
@@ -282,7 +281,6 @@ impl Connection {
                         model: value["model"].as_str().unwrap_or("").to_string(),
                     },
                     "project_resolved" => SocketEvent::ProjectResolved {
-                        cwd: value["cwd"].as_str().unwrap_or("").to_string(),
                         project_id: value["project_id"].as_str().unwrap_or("").to_string(),
                         approved: value["approved"].as_bool().unwrap_or(false),
                     },
