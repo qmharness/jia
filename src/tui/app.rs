@@ -60,6 +60,13 @@ enum Mode {
     },
 }
 
+// ── LlmInfo ────────────────────────────────────────────────
+
+pub struct LlmInfo {
+    pub model_id: String,
+    pub provider: String,
+}
+
 // ── App State ──────────────────────────────────────────────
 
 pub struct App {
@@ -89,11 +96,8 @@ pub struct App {
     connection: Option<Connection>,
     reconnect_attempts: u32,
     sending_allowed: bool,
-    model_info: String,
-    /// Real model id shown in the welcome block (line 2).
-    model_id: String,
-    /// Provider name shown in the welcome block (line 2).
-    provider: String,
+    /// Model and provider for display (welcome block, info bar).
+    llm: LlmInfo,
     spinner_idx: usize,
     /// Current agent phase / 九星 (shown in status bar).
     agent_phase: AgentPhase,
@@ -115,8 +119,7 @@ pub async fn run_app(
     mut socket_rx: mpsc::UnboundedReceiver<super::connection::SocketEvent>,
     sock_path: &Path,
     cancel: CancellationToken,
-    model_id: String,
-    provider: String,
+    llm: LlmInfo,
 ) -> io::Result<()> {
 
     // P3 · Check for existing project; show Welcome if not found
@@ -155,9 +158,7 @@ pub async fn run_app(
         // Allowed immediately when a project already exists; otherwise gated
         // until the Welcome trust flow resolves it (sets this true on approve).
         sending_allowed: has_project,
-        model_info: String::from("jia"),
-        model_id,
-        provider,
+        llm,
         spinner_idx: 0,
         agent_phase: AgentPhase::Reasoning,
         quit: false,
@@ -324,8 +325,8 @@ fn push_welcome_to_scrollback(
 ) {
     let spec = render::WelcomeSpec {
         version: env!("CARGO_PKG_VERSION"),
-        model: &app.model_id,
-        provider: &app.provider,
+        model: &app.llm.model_id,
+        provider: &app.llm.provider,
         project: &app.project_name,
     };
     let wl = render::welcome_lines(&spec);
@@ -405,8 +406,8 @@ fn reflow_on_resize(
     // Re-emit the welcome block (head of scrollback) + finalized history.
     let spec = render::WelcomeSpec {
         version: env!("CARGO_PKG_VERSION"),
-        model: &app.model_id,
-        provider: &app.provider,
+        model: &app.llm.model_id,
+        provider: &app.llm.provider,
         project: &app.project_name,
     };
     let mut all = render::welcome_lines(&spec);
@@ -1144,7 +1145,7 @@ fn render_frame_with_cursor(
                 f,
                 areas.info_bar,
                 mode_label,
-                &app.model_info,
+                &format!("{} · {}", app.llm.model_id, app.llm.provider),
                 app.session_id.as_deref(),
                 &app.project_name,
             );

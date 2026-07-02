@@ -70,17 +70,15 @@ pub async fn run(_config: crate::config::AppConfig) {
     };
 
     // Send model_info query and wait for the response.
-    let mut model_id = String::new();
-    let mut provider = String::new();
+    let mut llm = app::LlmInfo { model_id: String::new(), provider: String::new() };
     {
         let mut writer = conn.writer().lock().await;
         let _ = writer.write_all(b"{\"type\":\"model_info\"}\n").await;
     }
     // Read the response — the reader task should send it promptly.
     while let Some(event) = socket_rx.recv().await {
-        if let connection::SocketEvent::ModelInfo { provider: p, model: m } = event {
-            provider = p;
-            model_id = m;
+        if let connection::SocketEvent::ModelInfo { provider, model } = event {
+            llm = app::LlmInfo { model_id: model, provider };
             break;
         }
     }
@@ -151,8 +149,7 @@ pub async fn run(_config: crate::config::AppConfig) {
         socket_rx,
         &rin_sock,
         cancel_token.clone(),
-        model_id,
-        provider,
+        llm,
     )
     .await;
 
