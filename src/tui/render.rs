@@ -93,11 +93,11 @@ pub fn welcome_lines(spec: &WelcomeSpec) -> Vec<ChatLine> {
 
     vec![
         ChatLine {
-            text: format!("▗▄▄▄▖  Jia v{}", spec.version),
+            text: "▗▄▄▄▖".to_string(),
             style: cyan,
         },
         ChatLine {
-            text: "▌▘ ▝▐  ".to_string(),
+            text: format!("▌▘ ▝▐  Jia v{}", spec.version),
             style: cyan,
         },
         ChatLine {
