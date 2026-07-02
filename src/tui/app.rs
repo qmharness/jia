@@ -168,6 +168,14 @@ pub async fn run_app(
 
     if has_project {
         app.refresh_project_info();
+        // Notify daemon of project for SQLite registration
+        if let Some(ref conn) = app.connection {
+            let conn = conn.clone();
+            let c = cwd.clone();
+            tokio::spawn(async move {
+                let _ = conn.send(&ClientMsg::Hello { cwd: c }).await;
+            });
+        }
     }
 
     let mut tick = tokio::time::interval(std::time::Duration::from_millis(100));
