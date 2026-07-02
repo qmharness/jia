@@ -872,7 +872,7 @@ impl App {
             StreamEvent::Session { session_id } => {
                 self.session_id = Some(session_id);
             }
-            StreamEvent::ContextPressure { .. } => {
+            StreamEvent::ContextPressure => {
                 self.agent_phase = AgentPhase::ContextManage;
             }
             StreamEvent::Compacting => {

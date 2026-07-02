@@ -530,13 +530,12 @@ async fn stream_anthropic_response(
                             }
                             Some("input_json_delta") => {
                                 let idx = event["index"].as_u64().unwrap_or(0) as usize;
-                                if let Some(entry) = tool_use_state.get_mut(&idx) {
-                                    if let Some(partial) =
+                                if let Some(entry) = tool_use_state.get_mut(&idx)
+                                    && let Some(partial) =
                                         event["delta"]["partial_json"].as_str()
                                     {
                                         entry.2.push_str(partial);
                                     }
-                                }
                             }
                             _ => {}
                         }
@@ -740,8 +739,8 @@ impl LlmProvider for OpenAIProvider {
                                     }
                                 }
                                 // When finish_reason appears, emit completed tool calls
-                                if let Some(reason) = choice["finish_reason"].as_str() {
-                                    if reason == "tool_calls" && !tc_state.is_empty() {
+                                if let Some(reason) = choice["finish_reason"].as_str()
+                                    && reason == "tool_calls" && !tc_state.is_empty() {
                                         // Sort by index and emit
                                         let mut items: Vec<_> = tc_state.drain().collect();
                                         items.sort_by_key(|(k, _)| *k);
@@ -753,7 +752,6 @@ impl LlmProvider for OpenAIProvider {
                                             }));
                                         }
                                     }
-                                }
                             }
                             // Parse usage from final chunk (finish_reason == "stop")
                             if let Some(usage) = event["usage"].as_object() {

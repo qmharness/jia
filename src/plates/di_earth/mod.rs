@@ -127,7 +127,7 @@ impl EarthPlate {
         let config_loader = Arc::new(ConfigLoader::from_app_config(config));
 
         // Ensure workspace dir for cron/bot agents exists
-        std::fs::create_dir_all(&data_dir.join("workspace"))
+        std::fs::create_dir_all(data_dir.join("workspace"))
             .unwrap_or_else(|e| tracing::warn!("cannot create workspace dir: {e}"));
         std::fs::create_dir_all(&backup_dir)
             .unwrap_or_else(|e| tracing::warn!("cannot create backup dir: {e}"));
