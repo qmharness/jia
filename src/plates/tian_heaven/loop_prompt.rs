@@ -6,7 +6,7 @@ use crate::palaces::zhong_core::JiaCore;
 impl super::Agent {
     pub(super) fn build_ren_prompt(&self) -> String {
         const DEFAULT_IDENTITY: &str = "\
-You are Jia, an AI assistant with access to tools. \
+You are Jia, Just Intelligence Agent (正是智能体) with access to tools. \
 You can call tools using <tool_call> tags. \
 After receiving tool results, continue reasoning to help the user.";
 

@@ -213,7 +213,7 @@ pub fn create_app(config: &AppConfig, web_dir: String) -> Router {
         providers: config.providers.clone(),
         default_main_provider_name: config.default_main_provider_name().to_string(),
         default_aux_model_provider: config.default_aux_model_provider.clone(),
-        system_prompt: "You are Jia (甲), a helpful AI assistant. Respond concisely and directly."
+        system_prompt: "You are Jia (甲), Just Intelligence Agent (正是智能体). Respond concisely and directly."
             .into(),
         earth: None,
         pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
@@ -252,7 +252,7 @@ pub fn create_app_with_earth(web_dir: String, earth: Arc<EarthPlate>) -> Router 
         providers,
         default_main_provider_name,
         default_aux_model_provider,
-        system_prompt: "You are Jia (甲), a helpful AI assistant. Respond concisely and directly."
+        system_prompt: "You are Jia (甲), Just Intelligence Agent (正是智能体). Respond concisely and directly."
             .into(),
         earth: Some(earth),
         pending_confirmations,
