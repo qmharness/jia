@@ -1,6 +1,7 @@
-# 甲
-
-## Just Intelligence Agent
+<div align="center">
+<h1>甲<br>JIA</h1>
+<h3>Just Intelligence Agent</h3>
+</div>
 
 > *道隐无名。*
 > ——《道德经》
@@ -8,7 +9,7 @@
 > *执大象，天下往。*
 > ——《道德经》
 
-**甲**（jia）是一部 AI Agent 运行时，以 Rust 铸就，以奇门遁甲立骨。
+**甲**（JIA）是一部 AI Agent 运行时，以 Rust 铸就，以奇门遁甲立骨。
 
 从奇门遁甲的第一性原理出发，逐层推导出一个完整 Agent 系统应有的空间结构、动态循环、边界约束与观测视角。每一个设计决策，皆可回溯至同一套形而上学公理。
 
