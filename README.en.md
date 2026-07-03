@@ -1,5 +1,5 @@
 <div align="center">
-<h1>甲<br>JIA</h1>
+<h1>JIA</h1>
 <h3>Just Intelligence Agent</h3>
 </div>
 
@@ -9,7 +9,7 @@
 > *Hold the great image, and all under heaven will come.*
 > ——Dao De Jing
 
-**甲** (JIA) is an AI Agent runtime, forged in Rust, structured upon *Qimen Dunjia* (奇门遁甲).
+**JIA** (甲) is an AI Agent runtime, forged in Rust, structured upon *Qimen Dunjia* (奇门遁甲).
 
 Starting from the first principles of Qimen Dunjia, it derives — layer by layer — the spatial structure, dynamic cycle, boundary constraints, and observational perspectives that a complete Agent system ought to have. Every design decision traces back to a single, coherent set of metaphysical axioms.
 

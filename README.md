@@ -1,6 +1,6 @@
 <div align="center">
 <h1>甲<br>JIA</h1>
-<h3>Just Intelligence Agent</h3>
+<h3>Just Intelligence Agent<br>正是智能体</h3>
 </div>
 
 > *道隐无名。*
