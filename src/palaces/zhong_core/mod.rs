@@ -226,11 +226,18 @@ impl LlmProvider for AnthropicProvider {
             }).collect::<Vec<_>>(),
         });
         if let Some(tools) = tools {
-            body["tools"] = serde_json::Value::Array(tools.iter().map(|t| serde_json::json!({
-                "name": t.name,
-                "description": t.description,
-                "input_schema": t.parameters,
-            })).collect::<Vec<_>>());
+            body["tools"] = serde_json::Value::Array(
+                tools
+                    .iter()
+                    .map(|t| {
+                        serde_json::json!({
+                            "name": t.name,
+                            "description": t.description,
+                            "input_schema": t.parameters,
+                        })
+                    })
+                    .collect::<Vec<_>>(),
+            );
         }
         let client = self.client.clone();
         let api_key = self.api_key.clone();
@@ -265,10 +272,8 @@ impl LlmProvider for AnthropicProvider {
                 let mut buffer = String::new();
                 let mut input_tokens: u64 = 0;
                 let mut output_tokens: u64 = 0;
-                let mut tool_use_state: std::collections::HashMap<
-                    usize,
-                    (String, String, String),
-                > = std::collections::HashMap::new();
+                let mut tool_use_state: std::collections::HashMap<usize, (String, String, String)> =
+                    std::collections::HashMap::new();
 
                 loop {
                     let chunk = match tokio::time::timeout(
@@ -310,11 +315,8 @@ impl LlmProvider for AnthropicProvider {
                                     }
                                 }
                                 Some("content_block_start") => {
-                                    if event["content_block"]["type"].as_str()
-                                        == Some("tool_use")
-                                    {
-                                        let idx =
-                                            event["index"].as_u64().unwrap_or(0) as usize;
+                                    if event["content_block"]["type"].as_str() == Some("tool_use") {
+                                        let idx = event["index"].as_u64().unwrap_or(0) as usize;
                                         let id = event["content_block"]["id"]
                                             .as_str()
                                             .unwrap_or("")
@@ -329,34 +331,26 @@ impl LlmProvider for AnthropicProvider {
                                 Some("content_block_delta") => {
                                     match event["delta"]["type"].as_str() {
                                         Some("text_delta") => {
-                                            if let Some(text) =
-                                                event["delta"]["text"].as_str()
-                                            {
-                                                let _ = tx.send(Ok(StreamChunk::Delta(
-                                                    text.to_string(),
-                                                )));
+                                            if let Some(text) = event["delta"]["text"].as_str() {
+                                                let _ = tx
+                                                    .send(Ok(StreamChunk::Delta(text.to_string())));
                                             }
                                         }
                                         Some("input_json_delta") => {
-                                            let idx =
-                                                event["index"].as_u64().unwrap_or(0) as usize;
-                                            if let Some(entry) =
-                                                tool_use_state.get_mut(&idx)
+                                            let idx = event["index"].as_u64().unwrap_or(0) as usize;
+                                            if let Some(entry) = tool_use_state.get_mut(&idx)
                                                 && let Some(partial) =
                                                     event["delta"]["partial_json"].as_str()
-                                                {
-                                                    entry.2.push_str(partial);
-                                                }
+                                            {
+                                                entry.2.push_str(partial);
+                                            }
                                         }
                                         _ => {}
                                     }
                                 }
                                 Some("content_block_stop") => {
-                                    let idx =
-                                        event["index"].as_u64().unwrap_or(0) as usize;
-                                    if let Some((id, name, args)) =
-                                        tool_use_state.remove(&idx)
-                                    {
+                                    let idx = event["index"].as_u64().unwrap_or(0) as usize;
+                                    if let Some((id, name, args)) = tool_use_state.remove(&idx) {
                                         let _ = tx.send(Ok(StreamChunk::NativeToolCall {
                                             id,
                                             name,
@@ -415,7 +409,8 @@ impl LlmProvider for AnthropicProvider {
         tools: Option<&[ToolSchema]>,
         cancel_token: Option<CancellationToken>,
     ) -> Pin<Box<dyn Stream<Item = Result<StreamChunk, String>> + Send>> {
-        let body = build_anthropic_system_body(&self.model, self.max_tokens, &messages, &system, tools);
+        let body =
+            build_anthropic_system_body(&self.model, self.max_tokens, &messages, &system, tools);
 
         // Reuse the streaming pipeline: spawn the same SSE reader by feeding
         // the pre-built body through the shared request/stream path.
@@ -496,11 +491,18 @@ fn build_anthropic_system_body(
         body["system"] = Value::Array(system_blocks);
     }
     if let Some(tools) = tools {
-        body["tools"] = serde_json::Value::Array(tools.iter().map(|t| serde_json::json!({
-            "name": t.name,
-            "description": t.description,
-            "input_schema": t.parameters,
-        })).collect::<Vec<_>>());
+        body["tools"] = serde_json::Value::Array(
+            tools
+                .iter()
+                .map(|t| {
+                    serde_json::json!({
+                        "name": t.name,
+                        "description": t.description,
+                        "input_schema": t.parameters,
+                    })
+                })
+                .collect::<Vec<_>>(),
+        );
     }
     body
 }
@@ -575,25 +577,22 @@ async fn stream_anthropic_response(
                             tool_use_state.insert(idx, (id, name, String::new()));
                         }
                     }
-                    Some("content_block_delta") => {
-                        match event["delta"]["type"].as_str() {
-                            Some("text_delta") => {
-                                if let Some(text) = event["delta"]["text"].as_str() {
-                                    let _ = tx.send(Ok(StreamChunk::Delta(text.to_string())));
-                                }
+                    Some("content_block_delta") => match event["delta"]["type"].as_str() {
+                        Some("text_delta") => {
+                            if let Some(text) = event["delta"]["text"].as_str() {
+                                let _ = tx.send(Ok(StreamChunk::Delta(text.to_string())));
                             }
-                            Some("input_json_delta") => {
-                                let idx = event["index"].as_u64().unwrap_or(0) as usize;
-                                if let Some(entry) = tool_use_state.get_mut(&idx)
-                                    && let Some(partial) =
-                                        event["delta"]["partial_json"].as_str()
-                                    {
-                                        entry.2.push_str(partial);
-                                    }
-                            }
-                            _ => {}
                         }
-                    }
+                        Some("input_json_delta") => {
+                            let idx = event["index"].as_u64().unwrap_or(0) as usize;
+                            if let Some(entry) = tool_use_state.get_mut(&idx)
+                                && let Some(partial) = event["delta"]["partial_json"].as_str()
+                            {
+                                entry.2.push_str(partial);
+                            }
+                        }
+                        _ => {}
+                    },
                     Some("content_block_stop") => {
                         let idx = event["index"].as_u64().unwrap_or(0) as usize;
                         if let Some((id, name, args)) = tool_use_state.remove(&idx) {
@@ -686,14 +685,21 @@ impl LlmProvider for OpenAIProvider {
             }).collect::<Vec<_>>(),
         });
         if let Some(tools) = tools {
-            body["tools"] = serde_json::Value::Array(tools.iter().map(|t| serde_json::json!({
-                "type": "function",
-                "function": {
-                    "name": t.name,
-                    "description": t.description,
-                    "parameters": t.parameters,
-                }
-            })).collect::<Vec<_>>());
+            body["tools"] = serde_json::Value::Array(
+                tools
+                    .iter()
+                    .map(|t| {
+                        serde_json::json!({
+                            "type": "function",
+                            "function": {
+                                "name": t.name,
+                                "description": t.description,
+                                "parameters": t.parameters,
+                            }
+                        })
+                    })
+                    .collect::<Vec<_>>(),
+            );
         }
         let client = self.client.clone();
         let api_key = self.api_key.clone();
@@ -780,9 +786,9 @@ impl LlmProvider for OpenAIProvider {
                                 if let Some(tc_arr) = choice["delta"]["tool_calls"].as_array() {
                                     for tc in tc_arr {
                                         let idx = tc["index"].as_u64().unwrap_or(0) as usize;
-                                        let entry = tc_state
-                                            .entry(idx)
-                                            .or_insert_with(|| (String::new(), String::new(), String::new()));
+                                        let entry = tc_state.entry(idx).or_insert_with(|| {
+                                            (String::new(), String::new(), String::new())
+                                        });
                                         if let Some(id) = tc["id"].as_str() {
                                             entry.0 = id.to_string();
                                         }
@@ -796,18 +802,20 @@ impl LlmProvider for OpenAIProvider {
                                 }
                                 // When finish_reason appears, emit completed tool calls
                                 if let Some(reason) = choice["finish_reason"].as_str()
-                                    && reason == "tool_calls" && !tc_state.is_empty() {
-                                        // Sort by index and emit
-                                        let mut items: Vec<_> = tc_state.drain().collect();
-                                        items.sort_by_key(|(k, _)| *k);
-                                        for (_, (id, name, args)) in items {
-                                            let _ = tx.send(Ok(StreamChunk::NativeToolCall {
-                                                id,
-                                                name,
-                                                arguments: args,
-                                            }));
-                                        }
+                                    && reason == "tool_calls"
+                                    && !tc_state.is_empty()
+                                {
+                                    // Sort by index and emit
+                                    let mut items: Vec<_> = tc_state.drain().collect();
+                                    items.sort_by_key(|(k, _)| *k);
+                                    for (_, (id, name, args)) in items {
+                                        let _ = tx.send(Ok(StreamChunk::NativeToolCall {
+                                            id,
+                                            name,
+                                            arguments: args,
+                                        }));
                                     }
+                                }
                             }
                             // Parse usage from final chunk (finish_reason == "stop")
                             if let Some(usage) = event["usage"].as_object() {

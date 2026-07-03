@@ -1,12 +1,11 @@
 // ── Git Tool — Execute safe git commands ─────────────────────
 
-
 use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::palaces::zhen_tool::base::BaseTool;
-use crate::stems::action::ExecContext;
 use crate::stems::CeremoniesIntent;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::ExecAction;
 
 /// Safe git subcommands (read-only or non-destructive).
@@ -17,6 +16,12 @@ const ALLOWED_COMMANDS: &[&str] = &[
 const DANGEROUS_PATTERNS: &[&str] = &["push --force", "reset --hard", "clean -f", "clean -d"];
 
 pub struct GitTool;
+
+impl Default for GitTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl GitTool {
     pub fn new() -> Self {

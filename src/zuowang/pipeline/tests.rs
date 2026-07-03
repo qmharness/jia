@@ -1,14 +1,14 @@
 use std::sync::Arc;
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use crate::palaces::qian_permission::PermissionMatrix;
     use super::super::ZuowangPipeline;
     use crate::palaces::Palace;
     use crate::palaces::gen_store::Store;
+    use crate::palaces::qian_permission::PermissionMatrix;
     use crate::stems::Stem;
     use crate::vijnana::alaya::{Seed, SeedContent, SeedNature, SeedSource, SeedTier};
     use crate::zuowang::trigger::AlayaEntropy;
+    use std::sync::Arc;
 
     fn temp_store() -> Arc<Store> {
         let dir = tempfile::tempdir().unwrap();

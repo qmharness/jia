@@ -17,7 +17,6 @@ mod render;
 use std::time::Duration;
 
 use crossterm::Command;
-use tokio::io::AsyncWriteExt;
 use crossterm::cursor;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::execute;
@@ -25,6 +24,7 @@ use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use ratatui::backend::CrosstermBackend;
 use ratatui::{Terminal, TerminalOptions, Viewport};
 use std::fmt;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -70,7 +70,10 @@ pub async fn run(_config: crate::config::AppConfig) {
     };
 
     // Send model_info query and wait for the response.
-    let mut llm = app::LlmInfo { model_id: String::new(), provider: String::new() };
+    let mut llm = app::LlmInfo {
+        model_id: String::new(),
+        provider: String::new(),
+    };
     {
         let mut writer = conn.writer().lock().await;
         let _ = writer.write_all(b"{\"type\":\"model_info\"}\n").await;
@@ -78,7 +81,10 @@ pub async fn run(_config: crate::config::AppConfig) {
     // Read the response — the reader task should send it promptly.
     while let Some(event) = socket_rx.recv().await {
         if let connection::SocketEvent::ModelInfo { provider, model } = event {
-            llm = app::LlmInfo { model_id: model, provider };
+            llm = app::LlmInfo {
+                model_id: model,
+                provider,
+            };
             break;
         }
     }

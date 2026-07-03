@@ -181,8 +181,7 @@ mod tests {
 
     #[test]
     fn create_project_body_requires_cwd() {
-        let b: Result<CreateProjectBody, _> =
-            serde_json::from_str(r#"{"name": "test"}"#);
+        let b: Result<CreateProjectBody, _> = serde_json::from_str(r#"{"name": "test"}"#);
         assert!(b.is_err());
     }
 

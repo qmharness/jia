@@ -9,8 +9,8 @@ use crate::palaces::zhong_core::JiaCore;
 use crate::plates::ren_human::HumanPlate;
 use crate::plates::shen_spirit::hook::{HookEvent, HookRegistry, SpiritType, fire_void_hooks};
 use crate::plates::shen_spirit::{EventBus, RuntimeEvent};
-use crate::stems::action::ExecContext;
 use crate::stems::Stem;
+use crate::stems::action::ExecContext;
 use crate::telemetry::metrics::{JIA_LLM_DURATION_SECONDS, JIA_TOKENS_COMPACTED_TOTAL};
 use crate::types::{HistoryEntry, Message, Role, to_llm_messages};
 use crate::vijnana::alaya::SeedStore;
@@ -308,8 +308,7 @@ impl super::Agent {
             } else {
                 None
             };
-            let tools_ref: Option<&[crate::stems::action::ToolSchema]> =
-                tool_schemas.as_deref();
+            let tools_ref: Option<&[crate::stems::action::ToolSchema]> = tool_schemas.as_deref();
 
             let mut stream =
                 core.infer_with_system(infer_messages, system_prompt, tools_ref, Some(cancel));
@@ -378,13 +377,14 @@ impl super::Agent {
             // Strip trailing JSON fragments + extra blank lines that some
             // models emit before the native tool call.
             let has_native = !native_tool_calls.is_empty();
-            if has_native
-                && let Some(pos) = full_response.rfind(|c: char| {
-                    matches!(c, '.' | '?' | '!' | '。' | '？' | '！')
-                })
+            if has_native && let Some(pos) = full_response.rfind(['.', '?', '!', '。', '？', '！'])
             {
                 let after_sentence = &full_response[pos..];
-                let char_len = after_sentence.chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+                let char_len = after_sentence
+                    .chars()
+                    .next()
+                    .map(|c| c.len_utf8())
+                    .unwrap_or(1);
                 let after = &full_response[pos + char_len..];
                 if after.contains('{') {
                     full_response.truncate(pos + char_len);
@@ -394,15 +394,19 @@ impl super::Agent {
             full_response = full_response.trim_end().to_string();
 
             // Parse tool calls — prefer native (API-level) over XML text parsing.
-            let tool_calls: Vec<crate::stems::action::ToolCall> =
-                if has_native {
-                    native_tool_calls
-                } else {
-                    let tool_names: Vec<&str> =
-                        self.earth.tools.list_names().iter().map(|s| s.as_str()).collect();
-                    let (_clean_text, calls) = parse_tool_calls(&full_response, &tool_names);
-                    calls
-                };
+            let tool_calls: Vec<crate::stems::action::ToolCall> = if has_native {
+                native_tool_calls
+            } else {
+                let tool_names: Vec<&str> = self
+                    .earth
+                    .tools
+                    .list_names()
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect();
+                let (_clean_text, calls) = parse_tool_calls(&full_response, &tool_names);
+                calls
+            };
 
             self.history.push(HistoryEntry::assistant(full_response));
 

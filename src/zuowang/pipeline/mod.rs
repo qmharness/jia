@@ -271,11 +271,8 @@ impl ZuowangPipeline {
                         || matches!(seed.nature, SeedNature::Preference))
             })
             .count();
-        let score_kept = seeds.len()
-            - dissolved
-            - weakened
-            - downgraded
-            - always_to_downgrade.len();
+        let score_kept =
+            seeds.len() - dissolved - weakened - downgraded - always_to_downgrade.len();
 
         // Collect up to 5 dissolved seed digests, sorted by lowest score first
         let mut dissolved_sample: Vec<SeedDigest> = scored

@@ -72,11 +72,16 @@ fn build_gemini_body(messages: &[Message], max_tokens: u32, tools: Option<&[Tool
         body["systemInstruction"] = si;
     }
     if let Some(tools) = tools {
-        let declarations: Vec<Value> = tools.iter().map(|t| serde_json::json!({
-            "name": t.name,
-            "description": t.description,
-            "parameters": t.parameters,
-        })).collect();
+        let declarations: Vec<Value> = tools
+            .iter()
+            .map(|t| {
+                serde_json::json!({
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.parameters,
+                })
+            })
+            .collect();
         body["tools"] = serde_json::json!([{"functionDeclarations": declarations}]);
     }
     body

@@ -282,8 +282,7 @@ async fn run_subagent_loop(
             }
         }
 
-        let subtool_names: Vec<&str> =
-            subtools.list_names().iter().map(|s| s.as_str()).collect();
+        let subtool_names: Vec<&str> = subtools.list_names().iter().map(|s| s.as_str()).collect();
         let (clean_text, tool_calls) = parse_tool_calls(&full_response, &subtool_names);
         total_response.push_str(&clean_text);
 
@@ -463,16 +462,18 @@ impl BaseTool for SendMessageTool {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use crate::palaces::qian_permission::PermissionMatrix;
+    use std::sync::Arc;
     fn test_ctx() -> crate::stems::action::ExecContext {
         use std::sync::Arc;
-                crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+        crate::stems::action::ExecContext {
+            permissions: Arc::new(PermissionMatrix::default()),
+        }
     }
 
     use super::*;
-use crate::stems::action::ExecContext;
     use crate::palaces::zhen_tool::builtin;
+    use crate::stems::action::ExecContext;
 
     fn test_perms() -> Arc<PermissionMatrix> {
         Arc::new(PermissionMatrix::default())
@@ -495,9 +496,7 @@ use crate::stems::action::ExecContext;
 
     fn test_subtools() -> Arc<ToolRegistry> {
         let mut reg = ToolRegistry::new();
-        reg.register(Arc::new(
-            builtin::read_file::ReadFileTool::new(),
-        ));
+        reg.register(Arc::new(builtin::read_file::ReadFileTool::new()));
         reg.register(Arc::new(builtin::grep::GrepTool::new()));
         Arc::new(reg)
     }
@@ -529,14 +528,12 @@ use crate::stems::action::ExecContext;
 
     #[tokio::test]
     async fn delegate_missing_params() {
-        let tool = DelegateTool::new(
-
-            test_core(),
-            test_subtools(),
-            test_store(),
-            test_sessions(),
+        let tool = DelegateTool::new(test_core(), test_subtools(), test_store(), test_sessions());
+        assert!(
+            tool.execute(serde_json::json!({}), &test_ctx())
+                .await
+                .is_err()
         );
-        assert!(tool.execute(serde_json::json!({}), &test_ctx()).await.is_err());
         assert!(
             tool.execute(serde_json::json!({"subagent_type": "Explore"}), &test_ctx())
                 .await
@@ -546,18 +543,15 @@ use crate::stems::action::ExecContext;
 
     #[tokio::test]
     async fn delegate_unknown_type() {
-        let tool = DelegateTool::new(
-
-            test_core(),
-            test_subtools(),
-            test_store(),
-            test_sessions(),
-        );
+        let tool = DelegateTool::new(test_core(), test_subtools(), test_store(), test_sessions());
         let result = tool
-            .execute(serde_json::json!({
-                "subagent_type": "invalid",
-                "prompt": "test"
-            }), &test_ctx())
+            .execute(
+                serde_json::json!({
+                    "subagent_type": "invalid",
+                    "prompt": "test"
+                }),
+                &test_ctx(),
+            )
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Unknown subagent_type"));
@@ -571,18 +565,15 @@ use crate::stems::action::ExecContext;
             "analysis: found X".to_string(),
         ]));
         let sessions = test_sessions();
-        let tool = DelegateTool::new(
-
-            core,
-            test_subtools(),
-            test_store(),
-            sessions.clone(),
-        );
+        let tool = DelegateTool::new(core, test_subtools(), test_store(), sessions.clone());
         let res = tool
-            .execute(serde_json::json!({
-                "subagent_type": "Explore",
-                "prompt": "find X"
-            }), &test_ctx())
+            .execute(
+                serde_json::json!({
+                    "subagent_type": "Explore",
+                    "prompt": "find X"
+                }),
+                &test_ctx(),
+            )
             .await;
         assert!(res.is_ok(), "delegate failed: {:?}", res.err());
         let out = res.unwrap();
@@ -601,18 +592,15 @@ use crate::stems::action::ExecContext;
             "initial analysis".to_string(),
         ]));
         let sessions = test_sessions();
-        let delegate = DelegateTool::new(
-
-            core,
-            test_subtools(),
-            test_store(),
-            sessions.clone(),
-        );
+        let delegate = DelegateTool::new(core, test_subtools(), test_store(), sessions.clone());
         let out = delegate
-            .execute(serde_json::json!({
-                "subagent_type": "Explore",
-                "prompt": "p"
-            }), &test_ctx())
+            .execute(
+                serde_json::json!({
+                    "subagent_type": "Explore",
+                    "prompt": "p"
+                }),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         let id = out
@@ -627,10 +615,13 @@ use crate::stems::action::ExecContext;
         ]));
         let sm = SendMessageTool::new(core2, test_subtools(), sessions.clone());
         let res = sm
-            .execute(serde_json::json!({
-                "subagent_id": id,
-                "message": "more?"
-            }), &test_ctx())
+            .execute(
+                serde_json::json!({
+                    "subagent_id": id,
+                    "message": "more?"
+                }),
+                &test_ctx(),
+            )
             .await;
         assert!(res.is_ok(), "send_message failed: {:?}", res.err());
         assert_eq!(res.unwrap(), "follow-up answer");
@@ -640,10 +631,13 @@ use crate::stems::action::ExecContext;
     async fn send_message_unknown_id() {
         let sm = SendMessageTool::new(test_core(), test_subtools(), test_sessions());
         let res = sm
-            .execute(serde_json::json!({
-                "subagent_id": "nonexistent",
-                "message": "x"
-            }), &test_ctx())
+            .execute(
+                serde_json::json!({
+                    "subagent_id": "nonexistent",
+                    "message": "x"
+                }),
+                &test_ctx(),
+            )
             .await;
         assert!(res.is_err());
         assert!(res.unwrap_err().contains("Unknown subagent_id"));

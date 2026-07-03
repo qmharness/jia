@@ -1,4 +1,3 @@
-
 use async_trait::async_trait;
 use serde_json::Value;
 
@@ -7,7 +6,12 @@ use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, WriteAction};
 
-pub struct WriteFileTool {
+pub struct WriteFileTool {}
+
+impl Default for WriteFileTool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl WriteFileTool {
@@ -92,12 +96,14 @@ impl BaseTool for WriteFileTool {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use crate::palaces::qian_permission::PermissionMatrix;
+    use std::sync::Arc;
     fn test_ctx() -> crate::stems::action::ExecContext {
-        use std::sync::Arc;
         use crate::palaces::qian_permission::PermissionMatrix;
-        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+        use std::sync::Arc;
+        crate::stems::action::ExecContext {
+            permissions: Arc::new(PermissionMatrix::default()),
+        }
     }
 
     use super::*;
@@ -110,10 +116,13 @@ mod tests {
     async fn write_and_read_file() {
         let tool = WriteFileTool::new();
         let result = tool
-            .execute(serde_json::json!({
-                "path": "jia-test-write.txt",
-                "content": "hello jia"
-            }), &test_ctx())
+            .execute(
+                serde_json::json!({
+                    "path": "jia-test-write.txt",
+                    "content": "hello jia"
+                }),
+                &test_ctx(),
+            )
             .await;
         assert!(result.is_ok());
 
@@ -127,7 +136,11 @@ mod tests {
     #[tokio::test]
     async fn write_file_missing_params() {
         let tool = WriteFileTool::new();
-        assert!(tool.execute(serde_json::json!({}), &test_ctx()).await.is_err());
+        assert!(
+            tool.execute(serde_json::json!({}), &test_ctx())
+                .await
+                .is_err()
+        );
         assert!(
             tool.execute(serde_json::json!({"path": "/tmp/test.txt"}), &test_ctx())
                 .await

@@ -23,12 +23,10 @@
 //     {"type":"confirm_resolved","id":"...","resolved":true}
 //     {"type":"answer_resolved","id":"...","resolved":true}
 
-
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::mpsc;
 
-use std::sync::Arc;
 use crate::plates::di_earth::EarthPlate;
 use crate::plates::ren_human::HumanPlate;
 use crate::plates::shen_spirit::RuntimeEvent;
@@ -37,6 +35,7 @@ use crate::plates::tian_heaven::InteractionMode;
 use crate::plates::tian_heaven::r#loop::AgentEvent;
 use crate::types::{Message, Role, StreamEvent};
 use crate::vijnana::manas::Manas;
+use std::sync::Arc;
 
 use super::SessionTokens;
 
@@ -375,9 +374,15 @@ async fn handle_rin_connection(
                         .find(|m| m.role == Role::User)
                         .map(|m| crate::utils::truncate_title(&m.content))
                         .unwrap_or_default();
-                    let init_cwd = if msg_cwd.is_empty() || msg_cwd == "." { "" } else { &msg_cwd };
+                    let init_cwd = if msg_cwd.is_empty() || msg_cwd == "." {
+                        ""
+                    } else {
+                        &msg_cwd
+                    };
                     let init_pid = if msg_pid.is_empty() { "" } else { &msg_pid };
-                    let _ = earth.store.create_session(&session_id, &title, init_cwd, init_pid);
+                    let _ = earth
+                        .store
+                        .create_session(&session_id, &title, init_cwd, init_pid);
                 }
                 let cancel_token = tokio_util::sync::CancellationToken::new();
                 let agent_token = cancel_token.clone();
@@ -385,7 +390,10 @@ async fn handle_rin_connection(
 
                 // Register for cancellation
                 let config = &earth.config.app_config;
-                let provider_name = config.default_main_model_provider.clone().unwrap_or_default();
+                let provider_name = config
+                    .default_main_model_provider
+                    .clone()
+                    .unwrap_or_default();
                 let model = config
                     .providers
                     .get(&provider_name)
@@ -680,7 +688,11 @@ async fn handle_rin_connection(
                 let model = config
                     .default_main_provider()
                     .ok()
-                    .and_then(|p| p.default_main_model.clone().or_else(|| p.models.first().cloned()))
+                    .and_then(|p| {
+                        p.default_main_model
+                            .clone()
+                            .or_else(|| p.models.first().cloned())
+                    })
                     .unwrap_or_default();
                 let resp = serde_json::json!({
                     "type": "model_info",

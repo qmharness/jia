@@ -181,9 +181,11 @@ impl BaseTool for SkillTool {
 #[cfg(test)]
 mod tests {
     fn test_ctx() -> crate::stems::action::ExecContext {
-        use std::sync::Arc;
         use crate::palaces::qian_permission::PermissionMatrix;
-        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+        use std::sync::Arc;
+        crate::stems::action::ExecContext {
+            permissions: Arc::new(PermissionMatrix::default()),
+        }
     }
 
     use super::*;

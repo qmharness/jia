@@ -67,7 +67,12 @@ fn git_worktree_remove(root: &Path, path: &Path, force: bool) -> Result<(), Stri
     Ok(())
 }
 
-pub struct EnterWorktreeTool {
+pub struct EnterWorktreeTool {}
+
+impl Default for EnterWorktreeTool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl EnterWorktreeTool {
@@ -218,12 +223,14 @@ pub async fn remove_worktree(main_root: &Path, worktree: &Path, force: bool) -> 
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use crate::palaces::qian_permission::PermissionMatrix;
+    use std::sync::Arc;
     fn test_ctx() -> crate::stems::action::ExecContext {
-        use std::sync::Arc;
         use crate::palaces::qian_permission::PermissionMatrix;
-        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+        use std::sync::Arc;
+        crate::stems::action::ExecContext {
+            permissions: Arc::new(PermissionMatrix::default()),
+        }
     }
 
     use super::*;
@@ -279,7 +286,9 @@ mod tests {
             ),
         );
         let tool = EnterWorktreeTool::new();
-        let res = tool.execute(serde_json::json!({ "name": "feat-x" }), &test_ctx()).await;
+        let res = tool
+            .execute(serde_json::json!({ "name": "feat-x" }), &test_ctx())
+            .await;
         assert!(res.is_ok(), "enter_worktree failed: {:?}", res.err());
         let wt = worktree_path(&root, "feat-x");
         assert!(wt.is_dir(), "worktree dir should exist: {}", wt.display());

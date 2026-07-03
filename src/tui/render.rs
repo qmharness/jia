@@ -901,15 +901,13 @@ pub fn stream_event_to_lines(event: &StreamEvent) -> Vec<ChatLine> {
             error,
             geju,
             execution_mode,
-        } => {
-            format_tool_result(
-                tool,
-                output,
-                geju.as_deref(),
-                execution_mode.as_deref(),
-                error.as_deref(),
-            )
-        }
+        } => format_tool_result(
+            tool,
+            output,
+            geju.as_deref(),
+            execution_mode.as_deref(),
+            error.as_deref(),
+        ),
         StreamEvent::ConfirmationRequest {
             tool,
             reason,

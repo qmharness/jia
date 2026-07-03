@@ -79,8 +79,13 @@ async fn main() {
         default_hook(info);
     }));
 
-    // Default to TUI when no subcommand given
+    // Default to TUI when no subcommand given (only when TUI feature is on)
+    #[cfg(feature = "tui")]
     let command = args.command.unwrap_or(Commands::Tui);
+    #[cfg(not(feature = "tui"))]
+    let command = args.command.unwrap_or(Commands::Gateway {
+        action: GatewayAction::Status,
+    });
 
     match command {
         Commands::Gateway { action } => match action {
@@ -169,10 +174,13 @@ async fn main() {
             // Register in SQLite so `GET /projects` sees it immediately
             let data_dir = jia::palaces::kun_config::default_data_dir();
             let db_path = data_dir.join("store.db");
-            let store = jia::palaces::gen_store::Store::open(db_path.to_str().unwrap_or(":memory:"));
+            let store =
+                jia::palaces::gen_store::Store::open(db_path.to_str().unwrap_or(":memory:"));
             let cwd_str = abs_path.to_string_lossy().to_string();
             if let Err(e) = store.ensure_project(&project_id, &cwd_str, &dir_name, "", "[]") {
-                eprintln!("Warning: project created on disk but failed to register in database: {e}");
+                eprintln!(
+                    "Warning: project created on disk but failed to register in database: {e}"
+                );
             }
             println!("Initialized Jia project in {}", abs_path.display());
             println!("  Project ID: {project_id}");
@@ -667,13 +675,13 @@ async fn run_start(
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
     .with_graceful_shutdown(async {
-            tokio::signal::ctrl_c()
-                .await
-                .expect("Failed to listen for Ctrl+C signal");
-            tracing::info!("shutting down");
-        })
-        .await
-        .expect("Server error");
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to listen for Ctrl+C signal");
+        tracing::info!("shutting down");
+    })
+    .await
+    .expect("Server error");
 
     // Clean up PID file
     let _ = std::fs::remove_file(&pid_path);
@@ -705,7 +713,11 @@ fn run_doctor(config_path: Option<std::path::PathBuf>) {
         Ok(content) => match toml::from_str::<jia::config::JiaToml>(&content) {
             Ok(cfg) => {
                 let n = cfg.providers.len();
-                let dp = cfg.llm.default_main_model_provider.as_deref().unwrap_or("(none)");
+                let dp = cfg
+                    .llm
+                    .default_main_model_provider
+                    .as_deref()
+                    .unwrap_or("(none)");
                 println!(
                     "\u{1b}[32mOK\u{1b}[0m    {} provider(s), default: {}",
                     n, dp

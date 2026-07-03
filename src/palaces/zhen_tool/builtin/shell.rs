@@ -1,12 +1,16 @@
-
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::stems::action::ExecContext;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, ExecAction};
 
-pub struct ShellTool {
+pub struct ShellTool {}
+
+impl Default for ShellTool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ShellTool {
@@ -62,12 +66,14 @@ impl BaseTool for ShellTool {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use crate::palaces::qian_permission::PermissionMatrix;
+    use std::sync::Arc;
     fn test_ctx() -> crate::stems::action::ExecContext {
-        use std::sync::Arc;
         use crate::palaces::qian_permission::PermissionMatrix;
-        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+        use std::sync::Arc;
+        crate::stems::action::ExecContext {
+            permissions: Arc::new(PermissionMatrix::default()),
+        }
     }
 
     use super::*;
@@ -97,7 +103,10 @@ mod tests {
     async fn shell_blocked_command() {
         let tool = ShellTool::new();
         let result = tool
-            .execute(serde_json::json!({"command": "rm -rf /tmp/foo"}), &test_ctx())
+            .execute(
+                serde_json::json!({"command": "rm -rf /tmp/foo"}),
+                &test_ctx(),
+            )
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("blocked pattern"));

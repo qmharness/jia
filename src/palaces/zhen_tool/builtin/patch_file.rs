@@ -1,4 +1,3 @@
-
 use async_trait::async_trait;
 use serde_json::Value;
 
@@ -7,7 +6,12 @@ use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, WriteAction};
 
-pub struct EditTool {
+pub struct EditTool {}
+
+impl Default for EditTool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl EditTool {
@@ -143,12 +147,14 @@ impl BaseTool for EditTool {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use crate::palaces::qian_permission::PermissionMatrix;
+    use std::sync::Arc;
     fn test_ctx() -> crate::stems::action::ExecContext {
-        use std::sync::Arc;
         use crate::palaces::qian_permission::PermissionMatrix;
-        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+        use std::sync::Arc;
+        crate::stems::action::ExecContext {
+            permissions: Arc::new(PermissionMatrix::default()),
+        }
     }
 
     use super::*;
@@ -175,11 +181,14 @@ mod tests {
 
         let tool = EditTool::new();
         let result = tool
-            .execute(serde_json::json!({
-                "path": path_str,
-                "old_string": "world",
-                "new_string": "Jia"
-            }), &test_ctx())
+            .execute(
+                serde_json::json!({
+                    "path": path_str,
+                    "old_string": "world",
+                    "new_string": "Jia"
+                }),
+                &test_ctx(),
+            )
             .await;
         assert!(result.is_ok(), "edit failed: {:?}", result.err());
 
@@ -194,11 +203,14 @@ mod tests {
 
         let tool = EditTool::new();
         let result = tool
-            .execute(serde_json::json!({
-                "path": path_str,
-                "old_string": "foo",
-                "new_string": "baz"
-            }), &test_ctx())
+            .execute(
+                serde_json::json!({
+                    "path": path_str,
+                    "old_string": "foo",
+                    "new_string": "baz"
+                }),
+                &test_ctx(),
+            )
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("matches multiple locations"));
@@ -211,11 +223,14 @@ mod tests {
 
         let tool = EditTool::new();
         let result = tool
-            .execute(serde_json::json!({
-                "path": path_str,
-                "old_string": "nonexistent",
-                "new_string": "x"
-            }), &test_ctx())
+            .execute(
+                serde_json::json!({
+                    "path": path_str,
+                    "old_string": "nonexistent",
+                    "new_string": "x"
+                }),
+                &test_ctx(),
+            )
             .await;
         assert!(result.is_err());
     }
@@ -223,6 +238,10 @@ mod tests {
     #[tokio::test]
     async fn edit_missing_params() {
         let tool = EditTool::new();
-        assert!(tool.execute(serde_json::json!({}), &test_ctx()).await.is_err());
+        assert!(
+            tool.execute(serde_json::json!({}), &test_ctx())
+                .await
+                .is_err()
+        );
     }
 }

@@ -15,6 +15,12 @@ use crate::stems::intent::{CeremoniesIntent, ReadAction};
 /// routes to 震三 (Zhen) palace. GeJu evaluates as Direct.
 pub struct GlobTool;
 
+impl Default for GlobTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GlobTool {
     pub fn new() -> Self {
         Self
@@ -138,11 +144,13 @@ impl BaseTool for GlobTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use crate::palaces::qian_permission::PermissionMatrix;
+    use std::sync::Arc;
 
     fn test_ctx() -> ExecContext {
-        ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+        ExecContext {
+            permissions: Arc::new(PermissionMatrix::default()),
+        }
     }
 
     #[tokio::test]
@@ -150,10 +158,13 @@ mod tests {
         let tool = GlobTool::new();
         let ctx = test_ctx();
         let result = tool
-            .execute(serde_json::json!({
-                "pattern": "*.rs",
-                "path": "src/palaces/zhen_tool/builtin"
-            }), &ctx)
+            .execute(
+                serde_json::json!({
+                    "pattern": "*.rs",
+                    "path": "src/palaces/zhen_tool/builtin"
+                }),
+                &ctx,
+            )
             .await;
         assert!(result.is_ok(), "glob failed: {:?}", result.err());
         let out = result.unwrap();
@@ -166,10 +177,13 @@ mod tests {
         let tool = GlobTool::new();
         let ctx = test_ctx();
         let result = tool
-            .execute(serde_json::json!({
-                "pattern": "**/*.toml",
-                "path": "."
-            }), &ctx)
+            .execute(
+                serde_json::json!({
+                    "pattern": "**/*.toml",
+                    "path": "."
+                }),
+                &ctx,
+            )
             .await;
         assert!(result.is_ok(), "glob failed: {:?}", result.err());
         let out = result.unwrap();
@@ -181,9 +195,12 @@ mod tests {
         let tool = GlobTool::new();
         let ctx = test_ctx();
         let result = tool
-            .execute(serde_json::json!({
-                "pattern": "this_does_not_exist_*.xyz"
-            }), &ctx)
+            .execute(
+                serde_json::json!({
+                    "pattern": "this_does_not_exist_*.xyz"
+                }),
+                &ctx,
+            )
             .await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("No files matched"));
@@ -202,11 +219,14 @@ mod tests {
         let tool = GlobTool::new();
         let ctx = test_ctx();
         let result = tool
-            .execute(serde_json::json!({
-                "pattern": "**/*.rs",
-                "path": "src",
-                "max_results": 2
-            }), &ctx)
+            .execute(
+                serde_json::json!({
+                    "pattern": "**/*.rs",
+                    "path": "src",
+                    "max_results": 2
+                }),
+                &ctx,
+            )
             .await;
         assert!(result.is_ok());
         let out = result.unwrap();

@@ -15,10 +15,7 @@ pub struct McpManager;
 impl McpManager {
     /// Connect to all configured MCP servers concurrently, discover their tools,
     /// and register them into the given `ToolRegistry`.
-    pub fn connect_all(
-        servers: &[McpServerConfig],
-        registry: &mut ToolRegistry,
-    ) {
+    pub fn connect_all(servers: &[McpServerConfig], registry: &mut ToolRegistry) {
         if servers.is_empty() {
             return;
         }

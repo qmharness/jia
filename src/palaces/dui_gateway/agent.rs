@@ -1,6 +1,6 @@
-use std::sync::Arc;
 use std::convert::Infallible;
 use std::pin::Pin;
+use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::State;
@@ -106,7 +106,12 @@ pub async fn handle_agent(
     let model = req
         .model
         .as_deref()
-        .unwrap_or_else(|| profile.as_ref().map(|p| p.default_main_model()).unwrap_or(""))
+        .unwrap_or_else(|| {
+            profile
+                .as_ref()
+                .map(|p| p.default_main_model())
+                .unwrap_or("")
+        })
         .to_string();
     let effective_aux_provider: Option<String> = req
         .aux_provider
@@ -352,18 +357,16 @@ mod tests {
     use crate::palaces::dui_gateway::auth::RateLimiter;
     use crate::palaces::gen_store::Store;
     use crate::palaces::kan_io::ChannelManager;
-    use crate::palaces::kun_config::{
-        AppConfig, BotsSection, ConfigLoader, SecuritySection,
-    };
+    use crate::palaces::kun_config::{AppConfig, BotsSection, ConfigLoader, SecuritySection};
     use crate::palaces::li_skill::SkillRegistry;
     use crate::palaces::qian_permission::PermissionMatrix;
-use crate::stems::action::ExecContext;
     use crate::palaces::zhen_tool::builtin::cron::CronStore;
     use crate::palaces::zhen_tool::builtin::task::TaskStore;
     use crate::palaces::zhen_tool::registry::ToolRegistry;
     use crate::palaces::zhong_core::JiaCore;
     use crate::plates::di_earth::EarthPlate;
     use crate::plates::shen_spirit::SpiritPlate;
+    use crate::stems::action::ExecContext;
     use std::collections::HashMap;
     use std::sync::Mutex;
 

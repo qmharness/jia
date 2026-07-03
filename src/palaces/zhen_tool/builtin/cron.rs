@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::palaces::zhen_tool::base::BaseTool;
-use crate::stems::action::ExecContext;
 use crate::stems::CeremoniesIntent;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::ExecAction;
 
 const MAX_JOBS: usize = 100;
@@ -194,10 +194,9 @@ impl CronFileStore {
         let path = self.dir.join(format!("{}.json", job.name));
         let json = serde_json::to_string_pretty(job)
             .map_err(|e| format!("serialize cron job '{}': {e}", job.name))?;
-        std::fs::write(&path, &json)
-            .map_err(|e| format!("write cron job '{}': {e}", job.name))?;
-        let meta = std::fs::metadata(&path)
-            .map_err(|e| format!("stat cron job '{}': {e}", job.name))?;
+        std::fs::write(&path, &json).map_err(|e| format!("write cron job '{}': {e}", job.name))?;
+        let meta =
+            std::fs::metadata(&path).map_err(|e| format!("stat cron job '{}': {e}", job.name))?;
         let modified = meta
             .modified()
             .map_err(|e| format!("mtime cron job '{}': {e}", job.name))?;
@@ -526,10 +525,10 @@ impl CronStore {
                 job_file = None;
             }
         }
-        if let Some(jf) = job_file {
-            if let Err(e) = self.file_store.persist_one(&jf) {
-                tracing::warn!("Failed to persist cron job: {e}");
-            }
+        if let Some(jf) = job_file
+            && let Err(e) = self.file_store.persist_one(&jf)
+        {
+            tracing::warn!("Failed to persist cron job: {e}");
         }
     }
 

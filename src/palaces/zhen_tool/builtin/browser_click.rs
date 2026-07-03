@@ -8,8 +8,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::stems::action::ExecContext;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::CeremoniesIntent;
 use crate::stems::intent::CommunicateAction;
 
@@ -20,6 +20,12 @@ use crate::palaces::zhen_tool::browser_cdp;
 pub struct BrowserClickTool {
     #[allow(dead_code)]
     client: reqwest::Client,
+}
+
+impl Default for BrowserClickTool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl BrowserClickTool {

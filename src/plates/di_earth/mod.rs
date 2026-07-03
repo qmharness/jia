@@ -1,6 +1,6 @@
-use std::sync::Arc;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::Mutex;
 
 use tokio_util::sync::CancellationToken;
@@ -9,7 +9,6 @@ use crate::palaces::gen_store::Store;
 use crate::palaces::kan_io::ChannelManager;
 use crate::palaces::kun_config::{AppConfig, ConfigLoader};
 use crate::palaces::li_skill::SkillRegistry;
-use crate::stems::action::ExecContext;
 use crate::palaces::li_skill::loader::SkillLoader;
 use crate::palaces::li_skill::spawn_skill_watcher;
 use crate::palaces::qian_permission::PermissionMatrix;
@@ -40,6 +39,7 @@ use crate::palaces::zhen_tool::builtin::web_fetch::WebFetchTool;
 use crate::palaces::zhen_tool::builtin::worktree::{EnterWorktreeTool, ExitWorktreeTool};
 use crate::palaces::zhen_tool::builtin::write_file::WriteFileTool;
 use crate::palaces::zhong_core::JiaCore;
+use crate::stems::action::ExecContext;
 
 use crate::palaces::zhen_tool::ToolRegistry;
 use crate::palaces::zhen_tool::builtin::ask_user::{AskUserQuestionTool, PendingQuestion};
@@ -260,10 +260,7 @@ impl EarthPlate {
         // Connect MCP servers and register their tools
         #[cfg(feature = "mcp")]
         if !config_loader.app_config.mcp_servers.is_empty() {
-            McpManager::connect_all(
-                &config_loader.app_config.mcp_servers,
-                &mut tool_registry,
-            );
+            McpManager::connect_all(&config_loader.app_config.mcp_servers, &mut tool_registry);
         }
 
         // I/O channel — keep receiver for the IO consumer task
@@ -322,9 +319,7 @@ impl EarthPlate {
             let weak = std::sync::Arc::downgrade(&tools);
             if let Some(reg) = std::sync::Arc::get_mut(&mut tools) {
                 reg.register(Arc::new(
-                    crate::palaces::zhen_tool::builtin::toolsearch::ToolSearchTool::new(
-                        weak,
-                    ),
+                    crate::palaces::zhen_tool::builtin::toolsearch::ToolSearchTool::new(weak),
                 ));
             }
         }
@@ -412,7 +407,9 @@ impl EarthPlate {
             PermissionMatrix::from_config(&sec, root, self.backup_dir.clone())
                 .with_sandbox(&sec.sandbox),
         );
-        ExecContext { permissions: matrix }
+        ExecContext {
+            permissions: matrix,
+        }
     }
 
     /// Spawn a background agent task for a cron job prompt.

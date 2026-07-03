@@ -160,7 +160,7 @@ pub struct ProviderProfile {
     /// Falls back to default_main_model if not set.
     pub default_aux_model: Option<String>,
     pub api_key: String,
-    
+
     pub base_url: String,
     /// Max output tokens per request. Defaults to 4096 if unset.
     #[serde(default)]
@@ -576,11 +576,13 @@ impl AppConfig {
 
     /// The effective default provider name (configured value or first alphabetically).
     pub fn default_main_provider_name(&self) -> &str {
-        self.default_main_model_provider.as_deref().unwrap_or_else(|| {
-            let mut keys: Vec<&String> = self.providers.keys().collect();
-            keys.sort();
-            keys.first().expect("no providers configured").as_str()
-        })
+        self.default_main_model_provider
+            .as_deref()
+            .unwrap_or_else(|| {
+                let mut keys: Vec<&String> = self.providers.keys().collect();
+                keys.sort();
+                keys.first().expect("no providers configured").as_str()
+            })
     }
 
     /// Resolve the default provider profile.

@@ -1,4 +1,3 @@
-
 use async_trait::async_trait;
 use serde_json::Value;
 
@@ -7,7 +6,12 @@ use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, ReadAction};
 
-pub struct ReadFileTool {
+pub struct ReadFileTool {}
+
+impl Default for ReadFileTool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ReadFileTool {
@@ -103,12 +107,14 @@ impl BaseTool for ReadFileTool {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use crate::palaces::qian_permission::PermissionMatrix;
+    use std::sync::Arc;
     fn test_ctx() -> crate::stems::action::ExecContext {
-        use std::sync::Arc;
         use crate::palaces::qian_permission::PermissionMatrix;
-        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+        use std::sync::Arc;
+        crate::stems::action::ExecContext {
+            permissions: Arc::new(PermissionMatrix::default()),
+        }
     }
 
     use super::*;
@@ -138,7 +144,10 @@ mod tests {
     async fn read_file_nonexistent() {
         let tool = ReadFileTool::new();
         let result = tool
-            .execute(serde_json::json!({"path": "/nonexistent/file.txt"}), &test_ctx())
+            .execute(
+                serde_json::json!({"path": "/nonexistent/file.txt"}),
+                &test_ctx(),
+            )
             .await;
         assert!(result.is_err());
     }
@@ -147,7 +156,10 @@ mod tests {
     async fn max_lines_truncation() {
         let tool = ReadFileTool::new();
         let result = tool
-            .execute(serde_json::json!({"path": "Cargo.toml", "max_lines": 2}), &test_ctx())
+            .execute(
+                serde_json::json!({"path": "Cargo.toml", "max_lines": 2}),
+                &test_ctx(),
+            )
             .await;
         assert!(result.is_ok());
         let content = result.unwrap();

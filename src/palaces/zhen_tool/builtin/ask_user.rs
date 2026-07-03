@@ -10,8 +10,8 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::plates::tian_heaven::r#loop::AgentEvent;
-use crate::stems::action::ExecContext;
 use crate::stems::CeremoniesIntent;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::CommunicateAction;
 
 /// A pending question awaiting user answer.
@@ -26,12 +26,8 @@ pub struct AskUserQuestionTool {
 }
 
 impl AskUserQuestionTool {
-    pub fn new(
-        pending_questions: Arc<Mutex<HashMap<String, PendingQuestion>>>,
-    ) -> Self {
-        Self {
-            pending_questions,
-        }
+    pub fn new(pending_questions: Arc<Mutex<HashMap<String, PendingQuestion>>>) -> Self {
+        Self { pending_questions }
     }
 }
 

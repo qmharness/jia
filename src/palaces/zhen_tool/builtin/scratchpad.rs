@@ -1,4 +1,3 @@
-
 use async_trait::async_trait;
 use serde_json::Value;
 
@@ -32,6 +31,12 @@ fn scratchpad_path(exec_ctx: &ExecContext, key: &str) -> std::path::PathBuf {
 }
 
 pub struct ScratchpadWriteTool;
+
+impl Default for ScratchpadWriteTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ScratchpadWriteTool {
     pub fn new() -> Self {
@@ -111,6 +116,12 @@ impl BaseTool for ScratchpadWriteTool {
 
 pub struct ScratchpadReadTool;
 
+impl Default for ScratchpadReadTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ScratchpadReadTool {
     pub fn new() -> Self {
         Self
@@ -171,12 +182,14 @@ impl BaseTool for ScratchpadReadTool {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use crate::palaces::qian_permission::PermissionMatrix;
+    use std::sync::Arc;
     fn test_ctx() -> crate::stems::action::ExecContext {
-        use std::sync::Arc;
         use crate::palaces::qian_permission::PermissionMatrix;
-        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+        use std::sync::Arc;
+        crate::stems::action::ExecContext {
+            permissions: Arc::new(PermissionMatrix::default()),
+        }
     }
 
     use super::*;
@@ -205,16 +218,23 @@ mod tests {
     async fn scratchpad_write_read_roundtrip() {
         let dir = tempfile::TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
         let perms = test_perms_at(dir.path());
-        let ctx = ExecContext { permissions: perms.clone() };
+        let ctx = ExecContext {
+            permissions: perms.clone(),
+        };
         let w = ScratchpadWriteTool::new();
         let r = ScratchpadReadTool::new();
 
         let res = w
-            .execute(serde_json::json!({ "key": "findings", "content": "hello world" }), &ctx)
+            .execute(
+                serde_json::json!({ "key": "findings", "content": "hello world" }),
+                &ctx,
+            )
             .await;
         assert!(res.is_ok(), "write failed: {:?}", res.err());
 
-        let res = r.execute(serde_json::json!({ "key": "findings" }), &ctx).await;
+        let res = r
+            .execute(serde_json::json!({ "key": "findings" }), &ctx)
+            .await;
         assert!(res.is_ok(), "read failed: {:?}", res.err());
         assert_eq!(res.unwrap(), "hello world");
     }
@@ -226,7 +246,10 @@ mod tests {
         let ctx = ExecContext { permissions: perms };
         let w = ScratchpadWriteTool::new();
         let res = w
-            .execute(serde_json::json!({ "key": "../escape", "content": "x" }), &ctx)
+            .execute(
+                serde_json::json!({ "key": "../escape", "content": "x" }),
+                &ctx,
+            )
             .await;
         assert!(res.is_err());
     }

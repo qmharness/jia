@@ -11,8 +11,8 @@ use crate::plates::shen_spirit::hook::{
 };
 use crate::plates::shen_spirit::{EventBus, RuntimeEvent};
 use crate::stems::Stem;
-use crate::stems::action::ToolCall;
 use crate::stems::action::ExecContext;
+use crate::stems::action::ToolCall;
 use crate::telemetry::metrics::JIA_TOOL_DURATION_SECONDS;
 
 use super::loop_events::AgentEvent;
@@ -247,7 +247,14 @@ pub async fn dispatch_one_tool(
 
     // Dispatch through HumanPlate
     let dispatch_result = human_plate
-        .dispatch(&geju_result, &tool, tc.parameters.clone(), event_bus, tx, exec_ctx)
+        .dispatch(
+            &geju_result,
+            &tool,
+            tc.parameters.clone(),
+            event_bus,
+            tx,
+            exec_ctx,
+        )
         .await;
 
     let duration_ms = dispatch_start.elapsed().as_millis() as u64;

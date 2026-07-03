@@ -1,7 +1,6 @@
 use std::sync::Arc;
 #[cfg(test)]
 mod integration_tests {
-    use std::sync::Arc;
     use super::super::truncate;
     use crate::palaces::Palace;
     use crate::palaces::gen_store::Store;
@@ -11,6 +10,7 @@ mod integration_tests {
     use crate::vijnana::mano::TurnSnapshot;
     use crate::zuowang::pipeline::ZuowangPipeline;
     use crate::zuowang::trigger::AlayaEntropy;
+    use std::sync::Arc;
 
     /// Create realistic TurnSnapshots simulating a Rust debugging session.
     fn debugging_session_snapshots() -> Vec<TurnSnapshot> {

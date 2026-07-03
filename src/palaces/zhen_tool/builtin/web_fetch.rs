@@ -3,13 +3,19 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::stems::action::ExecContext;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, CommunicateAction};
 
 pub struct WebFetchTool {
     #[allow(dead_code)]
     client: reqwest::Client,
+}
+
+impl Default for WebFetchTool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl WebFetchTool {
@@ -19,9 +25,7 @@ impl WebFetchTool {
             .user_agent("jia/0.1.0")
             .build()
             .expect("reqwest client builder");
-        Self {
-            client,
-        }
+        Self { client }
     }
 }
 
@@ -260,12 +264,14 @@ fn decode_entity(entity: &str) -> Option<char> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use crate::palaces::qian_permission::PermissionMatrix;
+    use std::sync::Arc;
     fn test_ctx() -> crate::stems::action::ExecContext {
-        use std::sync::Arc;
         use crate::palaces::qian_permission::PermissionMatrix;
-        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+        use std::sync::Arc;
+        crate::stems::action::ExecContext {
+            permissions: Arc::new(PermissionMatrix::default()),
+        }
     }
 
     use super::*;
@@ -315,7 +321,10 @@ mod tests {
     async fn web_fetch_invalid_scheme() {
         let tool = WebFetchTool::new();
         let result = tool
-            .execute(serde_json::json!({"url": "file:///etc/passwd"}), &test_ctx())
+            .execute(
+                serde_json::json!({"url": "file:///etc/passwd"}),
+                &test_ctx(),
+            )
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Unsupported"));

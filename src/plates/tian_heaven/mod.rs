@@ -8,12 +8,11 @@ mod loop_parse;
 mod loop_post;
 mod loop_prompt;
 
-
 use super::di_earth::EarthPlate;
 use crate::palaces::xun_context::{ContextWindow, ToolOutputBudget};
 use crate::principles::SystemPrinciple;
-use crate::stems::action::ExecContext;
 use crate::stems::Stem;
+use crate::stems::action::ExecContext;
 use crate::types::HistoryEntry;
 use crate::vijnana::alaya::SeedStore;
 use crate::vijnana::manas::Manas;
@@ -106,7 +105,9 @@ impl Agent {
             earth.config.app_config.security.max_context_tokens,
             earth.config.app_config.security.compaction_threshold,
         );
-        let exec_ctx = ExecContext { permissions: earth.permissions.clone() };
+        let exec_ctx = ExecContext {
+            permissions: earth.permissions.clone(),
+        };
         let principles = earth
             .store
             .load_principles()
@@ -157,7 +158,9 @@ impl Agent {
             earth.config.app_config.security.max_context_tokens,
             earth.config.app_config.security.compaction_threshold,
         );
-        let exec_ctx = ExecContext { permissions: earth.permissions.clone() };
+        let exec_ctx = ExecContext {
+            permissions: earth.permissions.clone(),
+        };
         let principles = earth
             .store
             .load_principles()

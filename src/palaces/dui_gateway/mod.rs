@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::Mutex;
 
 use axum::Router;
@@ -229,7 +229,11 @@ pub fn create_app(config: &AppConfig, web_dir: String) -> Router {
 
 pub fn create_app_with_earth(web_dir: String, earth: Arc<EarthPlate>) -> Router {
     let providers = earth.config.app_config.providers.clone();
-    let default_main_provider_name = earth.config.app_config.default_main_provider_name().to_string();
+    let default_main_provider_name = earth
+        .config
+        .app_config
+        .default_main_provider_name()
+        .to_string();
     let discord_public_key = earth
         .config
         .app_config
@@ -297,11 +301,11 @@ mod tests {
     use crate::palaces::li_skill::Skill;
     use crate::palaces::li_skill::SkillRegistry;
     use crate::palaces::qian_permission::PermissionMatrix;
-use crate::stems::action::ExecContext;
     use crate::palaces::zhen_tool::builtin::cron::CronStore;
     use crate::palaces::zhen_tool::builtin::task::TaskStore;
     use crate::palaces::zhen_tool::registry::ToolRegistry;
     use crate::plates::shen_spirit::SpiritPlate;
+    use crate::stems::action::ExecContext;
     use axum::Json;
     use axum::extract::State;
     use std::path::PathBuf;

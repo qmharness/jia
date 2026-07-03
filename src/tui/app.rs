@@ -121,7 +121,6 @@ pub async fn run_app(
     cancel: CancellationToken,
     llm: LlmInfo,
 ) -> io::Result<()> {
-
     // P3 · Check for existing project; show Welcome if not found
     let cwd = std::env::current_dir()
         .ok()
@@ -672,7 +671,11 @@ impl App {
                         let answer = self.composer.text();
                         self.send_answer(id, token, &answer);
                         // Remove question line (options were already drained on first typed char)
-                        if let Some(pos) = self.lines.iter().rposition(|l| l.text.starts_with('\u{2753}')) {
+                        if let Some(pos) = self
+                            .lines
+                            .iter()
+                            .rposition(|l| l.text.starts_with('\u{2753}'))
+                        {
                             self.lines.remove(pos);
                         }
                         self.composer.clear();
@@ -794,7 +797,11 @@ impl App {
                     });
                 }
             }
-            SocketEvent::ProjectResolved { project_id, approved, .. } => {
+            SocketEvent::ProjectResolved {
+                project_id,
+                approved,
+                ..
+            } => {
                 if approved {
                     self.project_id = project_id;
                 } else {
@@ -977,8 +984,16 @@ impl App {
             StreamEvent::ToolCall { .. } => {
                 self.agent_phase = AgentPhase::ToolCalling;
                 // Add blank separator if last line isn't already blank
-                if self.lines.last().map(|l| !l.text.is_empty()).unwrap_or(false) {
-                    self.lines.push(ChatLine { text: String::new(), style: Style::default() });
+                if self
+                    .lines
+                    .last()
+                    .map(|l| !l.text.is_empty())
+                    .unwrap_or(false)
+                {
+                    self.lines.push(ChatLine {
+                        text: String::new(),
+                        style: Style::default(),
+                    });
                 }
                 let new_lines = render::stream_event_to_lines(&event);
                 self.lines.extend(new_lines);
@@ -998,7 +1013,11 @@ impl App {
             messages: vec![msg],
             session_id: self.session_id.clone(),
             cwd,
-            project_id: if self.project_id.is_empty() { None } else { Some(self.project_id.clone()) },
+            project_id: if self.project_id.is_empty() {
+                None
+            } else {
+                Some(self.project_id.clone())
+            },
         };
         let conn = conn.clone();
         tokio::spawn(async move {

@@ -10,8 +10,8 @@ use futures::StreamExt;
 use serde_json::Value;
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::stems::action::ExecContext;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::CeremoniesIntent;
 use crate::stems::intent::CommunicateAction;
 
@@ -22,6 +22,12 @@ use crate::palaces::zhen_tool::browser_cdp;
 pub struct BrowserConsoleTool {
     #[allow(dead_code)]
     client: reqwest::Client,
+}
+
+impl Default for BrowserConsoleTool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl BrowserConsoleTool {

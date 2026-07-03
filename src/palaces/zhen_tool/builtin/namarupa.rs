@@ -1,16 +1,15 @@
 use std::sync::Arc;
 // ── NamaRupa Tool — Agentic graph memory for nāma-rūpa ──────
 
-
 use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::palaces::Palace;
 use crate::palaces::gen_store::Store;
 use crate::palaces::zhen_tool::base::BaseTool;
-use crate::stems::action::ExecContext;
 use crate::stems::CeremoniesIntent;
 use crate::stems::Stem;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::StoreAction;
 use crate::utils;
 use crate::vijnana::alaya::{Seed, SeedContent, SeedNature, SeedSource, SeedTier};
@@ -404,9 +403,11 @@ impl BaseTool for NamaRupaTool {
 #[cfg(test)]
 mod tests {
     fn test_ctx() -> crate::stems::action::ExecContext {
-        use std::sync::Arc;
         use crate::palaces::qian_permission::PermissionMatrix;
-        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+        use std::sync::Arc;
+        crate::stems::action::ExecContext {
+            permissions: Arc::new(PermissionMatrix::default()),
+        }
     }
 
     use super::*;

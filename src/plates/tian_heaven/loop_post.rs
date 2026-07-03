@@ -1,15 +1,13 @@
-use std::sync::Arc;
 /// Post-loop lifecycle: consolidation, distillation, zuowang, and skill evolution.
-
-
 use crate::palaces::li_skill::evolution::EvolutionEngine;
-use crate::principles::SystemPrinciple;
 use crate::palaces::zhong_core::JiaCore;
+use crate::principles::SystemPrinciple;
 use crate::telemetry::metrics::{JIA_ATMA_GRAHA, JIA_SEEDS_TOTAL};
 use crate::vijnana::alaya::SeedStore;
 use crate::vijnana::xunxi::ConsolidationEngine;
 use crate::vijnana::xunxi::distillation::DistillationEngine;
 use crate::zuowang::pipeline::ZuowangPipeline;
+use std::sync::Arc;
 
 impl super::Agent {
     pub async fn post_loop(
@@ -37,13 +35,13 @@ impl super::Agent {
         let snapshots = self.working_memory.snapshots.clone();
         if !snapshots.is_empty() {
             let new_principles = SystemPrinciple::derive(&self.id, &snapshots, &self.manas);
-            if !new_principles.is_empty() {
-                if let Ok(json) = serde_json::to_string(&new_principles) {
-                    if let Err(e) = store.save_principles(&self.id, &json) {
-                        tracing::warn!(error = %e, "Layer4: persist failed");
-                    } else {
-                        tracing::info!(count = new_principles.len(), "Layer4: derived");
-                    }
+            if !new_principles.is_empty()
+                && let Ok(json) = serde_json::to_string(&new_principles)
+            {
+                if let Err(e) = store.save_principles(&self.id, &json) {
+                    tracing::warn!(error = %e, "Layer4: persist failed");
+                } else {
+                    tracing::info!(count = new_principles.len(), "Layer4: derived");
                 }
             }
         }

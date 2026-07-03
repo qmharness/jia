@@ -1,13 +1,13 @@
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::Mutex;
 
 use crate::geju::{ApprovalGate, ExecutionMode, GeJuResult};
 use crate::palaces::qian_permission::PermissionMatrix;
-use crate::stems::action::ExecContext;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::plates::shen_spirit::{EventBus, RuntimeEvent};
 use crate::plates::tian_heaven::r#loop::AgentEvent;
+use crate::stems::action::ExecContext;
 use crate::stems::action::ToolResult;
 
 /// A pending user confirmation, stored until resolved or timed out.
@@ -261,7 +261,8 @@ impl HumanPlate {
                 ))],
                 ..geju.clone()
             };
-            return Box::pin(self.dispatch_guarded(&guarded, tool, input, event_bus, tx, exec_ctx)).await;
+            return Box::pin(self.dispatch_guarded(&guarded, tool, input, event_bus, tx, exec_ctx))
+                .await;
         }
 
         // Apply sandbox transformations
@@ -375,11 +376,11 @@ pub enum GateState {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use crate::palaces::qian_permission::PermissionMatrix;
     use super::*;
     use crate::geju::ExecutionMode;
+    use crate::palaces::qian_permission::PermissionMatrix;
     use crate::plates::shen_spirit::EventBus;
+    use std::sync::Arc;
 
     struct EchoTool;
     #[async_trait::async_trait]
@@ -401,7 +402,11 @@ mod tests {
         fn is_concurrency_safe(&self) -> bool {
             true
         }
-        async fn execute(&self, input: serde_json::Value, _ctx: &ExecContext) -> Result<String, String> {
+        async fn execute(
+            &self,
+            input: serde_json::Value,
+            _ctx: &ExecContext,
+        ) -> Result<String, String> {
             Ok(format!("echo: {}", input))
         }
     }
@@ -426,7 +431,11 @@ mod tests {
         fn is_concurrency_safe(&self) -> bool {
             false
         }
-        async fn execute(&self, input: serde_json::Value, _ctx: &ExecContext) -> Result<String, String> {
+        async fn execute(
+            &self,
+            input: serde_json::Value,
+            _ctx: &ExecContext,
+        ) -> Result<String, String> {
             Ok(format!("exec: {}", input))
         }
     }
@@ -443,7 +452,9 @@ mod tests {
     }
 
     fn make_ctx() -> ExecContext {
-        ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+        ExecContext {
+            permissions: Arc::new(PermissionMatrix::default()),
+        }
     }
 
     fn make_plate() -> (
@@ -463,7 +474,14 @@ mod tests {
         let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
         let geju = make_geju(ExecutionMode::Direct);
         let result = plate
-            .dispatch(&geju, &tool, serde_json::json!({"msg": "hi"}), &eb, &tx, &make_ctx())
+            .dispatch(
+                &geju,
+                &tool,
+                serde_json::json!({"msg": "hi"}),
+                &eb,
+                &tx,
+                &make_ctx(),
+            )
             .await;
         assert!(result.is_ok());
         assert!(result.unwrap().output.contains("echo"));
@@ -488,7 +506,14 @@ mod tests {
         let mut geju = make_geju(ExecutionMode::Guarded);
         geju.approval_chain = vec![ApprovalGate::Permission("test_perm".into())];
         let result = plate
-            .dispatch(&geju, &tool, serde_json::json!({"x": 1}), &eb, &tx, &make_ctx())
+            .dispatch(
+                &geju,
+                &tool,
+                serde_json::json!({"x": 1}),
+                &eb,
+                &tx,
+                &make_ctx(),
+            )
             .await;
         assert!(result.is_ok());
     }
@@ -513,7 +538,14 @@ mod tests {
         let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
         let geju = make_geju(ExecutionMode::Direct);
         let result = plate
-            .dispatch(&geju, &tool, serde_json::json!({"x": 1}), &eb, &tx, &make_ctx())
+            .dispatch(
+                &geju,
+                &tool,
+                serde_json::json!({"x": 1}),
+                &eb,
+                &tx,
+                &make_ctx(),
+            )
             .await;
         // Should still work — downgrades to Guarded
         assert!(
@@ -559,7 +591,14 @@ mod tests {
         let tool: Arc<dyn BaseTool> = Arc::new(DestructiveTool);
         let geju = make_geju(ExecutionMode::Guarded);
         let result = plate
-            .dispatch(&geju, &tool, serde_json::json!({"cmd": "rm"}), &eb, &tx, &make_ctx())
+            .dispatch(
+                &geju,
+                &tool,
+                serde_json::json!({"cmd": "rm"}),
+                &eb,
+                &tx,
+                &make_ctx(),
+            )
             .await;
         assert!(
             result.is_err(),

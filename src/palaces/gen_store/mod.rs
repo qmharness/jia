@@ -353,12 +353,12 @@ impl Store {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use crate::palaces::qian_permission::PermissionMatrix;
     use super::*;
     use crate::palaces::Palace;
+    use crate::palaces::qian_permission::PermissionMatrix;
     use crate::stems::Stem;
     use crate::vijnana::alaya::{Seed, SeedContent, SeedNature, SeedSource, SeedTier};
+    use std::sync::Arc;
 
     fn temp_store() -> Arc<Store> {
         let dir = tempfile::tempdir().unwrap();

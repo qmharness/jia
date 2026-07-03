@@ -462,9 +462,7 @@ fn parse_raw_tool_tags(text: &str, tool_names: &[&str]) -> (String, Vec<ToolCall
                     };
                     match best {
                         None => best = Some((pos, open_end, name)),
-                        Some((b_pos, _, _)) if pos < b_pos => {
-                            best = Some((pos, open_end, name))
-                        }
+                        Some((b_pos, _, _)) if pos < b_pos => best = Some((pos, open_end, name)),
                         _ => {}
                     }
                 }
@@ -491,7 +489,10 @@ fn parse_raw_tool_tags(text: &str, tool_names: &[&str]) -> (String, Vec<ToolCall
         // Body text goes into "input" (unless body is empty)
         let body_trimmed = body.trim();
         if !body_trimmed.is_empty() && !params.contains_key("input") {
-            params.insert("input".to_string(), serde_json::Value::String(body_trimmed.to_string()));
+            params.insert(
+                "input".to_string(),
+                serde_json::Value::String(body_trimmed.to_string()),
+            );
         }
 
         tool_calls.push(ToolCall {
@@ -516,10 +517,7 @@ fn extract_all_attrs(open_tag: &str) -> serde_json::Map<String, serde_json::Valu
         .unwrap_or(open_tag);
 
     // Skip the tag name
-    let after_name = inner
-        .find(' ')
-        .map(|p| &inner[p + 1..])
-        .unwrap_or("");
+    let after_name = inner.find(' ').map(|p| &inner[p + 1..]).unwrap_or("");
 
     let mut pos = 0usize;
     let bytes = after_name.as_bytes();

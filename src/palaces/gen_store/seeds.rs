@@ -382,14 +382,9 @@ impl Store {
             if !ids.is_empty() {
                 drop(stmt);
                 for id in &ids {
-                    conn.execute(
-                        "DELETE FROM seeds WHERE id = ?1",
-                        rusqlite::params![id],
-                    )?;
-                    let _ = conn.execute(
-                        "DELETE FROM seeds_fts WHERE id = ?1",
-                        rusqlite::params![id],
-                    );
+                    conn.execute("DELETE FROM seeds WHERE id = ?1", rusqlite::params![id])?;
+                    let _ =
+                        conn.execute("DELETE FROM seeds_fts WHERE id = ?1", rusqlite::params![id]);
                 }
             }
         }

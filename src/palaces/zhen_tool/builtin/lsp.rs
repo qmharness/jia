@@ -1,8 +1,8 @@
-use std::sync::Arc;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::Arc;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
@@ -23,6 +23,12 @@ use crate::stems::intent::{CeremoniesIntent, ReadAction};
 /// server state via didOpen).
 pub struct LspTool {
     manager: Arc<LspManager>,
+}
+
+impl Default for LspTool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LspTool {
@@ -498,12 +504,14 @@ impl Drop for LspServerHandle {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use crate::palaces::qian_permission::PermissionMatrix;
+    use std::sync::Arc;
     fn test_ctx() -> crate::stems::action::ExecContext {
-        use std::sync::Arc;
         use crate::palaces::qian_permission::PermissionMatrix;
-        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+        use std::sync::Arc;
+        crate::stems::action::ExecContext {
+            permissions: Arc::new(PermissionMatrix::default()),
+        }
     }
 
     use super::*;
@@ -560,12 +568,15 @@ mod tests {
 
         let tool = LspTool::new();
         let result = tool
-            .execute(json!({
-                "operation": "document_symbol",
-                "file": file.to_string_lossy(),
-                "line": 0,
-                "character": 0
-            }), &test_ctx())
+            .execute(
+                json!({
+                    "operation": "document_symbol",
+                    "file": file.to_string_lossy(),
+                    "line": 0,
+                    "character": 0
+                }),
+                &test_ctx(),
+            )
             .await;
         assert!(result.is_ok(), "document_symbol failed: {:?}", result.err());
         let out = result.unwrap();
@@ -579,12 +590,15 @@ mod tests {
         // rather than spawning a broken proxy.
         let tool = LspTool::new();
         let result = tool
-            .execute(json!({
-                "operation": "hover",
-                "file": "src/palaces/zhen_tool/builtin/grep.rs",
-                "line": 0,
-                "character": 0
-            }), &test_ctx())
+            .execute(
+                json!({
+                    "operation": "hover",
+                    "file": "src/palaces/zhen_tool/builtin/grep.rs",
+                    "line": 0,
+                    "character": 0
+                }),
+                &test_ctx(),
+            )
             .await;
         if LanguageKind::Rust.server_command().is_some() {
             assert!(result.is_ok(), "hover failed: {:?}", result.err());

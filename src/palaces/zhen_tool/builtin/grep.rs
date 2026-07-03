@@ -1,4 +1,3 @@
-
 use async_trait::async_trait;
 use serde_json::Value;
 
@@ -8,6 +7,12 @@ use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, ReadAction};
 
 pub struct GrepTool;
+
+impl Default for GrepTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl GrepTool {
     pub fn new() -> Self {
@@ -185,16 +190,18 @@ fn glob_match(pattern: &str, name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use crate::palaces::qian_permission::PermissionMatrix;
+    use std::sync::Arc;
     fn test_ctx() -> crate::stems::action::ExecContext {
-        use std::sync::Arc;
         use crate::palaces::qian_permission::PermissionMatrix;
-        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+        use std::sync::Arc;
+        crate::stems::action::ExecContext {
+            permissions: Arc::new(PermissionMatrix::default()),
+        }
     }
 
     use super::*;
-use crate::stems::action::ExecContext;
+    use crate::stems::action::ExecContext;
 
     #[test]
     fn test_glob_match() {
@@ -221,10 +228,13 @@ use crate::stems::action::ExecContext;
     async fn grep_cargo_toml() {
         let tool = GrepTool::new();
         let result = tool
-            .execute(serde_json::json!({
-                "pattern": "package",
-                "path": "Cargo.toml"
-            }), &test_ctx())
+            .execute(
+                serde_json::json!({
+                    "pattern": "package",
+                    "path": "Cargo.toml"
+                }),
+                &test_ctx(),
+            )
             .await;
         assert!(result.is_ok(), "grep failed: {:?}", result.err());
         assert!(result.unwrap().contains("[package]"));
@@ -234,12 +244,15 @@ use crate::stems::action::ExecContext;
     async fn grep_src_dir_rs_files() {
         let tool = GrepTool::new();
         let result = tool
-            .execute(serde_json::json!({
-                "pattern": "pub struct",
-                "path": "src",
-                "glob": "*.rs",
-                "max_results": 10
-            }), &test_ctx())
+            .execute(
+                serde_json::json!({
+                    "pattern": "pub struct",
+                    "path": "src",
+                    "glob": "*.rs",
+                    "max_results": 10
+                }),
+                &test_ctx(),
+            )
             .await;
         assert!(result.is_ok(), "grep failed: {:?}", result.err());
         let output = result.unwrap();
@@ -263,10 +276,13 @@ use crate::stems::action::ExecContext;
 
         let tool = GrepTool::new();
         let result = tool
-            .execute(serde_json::json!({
-                "pattern": "xyznonexistent123",
-                "path": dir.path().to_string_lossy()
-            }), &test_ctx())
+            .execute(
+                serde_json::json!({
+                    "pattern": "xyznonexistent123",
+                    "path": dir.path().to_string_lossy()
+                }),
+                &test_ctx(),
+            )
             .await;
         assert!(result.is_ok(), "grep failed: {:?}", result.err());
         let output = result.unwrap();

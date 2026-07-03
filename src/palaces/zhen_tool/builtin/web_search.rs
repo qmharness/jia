@@ -4,13 +4,19 @@ use async_trait::async_trait;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde_json::Value;
 
-use crate::stems::action::ExecContext;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, CommunicateAction};
 
 pub struct WebSearchTool {
     #[allow(dead_code)]
     client: reqwest::Client,
+}
+
+impl Default for WebSearchTool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl WebSearchTool {
@@ -20,9 +26,7 @@ impl WebSearchTool {
             .user_agent("jia/0.1.0")
             .build()
             .expect("reqwest client builder");
-        Self {
-            client,
-        }
+        Self { client }
     }
 }
 
@@ -155,12 +159,14 @@ impl BaseTool for WebSearchTool {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use crate::palaces::qian_permission::PermissionMatrix;
+    use std::sync::Arc;
     fn test_ctx() -> crate::stems::action::ExecContext {
-        use std::sync::Arc;
         use crate::palaces::qian_permission::PermissionMatrix;
-        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+        use std::sync::Arc;
+        crate::stems::action::ExecContext {
+            permissions: Arc::new(PermissionMatrix::default()),
+        }
     }
 
     use super::*;
@@ -179,7 +185,9 @@ mod tests {
     #[tokio::test]
     async fn web_search_empty_query() {
         let tool = WebSearchTool::new();
-        let result = tool.execute(serde_json::json!({"query": "   "}), &test_ctx()).await;
+        let result = tool
+            .execute(serde_json::json!({"query": "   "}), &test_ctx())
+            .await;
         assert!(result.is_err());
     }
 }

@@ -9,8 +9,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::stems::action::ExecContext;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::CeremoniesIntent;
 use crate::stems::intent::CommunicateAction;
 
@@ -18,6 +18,12 @@ use crate::palaces::zhen_tool::computer_driver::check_security;
 use crate::palaces::zhen_tool::computer_driver::schema::{self, ComputerAction, ComputerUseInput};
 
 pub struct ComputerUseTool;
+
+impl Default for ComputerUseTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ComputerUseTool {
     pub fn new() -> Self {

@@ -45,10 +45,7 @@ pub enum SocketEvent {
     /// Daemon model info (provider + model name).
     ModelInfo { provider: String, model: String },
     /// Project resolution result from "hello".
-    ProjectResolved {
-        project_id: String,
-        approved: bool,
-    },
+    ProjectResolved { project_id: String, approved: bool },
 }
 
 /// Parsed StreamEvent — mirrors `crate::types::StreamEvent` but implements
