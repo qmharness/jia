@@ -1,28 +1,25 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::palaces::qian_permission::PermissionMatrix;
+use crate::stems::action::ExecContext;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::intent::{CeremoniesIntent, CommunicateAction};
 
 pub struct WebFetchTool {
     #[allow(dead_code)]
-    permissions: Arc<PermissionMatrix>,
     client: reqwest::Client,
 }
 
 impl WebFetchTool {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
+    pub fn new() -> Self {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .user_agent("jia/0.1.0")
             .build()
             .expect("reqwest client builder");
         Self {
-            permissions,
             client,
         }
     }
@@ -68,7 +65,7 @@ impl BaseTool for WebFetchTool {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
         let url = input["url"].as_str().ok_or("Missing 'url' parameter")?;
 
         let parsed = url::Url::parse(url).map_err(|e| format!("Invalid URL: {e}"))?;
@@ -263,6 +260,14 @@ fn decode_entity(entity: &str) -> Option<char> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use crate::palaces::qian_permission::PermissionMatrix;
+    fn test_ctx() -> crate::stems::action::ExecContext {
+        use std::sync::Arc;
+        use crate::palaces::qian_permission::PermissionMatrix;
+        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+    }
+
     use super::*;
 
     fn test_perms() -> Arc<PermissionMatrix> {
@@ -301,16 +306,16 @@ mod tests {
 
     #[tokio::test]
     async fn web_fetch_missing_url() {
-        let tool = WebFetchTool::new(test_perms());
-        let result = tool.execute(serde_json::json!({})).await;
+        let tool = WebFetchTool::new();
+        let result = tool.execute(serde_json::json!({}), &test_ctx()).await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn web_fetch_invalid_scheme() {
-        let tool = WebFetchTool::new(test_perms());
+        let tool = WebFetchTool::new();
         let result = tool
-            .execute(serde_json::json!({"url": "file:///etc/passwd"}))
+            .execute(serde_json::json!({"url": "file:///etc/passwd"}), &test_ctx())
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Unsupported"));

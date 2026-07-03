@@ -1,6 +1,6 @@
+use std::sync::Arc;
 // ── Telegram Bot (long-polling mode) ────────────────────────
 
-use std::sync::Arc;
 
 use futures::FutureExt;
 use serde::Deserialize;

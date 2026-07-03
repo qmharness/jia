@@ -1,6 +1,6 @@
-//! Post-loop lifecycle: consolidation, distillation, zuowang, and skill evolution.
-
 use std::sync::Arc;
+/// Post-loop lifecycle: consolidation, distillation, zuowang, and skill evolution.
+
 
 use crate::palaces::li_skill::evolution::EvolutionEngine;
 use crate::palaces::zhong_core::JiaCore;

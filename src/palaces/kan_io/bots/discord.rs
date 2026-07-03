@@ -1,6 +1,6 @@
+use std::sync::Arc;
 // ── Discord Bot (interaction webhook reply) ──────────────
 
-use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
@@ -45,7 +45,7 @@ pub fn enqueue_agent_task(
     let (reply_tx, mut reply_rx) = mpsc::unbounded_channel::<OutboundReply>();
 
     tokio::spawn(async move {
-        if let Some(reply) = reply_rx.recv().await {
+        while let Some(reply) = reply_rx.recv().await {
             match send_discord_followup(&meta.application_id, &meta.interaction_token, &reply.text)
                 .await
             {

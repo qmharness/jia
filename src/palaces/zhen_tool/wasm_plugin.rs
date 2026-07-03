@@ -1,13 +1,14 @@
+use std::sync::Arc;
 // ── WASM Plugin: dynamic .wasm tool loading via wasmtime ──
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, ExecAction};
 use wasmtime_wasi::preview1::WasiP1Ctx;
 
@@ -136,7 +137,7 @@ impl BaseTool for WasmPlugin {
         self.meta.concurrency_safe
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
         let request = PluginRequest {
             tool: &self.meta.name,
             input: &input,

@@ -306,11 +306,13 @@ impl Store {
 
     /// Enforce tier budgets: demote excess OnDemand → Archive, delete excess Archive.
     /// Protected seeds (UserStatement source OR Preference nature) are never evicted.
+    /// Both operations run in a single transaction for atomicity.
     pub fn enforce_tier_budgets(&self) -> Result<TierBudgetReport, StoreError> {
         const ONDEMAND_BUDGET: usize = 200;
         const ARCHIVE_BUDGET: usize = 1000;
 
         let conn = self.pool.get()?;
+        conn.execute("BEGIN IMMEDIATE", [])?;
 
         // ── OnDemand → Archive demotion ──
         let ondemand_total: i64 = conn.query_row(
@@ -341,7 +343,12 @@ impl Store {
             ondemand_demoted = ids.len();
             if !ids.is_empty() {
                 drop(stmt);
-                self.set_tier_batch(&ids, "Archive")?;
+                for id in &ids {
+                    conn.execute(
+                        "UPDATE seeds SET tier = 'Archive' WHERE id = ?1",
+                        rusqlite::params![id],
+                    )?;
+                }
             }
         }
 
@@ -374,9 +381,20 @@ impl Store {
             archive_deleted = ids.len();
             if !ids.is_empty() {
                 drop(stmt);
-                self.delete_seeds(&ids)?;
+                for id in &ids {
+                    conn.execute(
+                        "DELETE FROM seeds WHERE id = ?1",
+                        rusqlite::params![id],
+                    )?;
+                    let _ = conn.execute(
+                        "DELETE FROM seeds_fts WHERE id = ?1",
+                        rusqlite::params![id],
+                    );
+                }
             }
         }
+
+        conn.execute("COMMIT", [])?;
 
         Ok(TierBudgetReport {
             ondemand_total,

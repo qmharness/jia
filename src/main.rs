@@ -662,8 +662,11 @@ async fn run_start(
     tracing::info!("listening on http://{addr}");
     tracing::info!("agent endpoint: POST http://{addr}/agent");
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(async {
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(async {
             tokio::signal::ctrl_c()
                 .await
                 .expect("Failed to listen for Ctrl+C signal");

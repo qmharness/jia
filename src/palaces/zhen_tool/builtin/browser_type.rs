@@ -3,13 +3,12 @@
 // Resolves the element by ref ID, focuses it, sets value, and dispatches
 // input/change events so JS frameworks (React, Vue) detect the change.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::palaces::qian_permission::PermissionMatrix;
+use crate::stems::action::ExecContext;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::intent::CeremoniesIntent;
 use crate::stems::intent::CommunicateAction;
@@ -22,14 +21,12 @@ const OPT_HTML_JS: &str = include_str!("opt_html.js");
 
 pub struct BrowserTypeTool {
     #[allow(dead_code)]
-    permissions: Arc<PermissionMatrix>,
     client: reqwest::Client,
 }
 
 impl BrowserTypeTool {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
+    pub fn new() -> Self {
         Self {
-            permissions,
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(30))
                 .build()
@@ -88,7 +85,7 @@ impl BaseTool for BrowserTypeTool {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
         let ref_str = input["ref"].as_str().ok_or("missing 'ref' parameter")?;
         let text = input["text"].as_str().ok_or("missing 'text' parameter")?;
         let tab_id = input["tab_id"].as_str();

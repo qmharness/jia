@@ -4,13 +4,12 @@
 // Uses CGEventPostToPid for input events, AX API for accessibility tree,
 // and CGWindowListCreateImage for screenshots.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::palaces::qian_permission::PermissionMatrix;
+use crate::stems::action::ExecContext;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::intent::CeremoniesIntent;
 use crate::stems::intent::CommunicateAction;
@@ -18,14 +17,11 @@ use crate::stems::intent::CommunicateAction;
 use crate::palaces::zhen_tool::computer_driver::check_security;
 use crate::palaces::zhen_tool::computer_driver::schema::{self, ComputerAction, ComputerUseInput};
 
-pub struct ComputerUseTool {
-    #[allow(dead_code)]
-    permissions: Arc<PermissionMatrix>,
-}
+pub struct ComputerUseTool;
 
 impl ComputerUseTool {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
-        Self { permissions }
+    pub fn new() -> Self {
+        Self
     }
 }
 
@@ -61,7 +57,7 @@ impl BaseTool for ComputerUseTool {
         schema::parameters_schema()
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
         let parsed: ComputerUseInput =
             serde_json::from_value(input).map_err(|e| format!("Invalid input: {e}"))?;
 

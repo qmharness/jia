@@ -1,6 +1,6 @@
+use std::sync::Arc;
 // ── NamaRupa Tool — Agentic graph memory for nāma-rūpa ──────
 
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -8,6 +8,7 @@ use serde_json::Value;
 use crate::palaces::Palace;
 use crate::palaces::gen_store::Store;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::CeremoniesIntent;
 use crate::stems::Stem;
 use crate::stems::intent::StoreAction;
@@ -382,7 +383,7 @@ impl BaseTool for NamaRupaTool {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
         let action = input["action"]
             .as_str()
             .ok_or("Missing 'action' parameter")?;
@@ -402,6 +403,12 @@ impl BaseTool for NamaRupaTool {
 
 #[cfg(test)]
 mod tests {
+    fn test_ctx() -> crate::stems::action::ExecContext {
+        use std::sync::Arc;
+        use crate::palaces::qian_permission::PermissionMatrix;
+        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+    }
+
     use super::*;
     use crate::palaces::Palace;
     use crate::stems::Stem;
@@ -468,7 +475,7 @@ mod tests {
             "anchors": ["serde"],
             "max_hops": 0,
         });
-        let output = tool.execute(input).await.unwrap();
+        let output = tool.execute(input, &test_ctx()).await.unwrap();
         let v: Value = serde_json::from_str(&output).unwrap();
         assert_eq!(v["count"], 1);
         assert!(v["graph_text"].as_str().unwrap().contains("serde"));
@@ -492,7 +499,7 @@ mod tests {
             "keywords": "Cargo",
             "max_hops": 0,
         });
-        let output = tool.execute(input).await.unwrap();
+        let output = tool.execute(input, &test_ctx()).await.unwrap();
         let v: Value = serde_json::from_str(&output).unwrap();
         assert!(
             v["count"].as_u64().unwrap() > 0,
@@ -512,7 +519,7 @@ mod tests {
                 {"subject": "app", "predicate": "uses", "object": "serde"},
             ]
         });
-        let output = tool.execute(input).await.unwrap();
+        let output = tool.execute(input, &test_ctx()).await.unwrap();
         let v: Value = serde_json::from_str(&output).unwrap();
         assert_eq!(v["saved"], 2, "should save 2 facts");
         assert_eq!(v["touched_ids"].as_array().unwrap().len(), 2);
@@ -534,7 +541,7 @@ mod tests {
                 {"subject": "app", "predicate": "uses", "object": "serde"},
             ]
         });
-        let output = tool.execute(input).await.unwrap();
+        let output = tool.execute(input, &test_ctx()).await.unwrap();
         let v: Value = serde_json::from_str(&output).unwrap();
         assert_eq!(v["saved"], 1, "should skip empty subject");
     }
@@ -550,7 +557,7 @@ mod tests {
             "action": "delete",
             "ids": ["s1"],
         });
-        let output = tool.execute(input).await.unwrap();
+        let output = tool.execute(input, &test_ctx()).await.unwrap();
         let v: Value = serde_json::from_str(&output).unwrap();
         assert_eq!(v["deleted"], 1);
 
@@ -570,7 +577,7 @@ mod tests {
             "action": "delete",
             "ids": ["u1", "s1"],
         });
-        let output = tool.execute(input).await.unwrap();
+        let output = tool.execute(input, &test_ctx()).await.unwrap();
         let v: Value = serde_json::from_str(&output).unwrap();
         assert_eq!(v["deleted"], 1, "should only delete non-UserStatement");
         assert_eq!(v["skipped"], 1, "should skip UserStatement");
@@ -601,7 +608,7 @@ mod tests {
         );
 
         let input = serde_json::json!({"action": "contradictions"});
-        let output = tool.execute(input).await.unwrap();
+        let output = tool.execute(input, &test_ctx()).await.unwrap();
         let v: Value = serde_json::from_str(&output).unwrap();
         assert_eq!(v["count"], 1, "should find 1 conflict group");
         let c = &v["conflicts"][0];
@@ -614,7 +621,7 @@ mod tests {
         let store = temp_store();
         let tool = NamaRupaTool::new(store);
         let input = serde_json::json!({"action": "foobar"});
-        let result = tool.execute(input).await;
+        let result = tool.execute(input, &test_ctx()).await;
         assert!(result.is_err());
     }
 }

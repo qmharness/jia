@@ -1,3 +1,4 @@
+use std::sync::Arc;
 pub mod r#loop;
 
 mod loop_dispatch;
@@ -7,10 +8,10 @@ mod loop_parse;
 mod loop_post;
 mod loop_prompt;
 
-use std::sync::Arc;
 
 use super::di_earth::EarthPlate;
 use crate::palaces::xun_context::{ContextWindow, ToolOutputBudget};
+use crate::stems::action::ExecContext;
 use crate::stems::Stem;
 use crate::types::HistoryEntry;
 use crate::vijnana::alaya::SeedStore;
@@ -27,17 +28,14 @@ pub struct HeavenPlate;
 pub struct Agent {
     pub id: String,
     pub earth: Arc<EarthPlate>,
-    /// P6 · active tool registry for execution. Initialised to session-scoped
-    /// tools. A worktree (P6) swaps this to a rebuilt registry scoped to the
-    /// worktree's PermissionMatrix, so file tools execute against the worktree
-    /// root. Exit restores `base_tools`.
-    pub active_tools: Arc<crate::palaces::zhen_tool::ToolRegistry>,
-    /// P6 · session-scoped tools (project root). Stored separately so that
-    /// exit_worktree can restore to the session scope rather than the global
-    /// `earth.tools`.
-    pub base_tools: Arc<crate::palaces::zhen_tool::ToolRegistry>,
-    /// P6 · current worktree root. None = operating on the main project root.
-    /// Some(path) = inside a worktree; exit restores active_tools to base_tools.
+    /// P6 · execution context (天盘时令). Carries the current PermissionMatrix,
+    /// which the Agent swaps on worktree enter/exit (O(1)). Tools are stateless
+    /// singletons registered on `earth.tools` (地盘六仪不动); permissions are
+    /// injected at execution time via this context (值符随时干旋转).
+    pub exec_ctx: ExecContext,
+    /// P6 · current worktree root. None = main project root.
+    /// Some(path) = inside a worktree; exit restores exec_ctx and optionally
+    /// removes the worktree.
     pub worktree_root: Option<std::path::PathBuf>,
     pub turn_count: u32,
     pub max_turns: u32,
@@ -98,16 +96,16 @@ pub enum InteractionMode {
 }
 
 impl Agent {
-    pub fn new(id: String, earth: Arc<EarthPlate>, tools: Arc<crate::palaces::zhen_tool::ToolRegistry>) -> Self {
+    pub fn new(id: String, earth: Arc<EarthPlate>) -> Self {
         let ctx = ContextWindow::new(
             earth.config.app_config.security.max_context_tokens,
             earth.config.app_config.security.compaction_threshold,
         );
+        let exec_ctx = ExecContext { permissions: earth.permissions.clone() };
         let mut s = Self {
             id,
             earth: earth.clone(),
-            active_tools: tools.clone(),
-            base_tools: tools,
+            exec_ctx,
             turn_count: 0,
             max_turns: 25,
             history: Vec::new(),
@@ -141,16 +139,15 @@ impl Agent {
         history: Vec<HistoryEntry>,
         manas: Manas,
         distilled_hashes: std::collections::HashSet<u64>,
-        tools: Arc<crate::palaces::zhen_tool::ToolRegistry>,
     ) -> Self {
         let ctx = ContextWindow::new(
             earth.config.app_config.security.max_context_tokens,
             earth.config.app_config.security.compaction_threshold,
         );
+        let exec_ctx = ExecContext { permissions: earth.permissions.clone() };
         let mut s = Self {
             id,
-            active_tools: tools.clone(),
-            base_tools: tools,
+            exec_ctx,
             earth,
             turn_count: 0,
             max_turns: 25,
@@ -488,9 +485,9 @@ mod tests {
             tmp.to_path_buf().join("backups"),
         ));
         let mut toollist = ToolRegistry::new();
-        toollist.register(Arc::new(ReadFileTool::new(permissions.clone())));
-        toollist.register(Arc::new(WriteFileTool::new(permissions.clone())));
-        toollist.register(Arc::new(ShellTool::new(permissions.clone())));
+        toollist.register(Arc::new(ReadFileTool::new()));
+        toollist.register(Arc::new(WriteFileTool::new()));
+        toollist.register(Arc::new(ShellTool::new()));
         let store = Arc::new(Store::open(db_path.to_str().unwrap()));
         let dummy_profile = crate::palaces::kun_config::ProviderProfile {
             kind: "openai".into(),
@@ -551,7 +548,7 @@ mod tests {
             "ren_soul.md should not exist before Agent::new"
         );
 
-        let agent = Agent::new("smoke-1".into(), earth.clone(), earth.tools.clone());
+        let agent = Agent::new("smoke-1".into(), earth.clone());
 
         assert!(ren_path.exists(), "ren_soul.md should be auto-created");
         let content = std::fs::read_to_string(&ren_path).expect("read ren_soul.md");
@@ -577,7 +574,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let earth = temp_earth(tmp.path());
 
-        let agent = Agent::new("smoke-2".into(), earth.clone(), earth.tools.clone());
+        let agent = Agent::new("smoke-2".into(), earth.clone());
         let seeds = load_seeds(&earth.store);
         let ren_seed = seeds.iter().find(|s| s.id == "ren_soul_root");
         assert!(ren_seed.is_some(), "ren_soul_root seed should be in Alaya");
@@ -607,7 +604,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let earth = temp_earth(tmp.path());
 
-        let _agent = Agent::new("smoke-3".into(), earth.clone(), earth.tools.clone());
+        let _agent = Agent::new("smoke-3".into(), earth.clone());
 
         // threshold=0.0 forces dissolve to run even on fresh seeds
         let report = crate::zuowang::pipeline::ZuowangPipeline::dissolve(earth.store.clone(), 0.0)
@@ -629,12 +626,12 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let earth = temp_earth(tmp.path());
 
-        let _agent1 = Agent::new("smoke-4a".into(), earth.clone(), earth.tools.clone());
+        let _agent1 = Agent::new("smoke-4a".into(), earth.clone());
 
         let ren_path = tmp.path().join("ren_soul.md");
         std::fs::write(&ren_path, "You are Jia, a customer support agent.").expect("write");
 
-        let agent2 = Agent::new("smoke-4b".into(), earth.clone(), earth.tools.clone());
+        let agent2 = Agent::new("smoke-4b".into(), earth.clone());
         assert_eq!(
             agent2.ren_soul.as_deref(),
             Some("You are Jia, a customer support agent.")
@@ -659,7 +656,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let earth = temp_earth(tmp.path());
 
-        let mut agent = Agent::new("smoke-5".into(), earth.clone(), earth.tools.clone());
+        let mut agent = Agent::new("smoke-5".into(), earth.clone());
         agent.ren_soul = None;
 
         let prompt = agent.build_ren_prompt();
@@ -678,7 +675,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let earth = temp_earth(tmp.path());
 
-        let mut agent = Agent::new("smoke-6".into(), earth.clone(), earth.tools.clone());
+        let mut agent = Agent::new("smoke-6".into(), earth.clone());
 
         agent.manas.atma_graha = 0.80;
         let prompt_high = agent.build_ren_prompt();
@@ -704,7 +701,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let earth = temp_earth(tmp.path());
 
-        let mut agent = Agent::new("smoke-7".into(), earth.clone(), earth.tools.clone());
+        let mut agent = Agent::new("smoke-7".into(), earth.clone());
         agent.load_ren_soul();
         agent.load_ren_soul();
 

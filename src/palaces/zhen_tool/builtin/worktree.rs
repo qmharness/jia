@@ -1,11 +1,11 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::palaces::qian_permission::{PathOp, PermissionMatrix};
+use crate::palaces::qian_permission::PathOp;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, ReadAction};
 
 /// P6 · Worktree isolation tools (艮八 · 山镇隔离).
@@ -68,12 +68,11 @@ fn git_worktree_remove(root: &Path, path: &Path, force: bool) -> Result<(), Stri
 }
 
 pub struct EnterWorktreeTool {
-    permissions: Arc<PermissionMatrix>,
 }
 
 impl EnterWorktreeTool {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
-        Self { permissions }
+    pub fn new() -> Self {
+        Self {}
     }
 }
 
@@ -118,7 +117,7 @@ impl BaseTool for EnterWorktreeTool {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
         let name = input["name"]
             .as_str()
             .ok_or("Missing 'name' parameter")?
@@ -128,7 +127,7 @@ impl BaseTool for EnterWorktreeTool {
         }
 
         // Sandbox-check the base root (read access to current project root).
-        let base_root = self
+        let base_root = ctx
             .permissions
             .verify_path(".", PathOp::Read)
             .map_err(|e| format!("cannot resolve project root: {e}"))?;
@@ -201,7 +200,7 @@ impl BaseTool for ExitWorktreeTool {
         })
     }
 
-    async fn execute(&self, _input: Value) -> Result<String, String> {
+    async fn execute(&self, _input: Value, _ctx: &ExecContext) -> Result<String, String> {
         // Marker tool — the agent loop handles the actual restore + removal so
         // it can swap active_tools (which the stateless tool cannot reach).
         Ok("Exiting worktree; tools restored to the main project root.".to_string())
@@ -219,6 +218,14 @@ pub async fn remove_worktree(main_root: &Path, worktree: &Path, force: bool) -> 
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use crate::palaces::qian_permission::PermissionMatrix;
+    fn test_ctx() -> crate::stems::action::ExecContext {
+        use std::sync::Arc;
+        use crate::palaces::qian_permission::PermissionMatrix;
+        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+    }
+
     use super::*;
 
     #[test]
@@ -271,8 +278,8 @@ mod tests {
                 root.join("backups"),
             ),
         );
-        let tool = EnterWorktreeTool::new(perms);
-        let res = tool.execute(serde_json::json!({ "name": "feat-x" })).await;
+        let tool = EnterWorktreeTool::new();
+        let res = tool.execute(serde_json::json!({ "name": "feat-x" }), &test_ctx()).await;
         assert!(res.is_ok(), "enter_worktree failed: {:?}", res.err());
         let wt = worktree_path(&root, "feat-x");
         assert!(wt.is_dir(), "worktree dir should exist: {}", wt.display());

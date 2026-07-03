@@ -1,19 +1,18 @@
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::palaces::qian_permission::{PathOp, PermissionMatrix};
+use crate::palaces::qian_permission::PathOp;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, WriteAction};
 
 pub struct EditTool {
-    permissions: Arc<PermissionMatrix>,
 }
 
 impl EditTool {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
-        Self { permissions }
+    pub fn new() -> Self {
+        Self {}
     }
 }
 
@@ -66,7 +65,7 @@ impl BaseTool for EditTool {
         false
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
         let path = input["path"].as_str().ok_or("Missing 'path' parameter")?;
         let old_string = input["old_string"]
             .as_str()
@@ -75,7 +74,7 @@ impl BaseTool for EditTool {
             .as_str()
             .ok_or("Missing 'new_string' parameter")?;
 
-        let canonical = self.permissions.verify_path(path, PathOp::Write)?;
+        let canonical = ctx.permissions.verify_path(path, PathOp::Write)?;
 
         let content = tokio::fs::read_to_string(&canonical)
             .await
@@ -122,7 +121,7 @@ impl BaseTool for EditTool {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
-            let backup_dir = self.permissions.backup_dir.join(ts.to_string());
+            let backup_dir = ctx.permissions.backup_dir.join(ts.to_string());
             if tokio::fs::create_dir_all(&backup_dir).await.is_ok()
                 && let Some(fname) = canonical.file_name()
             {
@@ -144,6 +143,14 @@ impl BaseTool for EditTool {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use crate::palaces::qian_permission::PermissionMatrix;
+    fn test_ctx() -> crate::stems::action::ExecContext {
+        use std::sync::Arc;
+        use crate::palaces::qian_permission::PermissionMatrix;
+        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+    }
+
     use super::*;
 
     fn test_perms() -> Arc<PermissionMatrix> {
@@ -166,13 +173,13 @@ mod tests {
         let (_dir, path) = with_temp_file("Hello, world!\nThis is a test.\n");
         let path_str = path.to_string_lossy().to_string();
 
-        let tool = EditTool::new(test_perms());
+        let tool = EditTool::new();
         let result = tool
             .execute(serde_json::json!({
                 "path": path_str,
                 "old_string": "world",
                 "new_string": "Jia"
-            }))
+            }), &test_ctx())
             .await;
         assert!(result.is_ok(), "edit failed: {:?}", result.err());
 
@@ -185,13 +192,13 @@ mod tests {
         let (_dir, path) = with_temp_file("foo\nbar\nfoo\n");
         let path_str = path.to_string_lossy().to_string();
 
-        let tool = EditTool::new(test_perms());
+        let tool = EditTool::new();
         let result = tool
             .execute(serde_json::json!({
                 "path": path_str,
                 "old_string": "foo",
                 "new_string": "baz"
-            }))
+            }), &test_ctx())
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("matches multiple locations"));
@@ -202,20 +209,20 @@ mod tests {
         let (_dir, path) = with_temp_file("hello\n");
         let path_str = path.to_string_lossy().to_string();
 
-        let tool = EditTool::new(test_perms());
+        let tool = EditTool::new();
         let result = tool
             .execute(serde_json::json!({
                 "path": path_str,
                 "old_string": "nonexistent",
                 "new_string": "x"
-            }))
+            }), &test_ctx())
             .await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn edit_missing_params() {
-        let tool = EditTool::new(test_perms());
-        assert!(tool.execute(serde_json::json!({})).await.is_err());
+        let tool = EditTool::new();
+        assert!(tool.execute(serde_json::json!({}), &test_ctx()).await.is_err());
     }
 }

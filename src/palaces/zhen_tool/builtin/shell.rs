@@ -1,19 +1,17 @@
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::palaces::qian_permission::PermissionMatrix;
+use crate::stems::action::ExecContext;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::intent::{CeremoniesIntent, ExecAction};
 
 pub struct ShellTool {
-    permissions: Arc<PermissionMatrix>,
 }
 
 impl ShellTool {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
-        Self { permissions }
+    pub fn new() -> Self {
+        Self {}
     }
 }
 
@@ -54,16 +52,24 @@ impl BaseTool for ShellTool {
         false
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
         let cmd = input["command"]
             .as_str()
             .ok_or("Missing 'command' parameter")?;
-        self.permissions.execute_sandboxed(cmd).await
+        ctx.permissions.execute_sandboxed(cmd).await
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use crate::palaces::qian_permission::PermissionMatrix;
+    fn test_ctx() -> crate::stems::action::ExecContext {
+        use std::sync::Arc;
+        use crate::palaces::qian_permission::PermissionMatrix;
+        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+    }
+
     use super::*;
 
     fn test_perms() -> Arc<PermissionMatrix> {
@@ -72,9 +78,9 @@ mod tests {
 
     #[tokio::test]
     async fn shell_echo() {
-        let tool = ShellTool::new(test_perms());
+        let tool = ShellTool::new();
         let result = tool
-            .execute(serde_json::json!({"command": "echo hello"}))
+            .execute(serde_json::json!({"command": "echo hello"}), &test_ctx())
             .await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("hello"));
@@ -82,16 +88,16 @@ mod tests {
 
     #[tokio::test]
     async fn shell_missing_command() {
-        let tool = ShellTool::new(test_perms());
-        let result = tool.execute(serde_json::json!({})).await;
+        let tool = ShellTool::new();
+        let result = tool.execute(serde_json::json!({}), &test_ctx()).await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn shell_blocked_command() {
-        let tool = ShellTool::new(test_perms());
+        let tool = ShellTool::new();
         let result = tool
-            .execute(serde_json::json!({"command": "rm -rf /tmp/foo"}))
+            .execute(serde_json::json!({"command": "rm -rf /tmp/foo"}), &test_ctx())
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("blocked pattern"));

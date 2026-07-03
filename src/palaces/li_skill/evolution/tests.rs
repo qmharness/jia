@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use super::helpers::{strip_code_fences, strip_markdown_fence, truncate_for_audit};
 use super::*;
 use std::collections::HashMap;

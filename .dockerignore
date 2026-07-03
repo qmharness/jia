@@ -1,0 +1,6 @@
+target/
+.jia-backups/
+.jia/
+.git/
+.DS_Store
+*.log

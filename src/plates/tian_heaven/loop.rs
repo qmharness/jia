@@ -9,6 +9,7 @@ use crate::palaces::zhong_core::JiaCore;
 use crate::plates::ren_human::HumanPlate;
 use crate::plates::shen_spirit::hook::{HookEvent, HookRegistry, SpiritType, fire_void_hooks};
 use crate::plates::shen_spirit::{EventBus, RuntimeEvent};
+use crate::stems::action::ExecContext;
 use crate::stems::Stem;
 use crate::telemetry::metrics::{JIA_LLM_DURATION_SECONDS, JIA_TOKENS_COMPACTED_TOTAL};
 use crate::types::{HistoryEntry, Message, Role, to_llm_messages};
@@ -293,7 +294,8 @@ impl super::Agent {
             let use_native = crate::palaces::zhong_core::use_native_tools(&core.provider_kind);
             let tool_schemas: Option<Vec<crate::stems::action::ToolSchema>> = if use_native {
                 let schemas: Vec<_> = self
-                    .active_tools
+                    .earth
+                    .tools
                     .list_core()
                     .iter()
                     .map(|t| crate::stems::action::ToolSchema {
@@ -397,7 +399,7 @@ impl super::Agent {
                     native_tool_calls
                 } else {
                     let tool_names: Vec<&str> =
-                        self.active_tools.list_names().iter().map(|s| s.as_str()).collect();
+                        self.earth.tools.list_names().iter().map(|s| s.as_str()).collect();
                     let (_clean_text, calls) = parse_tool_calls(&full_response, &tool_names);
                     calls
                 };
@@ -451,7 +453,7 @@ impl super::Agent {
                 let (output, error, geju_name, execution_mode, heaven_stem, target_palace) =
                     dispatch_one_tool(
                         tc,
-                        &self.active_tools,
+                        &self.earth.tools,
                         human_plate,
                         event_bus,
                         hook_registry,
@@ -462,6 +464,7 @@ impl super::Agent {
                         max_fail,
                         self.interaction_mode,
                         &self.earth.user_hooks,
+                        &self.exec_ctx,
                     )
                     .await;
 
@@ -472,12 +475,11 @@ impl super::Agent {
                     self.tool_failure_count.remove(&tc.name);
                 }
 
-                // P6 · worktree transitions (only on tool success). enter_worktree
-                // already ran `git worktree add`; here we rebuild a sub-matrix
-                // registry scoped to the worktree and swap active_tools so
-                // subsequent file/shell/git tools in this batch target the
-                // worktree. exit_worktree restores earth.tools and optionally
-                // removes the worktree.
+                // P6 · worktree transitions (only on tool success).
+                // enter_worktree already ran `git worktree add`; here we swap
+                // the ExecContext (O(1)) so subsequent tools in this batch see
+                // the worktree-scoped PermissionMatrix. exit_worktree restores
+                // the original ExecContext and optionally removes the worktree.
                 if error.is_none() {
                     if tc.name == "enter_worktree"
                         && let Some(name) = tc.parameters.get("name").and_then(|v| v.as_str())
@@ -487,20 +489,21 @@ impl super::Agent {
                             let path = crate::palaces::zhen_tool::builtin::worktree::worktree_path(
                                 &main_root, name,
                             );
-                            let sub = self.earth.rebuild_tools_for_root(&path);
-                            self.active_tools = sub;
+                            self.exec_ctx = self.earth.build_worktree_exec_ctx(&path);
                             self.worktree_root = Some(path.clone());
                             tracing::info!(
                                 session = %self.id,
                                 worktree = %path.display(),
-                                "entered worktree (active_tools swapped)"
+                                "entered worktree (ExecContext swapped)"
                             );
                         } else {
                             tracing::warn!("enter_worktree ignored: already in a worktree");
                         }
                     } else if tc.name == "exit_worktree" {
                         if let Some(wt) = self.worktree_root.take() {
-                            self.active_tools = self.base_tools.clone();
+                            self.exec_ctx = ExecContext {
+                                permissions: self.earth.permissions.clone(),
+                            };
                             let action = tc
                                 .parameters
                                 .get("action")
@@ -521,7 +524,7 @@ impl super::Agent {
                                     );
                                 }
                             }
-                            tracing::info!(session = %self.id, "exited worktree (active_tools restored)");
+                            tracing::info!(session = %self.id, "exited worktree (ExecContext restored)");
                         } else {
                             tracing::warn!("exit_worktree ignored: not in a worktree");
                         }

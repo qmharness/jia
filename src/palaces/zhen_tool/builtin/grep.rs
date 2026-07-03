@@ -1,19 +1,17 @@
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::palaces::qian_permission::{PathOp, PermissionMatrix};
+use crate::palaces::qian_permission::PathOp;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, ReadAction};
 
-pub struct GrepTool {
-    permissions: Arc<PermissionMatrix>,
-}
+pub struct GrepTool;
 
 impl GrepTool {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
-        Self { permissions }
+    pub fn new() -> Self {
+        Self
     }
 }
 
@@ -69,7 +67,7 @@ impl BaseTool for GrepTool {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
         let pattern = input["pattern"]
             .as_str()
             .ok_or("Missing 'pattern' parameter")?;
@@ -78,7 +76,7 @@ impl BaseTool for GrepTool {
         let glob = input["glob"].as_str();
         let max_results = input["max_results"].as_u64().unwrap_or(50) as usize;
 
-        let search_root = self.permissions.verify_path(raw_path, PathOp::Read)?;
+        let search_root = ctx.permissions.verify_path(raw_path, PathOp::Read)?;
 
         let results = if search_root.is_file() {
             search_single_file(&search_root, pattern, max_results)?
@@ -187,7 +185,16 @@ fn glob_match(pattern: &str, name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use crate::palaces::qian_permission::PermissionMatrix;
+    fn test_ctx() -> crate::stems::action::ExecContext {
+        use std::sync::Arc;
+        use crate::palaces::qian_permission::PermissionMatrix;
+        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+    }
+
     use super::*;
+use crate::stems::action::ExecContext;
 
     #[test]
     fn test_glob_match() {
@@ -212,12 +219,12 @@ mod tests {
 
     #[tokio::test]
     async fn grep_cargo_toml() {
-        let tool = GrepTool::new(test_perms());
+        let tool = GrepTool::new();
         let result = tool
             .execute(serde_json::json!({
                 "pattern": "package",
                 "path": "Cargo.toml"
-            }))
+            }), &test_ctx())
             .await;
         assert!(result.is_ok(), "grep failed: {:?}", result.err());
         assert!(result.unwrap().contains("[package]"));
@@ -225,14 +232,14 @@ mod tests {
 
     #[tokio::test]
     async fn grep_src_dir_rs_files() {
-        let tool = GrepTool::new(test_perms());
+        let tool = GrepTool::new();
         let result = tool
             .execute(serde_json::json!({
                 "pattern": "pub struct",
                 "path": "src",
                 "glob": "*.rs",
                 "max_results": 10
-            }))
+            }), &test_ctx())
             .await;
         assert!(result.is_ok(), "grep failed: {:?}", result.err());
         let output = result.unwrap();
@@ -244,8 +251,8 @@ mod tests {
 
     #[tokio::test]
     async fn grep_missing_pattern() {
-        let tool = GrepTool::new(test_perms());
-        let result = tool.execute(serde_json::json!({})).await;
+        let tool = GrepTool::new();
+        let result = tool.execute(serde_json::json!({}), &test_ctx()).await;
         assert!(result.is_err());
     }
 
@@ -254,12 +261,12 @@ mod tests {
         let dir = tempfile::TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
         std::fs::write(dir.path().join("a.txt"), "hello world\n").unwrap();
 
-        let tool = GrepTool::new(test_perms());
+        let tool = GrepTool::new();
         let result = tool
             .execute(serde_json::json!({
                 "pattern": "xyznonexistent123",
                 "path": dir.path().to_string_lossy()
-            }))
+            }), &test_ctx())
             .await;
         assert!(result.is_ok(), "grep failed: {:?}", result.err());
         let output = result.unwrap();

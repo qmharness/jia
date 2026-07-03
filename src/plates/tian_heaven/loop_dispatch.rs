@@ -12,6 +12,7 @@ use crate::plates::shen_spirit::hook::{
 use crate::plates::shen_spirit::{EventBus, RuntimeEvent};
 use crate::stems::Stem;
 use crate::stems::action::ToolCall;
+use crate::stems::action::ExecContext;
 use crate::telemetry::metrics::JIA_TOOL_DURATION_SECONDS;
 
 use super::loop_events::AgentEvent;
@@ -20,7 +21,7 @@ use super::loop_hooks::{CompiledHook, run_pre_tool_hooks};
 /// Dispatch a single tool call through GeJu evaluation, hook gates, and
 /// HumanPlate execution. Returns the tool output/error, GeJu metadata,
 /// and the stems used.
-#[tracing::instrument(skip(tc, tools, human_plate, event_bus, hook_registry, user_hooks, tx, touched_acc, output_budget, tool_failure_count), fields(tool = %tc.name))]
+#[tracing::instrument(skip(tc, tools, human_plate, event_bus, hook_registry, user_hooks, tx, touched_acc, output_budget, tool_failure_count, exec_ctx), fields(tool = %tc.name))]
 #[allow(clippy::too_many_arguments)]
 pub async fn dispatch_one_tool(
     tc: &ToolCall,
@@ -35,6 +36,7 @@ pub async fn dispatch_one_tool(
     max_consecutive_failures: u32,
     interaction_mode: super::InteractionMode,
     user_hooks: &[CompiledHook],
+    exec_ctx: &ExecContext,
 ) -> (String, Option<String>, String, String, Stem, Palace) {
     // GeJu Layer 3 runtime supplement: refuse tools with consecutive failure streak.
     if let Some(&count) = tool_failure_count.get(&tc.name)
@@ -234,7 +236,7 @@ pub async fn dispatch_one_tool(
 
     // Dispatch through HumanPlate
     let dispatch_result = human_plate
-        .dispatch(&geju_result, &tool, tc.parameters.clone(), event_bus, tx)
+        .dispatch(&geju_result, &tool, tc.parameters.clone(), event_bus, tx, exec_ctx)
         .await;
 
     let duration_ms = dispatch_start.elapsed().as_millis() as u64;

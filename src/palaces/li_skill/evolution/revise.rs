@@ -398,7 +398,7 @@ impl EvolutionEngine {
             skill_name: skill.name.clone(),
             session_id: session_id.to_string(),
             old_content,
-            new_content: protected,
+            new_content: protected.clone(),
             diff_text: diff,
             avg_confidence: avg_conf,
             reflection_ids: ids,
@@ -416,7 +416,7 @@ impl EvolutionEngine {
         // P2 · Post-revision verification: smoke-test the revised skill.
         if actually_applied {
             let vcore = aux_core.unwrap_or(main_core);
-            let ok = Self::verify_revision(vcore, &skill.name, &skill.prompt).await;
+            let ok = Self::verify_revision(vcore, &skill.name, &protected).await;
             tracing::info!(
                 skill = %skill.name,
                 passed = ok,

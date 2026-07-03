@@ -1,8 +1,10 @@
+use std::sync::Arc;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use crate::geju::{ApprovalGate, ExecutionMode, GeJuResult};
 use crate::palaces::qian_permission::PermissionMatrix;
+use crate::stems::action::ExecContext;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::plates::shen_spirit::{EventBus, RuntimeEvent};
 use crate::plates::tian_heaven::r#loop::AgentEvent;
@@ -79,6 +81,7 @@ impl HumanPlate {
         input: serde_json::Value,
         event_bus: &EventBus,
         tx: &tokio::sync::mpsc::UnboundedSender<AgentEvent>,
+        exec_ctx: &ExecContext,
     ) -> Result<ToolResult, DispatchError> {
         match geju.execution_mode {
             ExecutionMode::Direct => {
@@ -90,11 +93,11 @@ impl HumanPlate {
                         ..geju.clone()
                     };
                     return self
-                        .dispatch_guarded(&guarded, tool, input, event_bus, tx)
+                        .dispatch_guarded(&guarded, tool, input, event_bus, tx, exec_ctx)
                         .await;
                 }
                 let output = tool
-                    .execute_with_tx(input.clone(), tx)
+                    .execute_with_tx(input.clone(), tx, exec_ctx)
                     .await
                     .map_err(DispatchError::ToolError)?;
                 Ok(ToolResult {
@@ -104,11 +107,11 @@ impl HumanPlate {
                 })
             }
             ExecutionMode::Guarded => {
-                self.dispatch_guarded(geju, tool, input, event_bus, tx)
+                self.dispatch_guarded(geju, tool, input, event_bus, tx, exec_ctx)
                     .await
             }
             ExecutionMode::Sandbox => {
-                self.dispatch_sandbox(geju, tool, input, event_bus, tx)
+                self.dispatch_sandbox(geju, tool, input, event_bus, tx, exec_ctx)
                     .await
             }
             ExecutionMode::Denied => {
@@ -128,7 +131,7 @@ impl HumanPlate {
                         ..geju.clone()
                     };
                     return self
-                        .dispatch_guarded(&guarded, tool, input, event_bus, tx)
+                        .dispatch_guarded(&guarded, tool, input, event_bus, tx, exec_ctx)
                         .await;
                 }
                 event_bus.emit(RuntimeEvent::Error {
@@ -148,6 +151,7 @@ impl HumanPlate {
         input: serde_json::Value,
         event_bus: &EventBus,
         tx: &tokio::sync::mpsc::UnboundedSender<AgentEvent>,
+        exec_ctx: &ExecContext,
     ) -> Result<ToolResult, DispatchError> {
         // Check ShangMen gate for destructive actions
         if !self.gate_is_open(HumanGate::ShangMen) && tool.is_destructive() {
@@ -207,6 +211,7 @@ impl HumanPlate {
                         input,
                         event_bus,
                         tx,
+                        exec_ctx,
                     ))
                     .await;
                 }
@@ -222,7 +227,7 @@ impl HumanPlate {
 
         // All gates passed — execute
         let output = tool
-            .execute_with_tx(input.clone(), tx)
+            .execute_with_tx(input.clone(), tx, exec_ctx)
             .await
             .map_err(DispatchError::ToolError)?;
         Ok(ToolResult {
@@ -240,6 +245,7 @@ impl HumanPlate {
         input: serde_json::Value,
         event_bus: &EventBus,
         tx: &tokio::sync::mpsc::UnboundedSender<AgentEvent>,
+        exec_ctx: &ExecContext,
     ) -> Result<ToolResult, DispatchError> {
         // Check DuMen gate
         if !self.gate_is_open(HumanGate::DuMen) || self.permissions.sandbox_disabled {
@@ -255,7 +261,7 @@ impl HumanPlate {
                 ))],
                 ..geju.clone()
             };
-            return Box::pin(self.dispatch_guarded(&guarded, tool, input, event_bus, tx)).await;
+            return Box::pin(self.dispatch_guarded(&guarded, tool, input, event_bus, tx, exec_ctx)).await;
         }
 
         // Apply sandbox transformations
@@ -271,7 +277,7 @@ impl HumanPlate {
         );
 
         let output = tool
-            .execute_with_tx(sandboxed, tx)
+            .execute_with_tx(sandboxed, tx, exec_ctx)
             .await
             .map_err(DispatchError::ToolError)?;
         Ok(ToolResult {
@@ -369,6 +375,8 @@ pub enum GateState {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use crate::palaces::qian_permission::PermissionMatrix;
     use super::*;
     use crate::geju::ExecutionMode;
     use crate::plates::shen_spirit::EventBus;
@@ -393,7 +401,7 @@ mod tests {
         fn is_concurrency_safe(&self) -> bool {
             true
         }
-        async fn execute(&self, input: serde_json::Value) -> Result<String, String> {
+        async fn execute(&self, input: serde_json::Value, _ctx: &ExecContext) -> Result<String, String> {
             Ok(format!("echo: {}", input))
         }
     }
@@ -418,7 +426,7 @@ mod tests {
         fn is_concurrency_safe(&self) -> bool {
             false
         }
-        async fn execute(&self, input: serde_json::Value) -> Result<String, String> {
+        async fn execute(&self, input: serde_json::Value, _ctx: &ExecContext) -> Result<String, String> {
             Ok(format!("exec: {}", input))
         }
     }
@@ -432,6 +440,10 @@ mod tests {
             approval_chain: vec![],
             layer: 3,
         }
+    }
+
+    fn make_ctx() -> ExecContext {
+        ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
     }
 
     fn make_plate() -> (
@@ -451,7 +463,7 @@ mod tests {
         let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
         let geju = make_geju(ExecutionMode::Direct);
         let result = plate
-            .dispatch(&geju, &tool, serde_json::json!({"msg": "hi"}), &eb, &tx)
+            .dispatch(&geju, &tool, serde_json::json!({"msg": "hi"}), &eb, &tx, &make_ctx())
             .await;
         assert!(result.is_ok());
         assert!(result.unwrap().output.contains("echo"));
@@ -463,7 +475,7 @@ mod tests {
         let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
         let geju = make_geju(ExecutionMode::Denied);
         let result = plate
-            .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx)
+            .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx, &make_ctx())
             .await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), DispatchError::Denied(_)));
@@ -476,7 +488,7 @@ mod tests {
         let mut geju = make_geju(ExecutionMode::Guarded);
         geju.approval_chain = vec![ApprovalGate::Permission("test_perm".into())];
         let result = plate
-            .dispatch(&geju, &tool, serde_json::json!({"x": 1}), &eb, &tx)
+            .dispatch(&geju, &tool, serde_json::json!({"x": 1}), &eb, &tx, &make_ctx())
             .await;
         assert!(result.is_ok());
     }
@@ -487,7 +499,7 @@ mod tests {
         let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
         let geju = make_geju(ExecutionMode::Sandbox);
         let result = plate
-            .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx)
+            .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx, &make_ctx())
             .await;
         assert!(result.is_ok());
     }
@@ -501,7 +513,7 @@ mod tests {
         let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
         let geju = make_geju(ExecutionMode::Direct);
         let result = plate
-            .dispatch(&geju, &tool, serde_json::json!({"x": 1}), &eb, &tx)
+            .dispatch(&geju, &tool, serde_json::json!({"x": 1}), &eb, &tx, &make_ctx())
             .await;
         // Should still work — downgrades to Guarded
         assert!(
@@ -518,7 +530,7 @@ mod tests {
         let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
         let geju = make_geju(ExecutionMode::Denied);
         let result = plate
-            .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx)
+            .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx, &make_ctx())
             .await;
         // Escalation to Guarded with UserConfirmation → waits for confirm → times out → denied
         assert!(
@@ -534,7 +546,7 @@ mod tests {
         let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
         let geju = make_geju(ExecutionMode::Denied);
         let result = plate
-            .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx)
+            .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx, &make_ctx())
             .await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), DispatchError::Denied(_)));
@@ -547,7 +559,7 @@ mod tests {
         let tool: Arc<dyn BaseTool> = Arc::new(DestructiveTool);
         let geju = make_geju(ExecutionMode::Guarded);
         let result = plate
-            .dispatch(&geju, &tool, serde_json::json!({"cmd": "rm"}), &eb, &tx)
+            .dispatch(&geju, &tool, serde_json::json!({"cmd": "rm"}), &eb, &tx, &make_ctx())
             .await;
         assert!(
             result.is_err(),
@@ -562,7 +574,7 @@ mod tests {
         let tool: Arc<dyn BaseTool> = Arc::new(EchoTool); // read_file-like (Harmless read)
         let geju = make_geju(ExecutionMode::Guarded);
         let result = plate
-            .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx)
+            .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx, &make_ctx())
             .await;
         // read_file is exempt from ShangMen check
         assert!(
@@ -579,7 +591,7 @@ mod tests {
         let mut geju = make_geju(ExecutionMode::Guarded);
         geju.approval_chain = vec![ApprovalGate::Permission("deny_all".into())];
         let result = plate
-            .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx)
+            .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx, &make_ctx())
             .await;
         assert!(result.is_err(), "Permission rule with 'deny' should block");
     }
@@ -592,7 +604,7 @@ mod tests {
         let geju = make_geju(ExecutionMode::Sandbox);
         // DuMen closed → downgrade Sandbox→Guarded+UserConfirmation → times out → denied
         let result = plate
-            .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx)
+            .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx, &make_ctx())
             .await;
         assert!(
             result.is_err(),
@@ -608,7 +620,7 @@ mod tests {
         let mut geju = make_geju(ExecutionMode::Guarded);
         geju.approval_chain = vec![ApprovalGate::SandboxIsolation];
         let result = plate
-            .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx)
+            .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx, &make_ctx())
             .await;
         // Escalates from Guarded→Sandbox, which then executes directly
         assert!(
@@ -639,7 +651,7 @@ mod tests {
         let mut geju = make_geju(ExecutionMode::Guarded);
         geju.approval_chain = vec![ApprovalGate::Permission("deny_explicitly".into())];
         let result = plate
-            .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx)
+            .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx, &make_ctx())
             .await;
         assert!(result.is_err());
     }

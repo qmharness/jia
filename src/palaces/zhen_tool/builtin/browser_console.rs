@@ -3,7 +3,6 @@
 // Enables Runtime domain, briefly collects console and exception events,
 // then returns them. Useful for debugging JS errors after interactions.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -11,7 +10,7 @@ use futures::StreamExt;
 use serde_json::Value;
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::palaces::qian_permission::PermissionMatrix;
+use crate::stems::action::ExecContext;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::intent::CeremoniesIntent;
 use crate::stems::intent::CommunicateAction;
@@ -22,14 +21,12 @@ use crate::palaces::zhen_tool::browser_cdp;
 
 pub struct BrowserConsoleTool {
     #[allow(dead_code)]
-    permissions: Arc<PermissionMatrix>,
     client: reqwest::Client,
 }
 
 impl BrowserConsoleTool {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
+    pub fn new() -> Self {
         Self {
-            permissions,
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(30))
                 .build()
@@ -79,7 +76,7 @@ impl BaseTool for BrowserConsoleTool {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
         let tab_id = input["tab_id"].as_str();
 
         let tabs = browser_cdp::get_tabs(&self.client).await?;

@@ -1,12 +1,13 @@
+use std::sync::Arc;
 // ── Task Tool — Create and track sub-tasks ───────────────────
 
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::CeremoniesIntent;
 use crate::stems::intent::ExecAction;
 
@@ -170,7 +171,7 @@ impl BaseTool for TaskTool {
         false
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
         let action = input["action"]
             .as_str()
             .ok_or("Missing 'action' parameter")?;

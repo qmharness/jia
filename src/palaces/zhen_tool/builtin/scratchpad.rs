@@ -1,10 +1,10 @@
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::palaces::qian_permission::{PathOp, PermissionMatrix};
+use crate::palaces::qian_permission::PathOp;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, ReadAction, WriteAction};
 
 /// P8 · cross-worker scratchpad (跨 agent 共享知识).
@@ -21,8 +21,9 @@ fn valid_key(key: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
-fn scratchpad_path(perms: &PermissionMatrix, key: &str) -> std::path::PathBuf {
-    perms
+fn scratchpad_path(exec_ctx: &ExecContext, key: &str) -> std::path::PathBuf {
+    exec_ctx
+        .permissions
         .sandbox
         .project_root
         .join(".jia")
@@ -30,13 +31,11 @@ fn scratchpad_path(perms: &PermissionMatrix, key: &str) -> std::path::PathBuf {
         .join(key)
 }
 
-pub struct ScratchpadWriteTool {
-    permissions: Arc<PermissionMatrix>,
-}
+pub struct ScratchpadWriteTool;
 
 impl ScratchpadWriteTool {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
-        Self { permissions }
+    pub fn new() -> Self {
+        Self
     }
 }
 
@@ -81,7 +80,7 @@ impl BaseTool for ScratchpadWriteTool {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
         let key = input["key"].as_str().ok_or("Missing 'key' parameter")?;
         if !valid_key(key) {
             return Err(format!(
@@ -92,13 +91,13 @@ impl BaseTool for ScratchpadWriteTool {
             .as_str()
             .ok_or("Missing 'content' parameter")?;
 
-        let path = scratchpad_path(&self.permissions, key);
+        let path = scratchpad_path(ctx, key);
         // Re-validate via PermissionMatrix (defense in depth; parent must exist for Write canonicalize)
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .map_err(|e| format!("cannot create scratchpad dir: {e}"))?;
         }
-        let canonical = self
+        let canonical = ctx
             .permissions
             .verify_path(&path.to_string_lossy(), PathOp::Write)?;
         std::fs::write(&canonical, content)
@@ -110,13 +109,11 @@ impl BaseTool for ScratchpadWriteTool {
     }
 }
 
-pub struct ScratchpadReadTool {
-    permissions: Arc<PermissionMatrix>,
-}
+pub struct ScratchpadReadTool;
 
 impl ScratchpadReadTool {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
-        Self { permissions }
+    pub fn new() -> Self {
+        Self
     }
 }
 
@@ -156,15 +153,15 @@ impl BaseTool for ScratchpadReadTool {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
         let key = input["key"].as_str().ok_or("Missing 'key' parameter")?;
         if !valid_key(key) {
             return Err(format!(
                 "invalid key '{key}': must be non-empty [A-Za-z0-9_-]+"
             ));
         }
-        let path = scratchpad_path(&self.permissions, key);
-        let canonical = self
+        let path = scratchpad_path(ctx, key);
+        let canonical = ctx
             .permissions
             .verify_path(&path.to_string_lossy(), PathOp::Read)?;
         std::fs::read_to_string(&canonical)
@@ -174,6 +171,14 @@ impl BaseTool for ScratchpadReadTool {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use crate::palaces::qian_permission::PermissionMatrix;
+    fn test_ctx() -> crate::stems::action::ExecContext {
+        use std::sync::Arc;
+        use crate::palaces::qian_permission::PermissionMatrix;
+        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+    }
+
     use super::*;
 
     fn test_perms_at(root: &std::path::Path) -> Arc<PermissionMatrix> {
@@ -200,15 +205,16 @@ mod tests {
     async fn scratchpad_write_read_roundtrip() {
         let dir = tempfile::TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
         let perms = test_perms_at(dir.path());
-        let w = ScratchpadWriteTool::new(perms.clone());
-        let r = ScratchpadReadTool::new(perms);
+        let ctx = ExecContext { permissions: perms.clone() };
+        let w = ScratchpadWriteTool::new();
+        let r = ScratchpadReadTool::new();
 
         let res = w
-            .execute(serde_json::json!({ "key": "findings", "content": "hello world" }))
+            .execute(serde_json::json!({ "key": "findings", "content": "hello world" }), &ctx)
             .await;
         assert!(res.is_ok(), "write failed: {:?}", res.err());
 
-        let res = r.execute(serde_json::json!({ "key": "findings" })).await;
+        let res = r.execute(serde_json::json!({ "key": "findings" }), &ctx).await;
         assert!(res.is_ok(), "read failed: {:?}", res.err());
         assert_eq!(res.unwrap(), "hello world");
     }
@@ -217,9 +223,10 @@ mod tests {
     async fn scratchpad_rejects_bad_key() {
         let dir = tempfile::TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
         let perms = test_perms_at(dir.path());
-        let w = ScratchpadWriteTool::new(perms);
+        let ctx = ExecContext { permissions: perms };
+        let w = ScratchpadWriteTool::new();
         let res = w
-            .execute(serde_json::json!({ "key": "../escape", "content": "x" }))
+            .execute(serde_json::json!({ "key": "../escape", "content": "x" }), &ctx)
             .await;
         assert!(res.is_err());
     }

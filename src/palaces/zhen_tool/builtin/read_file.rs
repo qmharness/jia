@@ -1,19 +1,18 @@
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::palaces::qian_permission::{PathOp, PermissionMatrix};
+use crate::palaces::qian_permission::PathOp;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, ReadAction};
 
 pub struct ReadFileTool {
-    permissions: Arc<PermissionMatrix>,
 }
 
 impl ReadFileTool {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
-        Self { permissions }
+    pub fn new() -> Self {
+        Self {}
     }
 }
 
@@ -58,9 +57,9 @@ impl BaseTool for ReadFileTool {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
         let path = input["path"].as_str().ok_or("Missing 'path' parameter")?;
-        let canonical = self.permissions.verify_path(path, PathOp::Read)?;
+        let canonical = ctx.permissions.verify_path(path, PathOp::Read)?;
 
         let max_lines = input["max_lines"]
             .as_u64()
@@ -104,6 +103,14 @@ impl BaseTool for ReadFileTool {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use crate::palaces::qian_permission::PermissionMatrix;
+    fn test_ctx() -> crate::stems::action::ExecContext {
+        use std::sync::Arc;
+        use crate::palaces::qian_permission::PermissionMatrix;
+        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+    }
+
     use super::*;
 
     fn test_perms() -> Arc<PermissionMatrix> {
@@ -112,9 +119,9 @@ mod tests {
 
     #[tokio::test]
     async fn read_file_happy_path() {
-        let tool = ReadFileTool::new(test_perms());
+        let tool = ReadFileTool::new();
         let result = tool
-            .execute(serde_json::json!({"path": "Cargo.toml"}))
+            .execute(serde_json::json!({"path": "Cargo.toml"}), &test_ctx())
             .await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("[package]"));
@@ -122,25 +129,25 @@ mod tests {
 
     #[tokio::test]
     async fn read_file_missing_path() {
-        let tool = ReadFileTool::new(test_perms());
-        let result = tool.execute(serde_json::json!({})).await;
+        let tool = ReadFileTool::new();
+        let result = tool.execute(serde_json::json!({}), &test_ctx()).await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn read_file_nonexistent() {
-        let tool = ReadFileTool::new(test_perms());
+        let tool = ReadFileTool::new();
         let result = tool
-            .execute(serde_json::json!({"path": "/nonexistent/file.txt"}))
+            .execute(serde_json::json!({"path": "/nonexistent/file.txt"}), &test_ctx())
             .await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn max_lines_truncation() {
-        let tool = ReadFileTool::new(test_perms());
+        let tool = ReadFileTool::new();
         let result = tool
-            .execute(serde_json::json!({"path": "Cargo.toml", "max_lines": 2}))
+            .execute(serde_json::json!({"path": "Cargo.toml", "max_lines": 2}), &test_ctx())
             .await;
         assert!(result.is_ok());
         let content = result.unwrap();
@@ -154,9 +161,9 @@ mod tests {
 
     #[tokio::test]
     async fn read_file_outside_root_blocked() {
-        let tool = ReadFileTool::new(test_perms());
+        let tool = ReadFileTool::new();
         let result = tool
-            .execute(serde_json::json!({"path": "/etc/passwd"}))
+            .execute(serde_json::json!({"path": "/etc/passwd"}), &test_ctx())
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("outside project root"));

@@ -1,6 +1,7 @@
+use std::sync::Arc;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use tokio_util::sync::CancellationToken;
 
@@ -8,6 +9,7 @@ use crate::palaces::gen_store::Store;
 use crate::palaces::kan_io::ChannelManager;
 use crate::palaces::kun_config::{AppConfig, ConfigLoader};
 use crate::palaces::li_skill::SkillRegistry;
+use crate::stems::action::ExecContext;
 use crate::palaces::li_skill::loader::SkillLoader;
 use crate::palaces::li_skill::spawn_skill_watcher;
 use crate::palaces::qian_permission::PermissionMatrix;
@@ -171,23 +173,23 @@ impl EarthPlate {
 
         // Read-only subtools for sub-agents (Explore/Plan)
         let mut subtool_registry = ToolRegistry::new();
-        subtool_registry.register(Arc::new(ReadFileTool::new(permissions.clone())));
-        subtool_registry.register(Arc::new(GrepTool::new(permissions.clone())));
-        subtool_registry.register(Arc::new(GlobTool::new(permissions.clone())));
-        subtool_registry.register(Arc::new(WebFetchTool::new(permissions.clone())));
-        subtool_registry.register(Arc::new(WebExecuteJsTool::new(permissions.clone())));
-        subtool_registry.register(Arc::new(BrowserNavigateTool::new(permissions.clone())));
-        subtool_registry.register(Arc::new(BrowserSnapshotTool::new(permissions.clone())));
-        subtool_registry.register(Arc::new(BrowserClickTool::new(permissions.clone())));
-        subtool_registry.register(Arc::new(BrowserTypeTool::new(permissions.clone())));
-        subtool_registry.register(Arc::new(BrowserPressKeyTool::new(permissions.clone())));
-        subtool_registry.register(Arc::new(BrowserScreenshotTool::new(permissions.clone())));
-        subtool_registry.register(Arc::new(BrowserScrollTool::new(permissions.clone())));
-        subtool_registry.register(Arc::new(BrowserConsoleTool::new(permissions.clone())));
-        subtool_registry.register(Arc::new(BrowserDialogTool::new(permissions.clone())));
-        subtool_registry.register(Arc::new(ComputerUseTool::new(permissions.clone())));
+        subtool_registry.register(Arc::new(ReadFileTool::new()));
+        subtool_registry.register(Arc::new(GrepTool::new()));
+        subtool_registry.register(Arc::new(GlobTool::new()));
+        subtool_registry.register(Arc::new(WebFetchTool::new()));
+        subtool_registry.register(Arc::new(WebExecuteJsTool::new()));
+        subtool_registry.register(Arc::new(BrowserNavigateTool::new()));
+        subtool_registry.register(Arc::new(BrowserSnapshotTool::new()));
+        subtool_registry.register(Arc::new(BrowserClickTool::new()));
+        subtool_registry.register(Arc::new(BrowserTypeTool::new()));
+        subtool_registry.register(Arc::new(BrowserPressKeyTool::new()));
+        subtool_registry.register(Arc::new(BrowserScreenshotTool::new()));
+        subtool_registry.register(Arc::new(BrowserScrollTool::new()));
+        subtool_registry.register(Arc::new(BrowserConsoleTool::new()));
+        subtool_registry.register(Arc::new(BrowserDialogTool::new()));
+        subtool_registry.register(Arc::new(ComputerUseTool::new()));
         #[cfg(feature = "web-search")]
-        subtool_registry.register(Arc::new(WebSearchTool::new(permissions.clone())));
+        subtool_registry.register(Arc::new(WebSearchTool::new()));
         let _subtools = Arc::new(subtool_registry);
 
         // P8 · sub-agent session table (created early — DelegateTool below needs it)
@@ -200,33 +202,33 @@ impl EarthPlate {
         > = Arc::new(Mutex::new(HashMap::new()));
 
         let mut tool_registry = ToolRegistry::new();
-        tool_registry.register(Arc::new(ReadFileTool::new(permissions.clone())));
-        tool_registry.register(Arc::new(WriteFileTool::new(permissions.clone())));
-        tool_registry.register(Arc::new(ShellTool::new(permissions.clone())));
-        tool_registry.register(Arc::new(GrepTool::new(permissions.clone())));
-        tool_registry.register(Arc::new(GlobTool::new(permissions.clone())));
-        tool_registry.register(Arc::new(EditTool::new(permissions.clone())));
-        tool_registry.register(Arc::new(LspTool::new(permissions.clone())));
+        tool_registry.register(Arc::new(ReadFileTool::new()));
+        tool_registry.register(Arc::new(WriteFileTool::new()));
+        tool_registry.register(Arc::new(ShellTool::new()));
+        tool_registry.register(Arc::new(GrepTool::new()));
+        tool_registry.register(Arc::new(GlobTool::new()));
+        tool_registry.register(Arc::new(EditTool::new()));
+        tool_registry.register(Arc::new(LspTool::new()));
         // P3 · plan-mode control tools (read-only, non-destructive — D1)
         tool_registry.register(Arc::new(EnterPlanModeTool));
         tool_registry.register(Arc::new(ExitPlanModeTool));
         // P6 · worktree isolation tools
-        tool_registry.register(Arc::new(EnterWorktreeTool::new(permissions.clone())));
+        tool_registry.register(Arc::new(EnterWorktreeTool::new()));
         tool_registry.register(Arc::new(ExitWorktreeTool));
-        tool_registry.register(Arc::new(WebFetchTool::new(permissions.clone())));
-        tool_registry.register(Arc::new(WebExecuteJsTool::new(permissions.clone())));
-        tool_registry.register(Arc::new(BrowserNavigateTool::new(permissions.clone())));
-        tool_registry.register(Arc::new(BrowserSnapshotTool::new(permissions.clone())));
-        tool_registry.register(Arc::new(BrowserClickTool::new(permissions.clone())));
-        tool_registry.register(Arc::new(BrowserTypeTool::new(permissions.clone())));
-        tool_registry.register(Arc::new(BrowserPressKeyTool::new(permissions.clone())));
-        tool_registry.register(Arc::new(BrowserScreenshotTool::new(permissions.clone())));
-        tool_registry.register(Arc::new(BrowserScrollTool::new(permissions.clone())));
-        tool_registry.register(Arc::new(BrowserConsoleTool::new(permissions.clone())));
-        tool_registry.register(Arc::new(BrowserDialogTool::new(permissions.clone())));
-        tool_registry.register(Arc::new(ComputerUseTool::new(permissions.clone())));
+        tool_registry.register(Arc::new(WebFetchTool::new()));
+        tool_registry.register(Arc::new(WebExecuteJsTool::new()));
+        tool_registry.register(Arc::new(BrowserNavigateTool::new()));
+        tool_registry.register(Arc::new(BrowserSnapshotTool::new()));
+        tool_registry.register(Arc::new(BrowserClickTool::new()));
+        tool_registry.register(Arc::new(BrowserTypeTool::new()));
+        tool_registry.register(Arc::new(BrowserPressKeyTool::new()));
+        tool_registry.register(Arc::new(BrowserScreenshotTool::new()));
+        tool_registry.register(Arc::new(BrowserScrollTool::new()));
+        tool_registry.register(Arc::new(BrowserConsoleTool::new()));
+        tool_registry.register(Arc::new(BrowserDialogTool::new()));
+        tool_registry.register(Arc::new(ComputerUseTool::new()));
         #[cfg(feature = "web-search")]
-        tool_registry.register(Arc::new(WebSearchTool::new(permissions.clone())));
+        tool_registry.register(Arc::new(WebSearchTool::new()));
         // P8 · send_message (continue a sub-agent) + cross-worker scratchpad
         #[cfg(feature = "agent-tool")]
         tool_registry.register(Arc::new(SendMessageTool::new(
@@ -234,15 +236,15 @@ impl EarthPlate {
             _subtools.clone(),
             subagent_sessions.clone(),
         )));
-        tool_registry.register(Arc::new(ScratchpadWriteTool::new(permissions.clone())));
-        tool_registry.register(Arc::new(ScratchpadReadTool::new(permissions.clone())));
+        tool_registry.register(Arc::new(ScratchpadWriteTool::new()));
+        tool_registry.register(Arc::new(ScratchpadReadTool::new()));
 
         // Cron store shared between tool, runner, and REST API
         let cron_store = CronStore::new(cron_dir);
         #[cfg(feature = "cron")]
         tool_registry.register(Arc::new(CronTool::new(cron_store.clone())));
         #[cfg(feature = "git")]
-        tool_registry.register(Arc::new(GitTool::new(permissions.clone())));
+        tool_registry.register(Arc::new(GitTool::new()));
 
         // Task store — CRUD task tracking, shared for potential REST API access
         let task_store = TaskStore::new();
@@ -253,7 +255,6 @@ impl EarthPlate {
             Arc::new(Mutex::new(HashMap::new()));
         tool_registry.register(Arc::new(AskUserQuestionTool::new(
             pending_questions.clone(),
-            permissions.clone(),
         )));
 
         // Connect MCP servers and register their tools
@@ -262,7 +263,6 @@ impl EarthPlate {
             McpManager::connect_all(
                 &config_loader.app_config.mcp_servers,
                 &mut tool_registry,
-                permissions.clone(),
             );
         }
 
@@ -297,7 +297,6 @@ impl EarthPlate {
         // P1 · Register DelegateTool with Store for sub-agent session persistence
         #[cfg(feature = "agent-tool")]
         tool_registry.register(Arc::new(DelegateTool::new(
-            permissions.clone(),
             main_core.clone(),
             _subtools.clone(),
             store.clone(),
@@ -325,7 +324,6 @@ impl EarthPlate {
                 reg.register(Arc::new(
                     crate::palaces::zhen_tool::builtin::toolsearch::ToolSearchTool::new(
                         weak,
-                        permissions.clone(),
                     ),
                 ));
             }
@@ -404,131 +402,17 @@ impl EarthPlate {
 
     /// P6 · rebuild a tool registry scoped to a worktree root.
     ///
-    /// Constructs a fresh `ToolRegistry` with a sub-domain `PermissionMatrix`
-    /// rooted at `root` (file/shell/git tools execute against the worktree),
-    /// reusing the shared handles (Store/JiaCore/TaskStore/SkillRegistry/Cron/
-    /// pending_questions) — only the matrix differs (E3). MCP/WASM tools are
-    /// copied from `earth.tools` (they keep the global matrix; v1 limitation).
-    /// LSP servers are shared via the per-process `LspManager` inside `LspTool`
-    /// (D3: not restarted, just re-didOpen on the new root).
-    pub fn rebuild_tools_for_root(&self, root: &std::path::Path) -> Arc<ToolRegistry> {
-        // Force project_root = worktree by overriding the cloned security section.
+    /// Build an ExecContext scoped to `root` (worktree or project workspace).
+    /// Tools are stateless singletons on `self.tools` (六仪不动); only the
+    /// ExecContext is replaced — O(1) instead of O(n) tool rebuild.
+    pub fn build_worktree_exec_ctx(&self, root: &std::path::Path) -> ExecContext {
         let mut sec = self.config.app_config.security.clone();
         sec.project_root = Some(root.to_string_lossy().to_string());
         let matrix = Arc::new(
             PermissionMatrix::from_config(&sec, root, self.backup_dir.clone())
                 .with_sandbox(&sec.sandbox),
         );
-
-        // Read-only subtools for delegate (rebuilt with the sub-matrix)
-        let mut subtools = ToolRegistry::new();
-        subtools.register(Arc::new(ReadFileTool::new(matrix.clone())));
-        subtools.register(Arc::new(GrepTool::new(matrix.clone())));
-        subtools.register(Arc::new(GlobTool::new(matrix.clone())));
-        subtools.register(Arc::new(WebFetchTool::new(matrix.clone())));
-        subtools.register(Arc::new(WebExecuteJsTool::new(matrix.clone())));
-        subtools.register(Arc::new(BrowserNavigateTool::new(matrix.clone())));
-        subtools.register(Arc::new(BrowserSnapshotTool::new(matrix.clone())));
-        subtools.register(Arc::new(BrowserClickTool::new(matrix.clone())));
-        subtools.register(Arc::new(BrowserTypeTool::new(matrix.clone())));
-        subtools.register(Arc::new(BrowserPressKeyTool::new(matrix.clone())));
-        subtools.register(Arc::new(BrowserScreenshotTool::new(matrix.clone())));
-        subtools.register(Arc::new(BrowserScrollTool::new(matrix.clone())));
-        subtools.register(Arc::new(BrowserConsoleTool::new(matrix.clone())));
-        subtools.register(Arc::new(BrowserDialogTool::new(matrix.clone())));
-        subtools.register(Arc::new(ComputerUseTool::new(matrix.clone())));
-        #[cfg(feature = "web-search")]
-        subtools.register(Arc::new(WebSearchTool::new(matrix.clone())));
-        let subtools = Arc::new(subtools);
-
-        let mut reg = ToolRegistry::new();
-        reg.register(Arc::new(ReadFileTool::new(matrix.clone())));
-        reg.register(Arc::new(WriteFileTool::new(matrix.clone())));
-        reg.register(Arc::new(ShellTool::new(matrix.clone())));
-        reg.register(Arc::new(GrepTool::new(matrix.clone())));
-        reg.register(Arc::new(GlobTool::new(matrix.clone())));
-        reg.register(Arc::new(EditTool::new(matrix.clone())));
-        reg.register(Arc::new(LspTool::new(matrix.clone())));
-        reg.register(Arc::new(EnterPlanModeTool));
-        reg.register(Arc::new(ExitPlanModeTool));
-        reg.register(Arc::new(EnterWorktreeTool::new(matrix.clone())));
-        reg.register(Arc::new(ExitWorktreeTool));
-        reg.register(Arc::new(WebFetchTool::new(matrix.clone())));
-        reg.register(Arc::new(WebExecuteJsTool::new(matrix.clone())));
-        reg.register(Arc::new(BrowserNavigateTool::new(matrix.clone())));
-        reg.register(Arc::new(BrowserSnapshotTool::new(matrix.clone())));
-        reg.register(Arc::new(BrowserClickTool::new(matrix.clone())));
-        reg.register(Arc::new(BrowserTypeTool::new(matrix.clone())));
-        reg.register(Arc::new(BrowserPressKeyTool::new(matrix.clone())));
-        reg.register(Arc::new(BrowserScreenshotTool::new(matrix.clone())));
-        reg.register(Arc::new(BrowserScrollTool::new(matrix.clone())));
-        reg.register(Arc::new(BrowserConsoleTool::new(matrix.clone())));
-        reg.register(Arc::new(BrowserDialogTool::new(matrix.clone())));
-        reg.register(Arc::new(ComputerUseTool::new(matrix.clone())));
-        #[cfg(feature = "web-search")]
-        reg.register(Arc::new(WebSearchTool::new(matrix.clone())));
-        #[cfg(feature = "agent-tool")]
-        reg.register(Arc::new(DelegateTool::new(
-            matrix.clone(),
-            self.main_core.clone(),
-            subtools.clone(),
-            self.store.clone(),
-            self.subagent_sessions.clone(),
-        )));
-        #[cfg(feature = "agent-tool")]
-        reg.register(Arc::new(SendMessageTool::new(
-            self.main_core.clone(),
-            subtools.clone(),
-            self.subagent_sessions.clone(),
-        )));
-        reg.register(Arc::new(ScratchpadWriteTool::new(matrix.clone())));
-        reg.register(Arc::new(ScratchpadReadTool::new(matrix.clone())));
-        #[cfg(feature = "cron")]
-        reg.register(Arc::new(CronTool::new(self.cron.clone())));
-        #[cfg(feature = "git")]
-        reg.register(Arc::new(GitTool::new(matrix.clone())));
-        reg.register(Arc::new(TaskTool::new(self.task_store.clone())));
-        reg.register(Arc::new(AskUserQuestionTool::new(
-            self.pending_questions.clone(),
-            matrix.clone(),
-        )));
-        reg.register(Arc::new(NamaRupaTool::new(self.store.clone())));
-        reg.register(Arc::new(SkillTool::new(self.skills.clone())));
-
-        // Reuse external (MCP/WASM) tools from the global registry — they keep
-        // the global matrix (v1 limitation: MCP tools in a worktree use the
-        // global root). Builtins above are rebuilt with the sub-matrix. Preserve
-        // external-ness so toolsearch finds them. Skip toolsearch (added below
-        // scoped to THIS registry via Weak).
-        for name in self.tools.list_names() {
-            if name.as_str() == "toolsearch" {
-                continue;
-            }
-            if reg.get(name).is_none()
-                && let Some(t) = self.tools.get(name)
-            {
-                if self.tools.is_external(name) {
-                    reg.register_external(t.clone());
-                } else {
-                    reg.register(t.clone());
-                }
-            }
-        }
-
-        let mut reg = Arc::new(reg);
-        // P9 · ToolSearchTool scoped to this (worktree) registry.
-        {
-            let weak = std::sync::Arc::downgrade(&reg);
-            if let Some(r) = std::sync::Arc::get_mut(&mut reg) {
-                r.register(Arc::new(
-                    crate::palaces::zhen_tool::builtin::toolsearch::ToolSearchTool::new(
-                        weak,
-                        matrix.clone(),
-                    ),
-                ));
-            }
-        }
-        reg
+        ExecContext { permissions: matrix }
     }
 
     /// Spawn a background agent task for a cron job prompt.
@@ -546,15 +430,14 @@ impl EarthPlate {
             );
             let distilled_hashes = earth.store.load_distilled_hashes(&session_id);
             let workspace = earth.data_dir.join("workspace");
-            let scoped_tools = earth.rebuild_tools_for_root(&workspace);
             let mut agent = Agent::with_session(
                 session_id.clone(),
                 earth.clone(),
                 Vec::new(),
                 Manas::default(),
                 distilled_hashes,
-                scoped_tools,
             );
+            agent.exec_ctx = earth.build_worktree_exec_ctx(&workspace);
             let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
 
             let messages = vec![Message::text(Role::User, prompt.clone())];
@@ -746,15 +629,14 @@ async fn run_io_agent(earth: Arc<EarthPlate>, input: crate::palaces::kan_io::Cha
     );
     let distilled_hashes = earth.store.load_distilled_hashes(&session_id);
     let workspace = earth.data_dir.join("workspace");
-    let scoped_tools = earth.rebuild_tools_for_root(&workspace);
     let mut agent = Agent::with_session(
         session_id.clone(),
         earth.clone(),
         history,
         manas,
         distilled_hashes,
-        scoped_tools,
     );
+    agent.exec_ctx = earth.build_worktree_exec_ctx(&workspace);
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
 
     let messages = vec![Message::text(Role::User, text.clone())];

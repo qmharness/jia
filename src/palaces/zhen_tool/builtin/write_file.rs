@@ -1,19 +1,18 @@
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::palaces::qian_permission::{PathOp, PermissionMatrix};
+use crate::palaces::qian_permission::PathOp;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, WriteAction};
 
 pub struct WriteFileTool {
-    permissions: Arc<PermissionMatrix>,
 }
 
 impl WriteFileTool {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
-        Self { permissions }
+    pub fn new() -> Self {
+        Self {}
     }
 }
 
@@ -59,12 +58,12 @@ impl BaseTool for WriteFileTool {
         false
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
         let path = input["path"].as_str().ok_or("Missing 'path' parameter")?;
         let content = input["content"]
             .as_str()
             .ok_or("Missing 'content' parameter")?;
-        let canonical = self.permissions.verify_path(path, PathOp::Write)?;
+        let canonical = ctx.permissions.verify_path(path, PathOp::Write)?;
 
         // Backup existing file before overwriting
         if tokio::fs::try_exists(&canonical).await.unwrap_or(false) {
@@ -72,7 +71,7 @@ impl BaseTool for WriteFileTool {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
-            let backup_dir = self.permissions.backup_dir.join(ts.to_string());
+            let backup_dir = ctx.permissions.backup_dir.join(ts.to_string());
             if let Ok(()) = tokio::fs::create_dir_all(&backup_dir).await
                 && let Some(fname) = canonical.file_name()
             {
@@ -93,6 +92,14 @@ impl BaseTool for WriteFileTool {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use crate::palaces::qian_permission::PermissionMatrix;
+    fn test_ctx() -> crate::stems::action::ExecContext {
+        use std::sync::Arc;
+        use crate::palaces::qian_permission::PermissionMatrix;
+        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+    }
+
     use super::*;
 
     fn test_perms() -> Arc<PermissionMatrix> {
@@ -101,12 +108,12 @@ mod tests {
 
     #[tokio::test]
     async fn write_and_read_file() {
-        let tool = WriteFileTool::new(test_perms());
+        let tool = WriteFileTool::new();
         let result = tool
             .execute(serde_json::json!({
                 "path": "jia-test-write.txt",
                 "content": "hello jia"
-            }))
+            }), &test_ctx())
             .await;
         assert!(result.is_ok());
 
@@ -119,10 +126,10 @@ mod tests {
 
     #[tokio::test]
     async fn write_file_missing_params() {
-        let tool = WriteFileTool::new(test_perms());
-        assert!(tool.execute(serde_json::json!({})).await.is_err());
+        let tool = WriteFileTool::new();
+        assert!(tool.execute(serde_json::json!({}), &test_ctx()).await.is_err());
         assert!(
-            tool.execute(serde_json::json!({"path": "/tmp/test.txt"}))
+            tool.execute(serde_json::json!({"path": "/tmp/test.txt"}), &test_ctx())
                 .await
                 .is_err()
         );

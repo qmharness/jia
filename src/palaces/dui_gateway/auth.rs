@@ -1,6 +1,7 @@
+use std::sync::Arc;
 use std::collections::HashMap;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use axum::extract::{Request, State};
@@ -142,21 +143,32 @@ pub async fn rate_limit_middleware(
     request: Request,
     next: Next,
 ) -> Response {
+    // Prefer the connection's peer socket address (spoof-proof).
+    // Fall back to X-Forwarded-For / X-Real-IP when behind a reverse proxy
+    // that sets these headers (localhost dev, or production with trusted proxy).
     let ip = request
-        .headers()
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.split(',').next())
-        .map(|s| s.trim())
+        .extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .map(|ci| ci.0.ip().to_string())
+        .filter(|addr| addr != "127.0.0.1" && addr != "::1")
+        .or_else(|| {
+            request
+                .headers()
+                .get("x-forwarded-for")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.split(',').next())
+                .map(|s| s.trim().to_string())
+        })
         .or_else(|| {
             request
                 .headers()
                 .get("x-real-ip")
                 .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
         })
-        .unwrap_or("127.0.0.1");
+        .unwrap_or_else(|| "127.0.0.1".to_string());
 
-    if state.rate_limiter.check(ip) {
+    if state.rate_limiter.check(&ip) {
         next.run(request).await
     } else {
         let body = serde_json::json!({"error": "rate limit exceeded", "retry_after_seconds": 60});

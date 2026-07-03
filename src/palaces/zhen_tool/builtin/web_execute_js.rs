@@ -3,13 +3,12 @@
 // Connects to a Chromium-based browser running with --remote-debugging-port.
 // Each call: connect → snapshot optHTML → eval user script → snapshot optHTML → diff → return.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::palaces::qian_permission::PermissionMatrix;
+use crate::stems::action::ExecContext;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::intent::CeremoniesIntent;
 use crate::stems::intent::CommunicateAction;
@@ -25,14 +24,12 @@ const OPT_HTML_JS: &str = include_str!("opt_html.js");
 
 pub struct WebExecuteJsTool {
     #[allow(dead_code)]
-    permissions: Arc<PermissionMatrix>,
     client: reqwest::Client,
 }
 
 impl WebExecuteJsTool {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
+    pub fn new() -> Self {
         Self {
-            permissions,
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(30))
                 .build()
@@ -91,7 +88,7 @@ impl BaseTool for WebExecuteJsTool {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
         let script = input["script"].as_str().unwrap_or("");
         let tab_id = input["tab_id"].as_str();
 

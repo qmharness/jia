@@ -1,11 +1,11 @@
-use std::sync::Arc;
 use std::time::SystemTime;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::palaces::qian_permission::{PathOp, PermissionMatrix};
+use crate::palaces::qian_permission::PathOp;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, ReadAction};
 
 /// 震三宫 · Glob — file discovery by name pattern.
@@ -13,13 +13,11 @@ use crate::stems::intent::{CeremoniesIntent, ReadAction};
 /// Complements `grep` (content search): `glob` finds files by name,
 /// `grep` finds text within files. Read-only (戊仪 Wu ceremony),
 /// routes to 震三 (Zhen) palace. GeJu evaluates as Direct.
-pub struct GlobTool {
-    permissions: Arc<PermissionMatrix>,
-}
+pub struct GlobTool;
 
 impl GlobTool {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
-        Self { permissions }
+    pub fn new() -> Self {
+        Self
     }
 }
 
@@ -76,7 +74,7 @@ impl BaseTool for GlobTool {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
         let pattern = input["pattern"]
             .as_str()
             .ok_or("Missing 'pattern' parameter")?;
@@ -85,7 +83,7 @@ impl BaseTool for GlobTool {
         let max_results = input["max_results"].as_u64().unwrap_or(100) as usize;
 
         // Sandbox the base directory (confines traversal to project root)
-        let search_root = self.permissions.verify_path(raw_path, PathOp::Read)?;
+        let search_root = ctx.permissions.verify_path(raw_path, PathOp::Read)?;
         let search_root = if search_root.is_dir() {
             search_root
         } else {
@@ -140,19 +138,22 @@ impl BaseTool for GlobTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use crate::palaces::qian_permission::PermissionMatrix;
 
-    fn test_perms() -> Arc<PermissionMatrix> {
-        Arc::new(PermissionMatrix::default())
+    fn test_ctx() -> ExecContext {
+        ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
     }
 
     #[tokio::test]
     async fn glob_finds_rs_files() {
-        let tool = GlobTool::new(test_perms());
+        let tool = GlobTool::new();
+        let ctx = test_ctx();
         let result = tool
             .execute(serde_json::json!({
                 "pattern": "*.rs",
                 "path": "src/palaces/zhen_tool/builtin"
-            }))
+            }), &ctx)
             .await;
         assert!(result.is_ok(), "glob failed: {:?}", result.err());
         let out = result.unwrap();
@@ -162,12 +163,13 @@ mod tests {
 
     #[tokio::test]
     async fn glob_recursive_double_star() {
-        let tool = GlobTool::new(test_perms());
+        let tool = GlobTool::new();
+        let ctx = test_ctx();
         let result = tool
             .execute(serde_json::json!({
                 "pattern": "**/*.toml",
                 "path": "."
-            }))
+            }), &ctx)
             .await;
         assert!(result.is_ok(), "glob failed: {:?}", result.err());
         let out = result.unwrap();
@@ -176,11 +178,12 @@ mod tests {
 
     #[tokio::test]
     async fn glob_no_match() {
-        let tool = GlobTool::new(test_perms());
+        let tool = GlobTool::new();
+        let ctx = test_ctx();
         let result = tool
             .execute(serde_json::json!({
                 "pattern": "this_does_not_exist_*.xyz"
-            }))
+            }), &ctx)
             .await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("No files matched"));
@@ -188,20 +191,22 @@ mod tests {
 
     #[tokio::test]
     async fn glob_missing_pattern() {
-        let tool = GlobTool::new(test_perms());
-        let result = tool.execute(serde_json::json!({})).await;
+        let tool = GlobTool::new();
+        let ctx = test_ctx();
+        let result = tool.execute(serde_json::json!({}), &ctx).await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn glob_max_results_truncates() {
-        let tool = GlobTool::new(test_perms());
+        let tool = GlobTool::new();
+        let ctx = test_ctx();
         let result = tool
             .execute(serde_json::json!({
                 "pattern": "**/*.rs",
                 "path": "src",
                 "max_results": 2
-            }))
+            }), &ctx)
             .await;
         assert!(result.is_ok());
         let out = result.unwrap();

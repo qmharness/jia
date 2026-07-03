@@ -1,5 +1,5 @@
-use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
 
 use super::base::BaseTool;
 
@@ -96,9 +96,9 @@ impl Default for ToolRegistry {
 
 #[cfg(test)]
 mod tests {
+    use crate::stems::action::ExecContext;
     use super::*;
     use crate::stems::intent::ReadAction;
-    use std::sync::Arc;
 
     struct DummyTool;
     #[async_trait::async_trait]
@@ -120,7 +120,7 @@ mod tests {
         fn is_concurrency_safe(&self) -> bool {
             false
         }
-        async fn execute(&self, _input: serde_json::Value) -> Result<String, String> {
+        async fn execute(&self, _input: serde_json::Value, _ctx: &ExecContext) -> Result<String, String> {
             Ok("ok".into())
         }
     }
@@ -146,7 +146,7 @@ mod tests {
         fn is_concurrency_safe(&self) -> bool {
             false
         }
-        async fn execute(&self, _input: serde_json::Value) -> Result<String, String> {
+        async fn execute(&self, _input: serde_json::Value, _ctx: &ExecContext) -> Result<String, String> {
             Ok("ok".into())
         }
     }

@@ -275,8 +275,7 @@ impl ZuowangPipeline {
             - dissolved
             - weakened
             - downgraded
-            - always_to_downgrade.len()
-            - score_protected;
+            - always_to_downgrade.len();
 
         // Collect up to 5 dissolved seed digests, sorted by lowest score first
         let mut dissolved_sample: Vec<SeedDigest> = scored

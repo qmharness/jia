@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use serde::{Deserialize, Serialize};
 
 use crate::palaces::Palace;
 use crate::palaces::gen_store::Store;

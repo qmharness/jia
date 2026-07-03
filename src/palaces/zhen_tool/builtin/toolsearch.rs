@@ -1,11 +1,12 @@
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
+use std::sync::Weak;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::palaces::qian_permission::PermissionMatrix;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::palaces::zhen_tool::registry::ToolRegistry;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, ReadAction};
 
 /// P9 · ToolSearch — discover external (MCP/WASM) tools on demand.
@@ -22,16 +23,11 @@ use crate::stems::intent::{CeremoniesIntent, ReadAction};
 /// registration time (the tool is registered into the registry it searches).
 pub struct ToolSearchTool {
     registry: Weak<ToolRegistry>,
-    #[allow(dead_code)]
-    permissions: Arc<PermissionMatrix>,
 }
 
 impl ToolSearchTool {
-    pub fn new(registry: Weak<ToolRegistry>, permissions: Arc<PermissionMatrix>) -> Self {
-        Self {
-            registry,
-            permissions,
-        }
+    pub fn new(registry: Weak<ToolRegistry>) -> Self {
+        Self { registry }
     }
 }
 
@@ -74,7 +70,7 @@ impl BaseTool for ToolSearchTool {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
         let query = input["query"].as_str().ok_or("Missing 'query' parameter")?;
         let limit = input["limit"].as_u64().unwrap_or(8) as usize;
         let query_lower = query.to_lowercase();
@@ -138,6 +134,14 @@ impl BaseTool for ToolSearchTool {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use crate::palaces::qian_permission::PermissionMatrix;
+    fn test_ctx() -> crate::stems::action::ExecContext {
+        use std::sync::Arc;
+        use crate::palaces::qian_permission::PermissionMatrix;
+        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+    }
+
     use super::*;
 
     struct DummyExternal {
@@ -163,7 +167,7 @@ mod tests {
         fn is_concurrency_safe(&self) -> bool {
             true
         }
-        async fn execute(&self, _input: Value) -> Result<String, String> {
+        async fn execute(&self, _input: Value, _ctx: &ExecContext) -> Result<String, String> {
             Ok("ok".into())
         }
     }
@@ -181,10 +185,10 @@ mod tests {
         }));
         let reg_arc = Arc::new(reg);
         let weak = Arc::downgrade(&reg_arc);
-        let tool = ToolSearchTool::new(weak, Arc::new(PermissionMatrix::default()));
+        let tool = ToolSearchTool::new(weak);
 
         let res = tool
-            .execute(serde_json::json!({ "query": "github" }))
+            .execute(serde_json::json!({ "query": "github" }), &test_ctx())
             .await
             .unwrap();
         assert!(res.contains("mcp_github"));
@@ -196,9 +200,9 @@ mod tests {
     async fn toolsearch_no_external() {
         let reg_arc = Arc::new(ToolRegistry::new());
         let weak = Arc::downgrade(&reg_arc);
-        let tool = ToolSearchTool::new(weak, Arc::new(PermissionMatrix::default()));
+        let tool = ToolSearchTool::new(weak);
         let res = tool
-            .execute(serde_json::json!({ "query": "anything" }))
+            .execute(serde_json::json!({ "query": "anything" }), &test_ctx())
             .await
             .unwrap();
         assert!(res.contains("No external"));
@@ -214,9 +218,9 @@ mod tests {
         }));
         let reg_arc = Arc::new(reg);
         let weak = Arc::downgrade(&reg_arc);
-        let tool = ToolSearchTool::new(weak, Arc::new(PermissionMatrix::default()));
+        let tool = ToolSearchTool::new(weak);
         let res = tool
-            .execute(serde_json::json!({ "query": "zzznomatch" }))
+            .execute(serde_json::json!({ "query": "zzznomatch" }), &test_ctx())
             .await
             .unwrap();
         assert!(res.contains("No external tools matched"));

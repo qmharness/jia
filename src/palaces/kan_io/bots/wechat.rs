@@ -1,3 +1,4 @@
+use std::sync::Arc;
 // ── WeChat Bot (iLink long-polling) ──────────────────────────
 //
 // Connects Jia to personal WeChat accounts via Tencent's iLink Bot API.
@@ -7,7 +8,6 @@
 // Phase 1: text messages only. Media (AES-128-ECB CDN) is Phase 2.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use futures::FutureExt;
 use serde::Deserialize;

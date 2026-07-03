@@ -1,3 +1,4 @@
+use std::sync::Arc;
 // ── Module declarations ───────────────────────────────────────
 
 // Core types
@@ -28,7 +29,6 @@ pub use palaces::zhong_core as provider;
 
 use palaces::kun_config::AppConfig;
 use plates::di_earth::EarthPlate;
-use std::sync::Arc;
 
 /// 起局 (qi ju) — Assemble the agent runtime.
 ///

@@ -3,13 +3,12 @@
 // Uses the backendDOMNodeId from browser_snapshot's [ref=eNNN] markers.
 // Resolves the node via DOM.resolveNode, then scrolls into view and clicks.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::palaces::qian_permission::PermissionMatrix;
+use crate::stems::action::ExecContext;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::intent::CeremoniesIntent;
 use crate::stems::intent::CommunicateAction;
@@ -20,14 +19,12 @@ use crate::palaces::zhen_tool::browser_cdp;
 
 pub struct BrowserClickTool {
     #[allow(dead_code)]
-    permissions: Arc<PermissionMatrix>,
     client: reqwest::Client,
 }
 
 impl BrowserClickTool {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
+    pub fn new() -> Self {
         Self {
-            permissions,
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(30))
                 .build()
@@ -82,7 +79,7 @@ impl BaseTool for BrowserClickTool {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
         let ref_str = input["ref"].as_str().ok_or("missing 'ref' parameter")?;
         let tab_id = input["tab_id"].as_str();
 

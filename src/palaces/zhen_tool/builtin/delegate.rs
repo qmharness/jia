@@ -6,17 +6,16 @@ use futures::StreamExt;
 use serde_json::Value;
 
 use crate::palaces::gen_store::Store;
-use crate::palaces::qian_permission::PermissionMatrix;
 use crate::palaces::zhen_tool::base::BaseTool;
+
 use crate::palaces::zhen_tool::registry::ToolRegistry;
 use crate::palaces::zhong_core::JiaCore;
 use crate::plates::tian_heaven::r#loop::parse_tool_calls;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, ReadAction};
 use crate::types::{Message, Role};
 
 pub struct DelegateTool {
-    #[allow(dead_code)]
-    permissions: Arc<PermissionMatrix>,
     core: Arc<JiaCore>,
     /// Read-only tools available to sub-agents
     subtools: Arc<ToolRegistry>,
@@ -28,14 +27,12 @@ pub struct DelegateTool {
 
 impl DelegateTool {
     pub fn new(
-        permissions: Arc<PermissionMatrix>,
         core: Arc<JiaCore>,
         subtools: Arc<ToolRegistry>,
         store: Arc<Store>,
         sessions: Arc<Mutex<HashMap<String, SubagentSession>>>,
     ) -> Self {
         Self {
-            permissions,
             core,
             subtools,
             sessions,
@@ -182,7 +179,7 @@ impl BaseTool for DelegateTool {
         true
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
         let subagent_type = SubagentType::from_str(
             input["subagent_type"]
                 .as_str()
@@ -199,7 +196,7 @@ impl BaseTool for DelegateTool {
         let mut messages = vec![Message::text(Role::System, system_content)];
 
         let result =
-            run_subagent_loop(&self.core, &self.subtools, &mut messages, max_turns).await?;
+            run_subagent_loop(&self.core, &self.subtools, &mut messages, max_turns, ctx).await?;
 
         // P8 · persist the sub-agent conversation for send_message continuation.
         let subagent_id = uuid::Uuid::new_v4().to_string();
@@ -253,6 +250,7 @@ async fn run_subagent_loop(
     subtools: &ToolRegistry,
     messages: &mut Vec<Message>,
     max_turns: usize,
+    exec_ctx: &ExecContext,
 ) -> Result<String, String> {
     let mut total_response = String::new();
 
@@ -306,7 +304,7 @@ async fn run_subagent_loop(
                     continue;
                 }
             };
-            match tool.execute(tc.parameters.clone()).await {
+            match tool.execute(tc.parameters.clone(), exec_ctx).await {
                 Ok(output) => messages.push(Message::text(Role::User, output)),
                 Err(e) => messages.push(Message::text(Role::User, format!("Error: {e}"))),
             }
@@ -421,7 +419,7 @@ impl BaseTool for SendMessageTool {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
         let subagent_id = input["subagent_id"]
             .as_str()
             .ok_or("Missing 'subagent_id' parameter")?;
@@ -445,7 +443,7 @@ impl BaseTool for SendMessageTool {
 
         messages.push(Message::text(Role::User, message.to_string()));
         let result =
-            run_subagent_loop(&self.core, &self.subtools, &mut messages, max_turns).await?;
+            run_subagent_loop(&self.core, &self.subtools, &mut messages, max_turns, ctx).await?;
 
         // Store the updated conversation back
         {
@@ -465,7 +463,15 @@ impl BaseTool for SendMessageTool {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use crate::palaces::qian_permission::PermissionMatrix;
+    fn test_ctx() -> crate::stems::action::ExecContext {
+        use std::sync::Arc;
+                crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+    }
+
     use super::*;
+use crate::stems::action::ExecContext;
     use crate::palaces::zhen_tool::builtin;
 
     fn test_perms() -> Arc<PermissionMatrix> {
@@ -490,9 +496,9 @@ mod tests {
     fn test_subtools() -> Arc<ToolRegistry> {
         let mut reg = ToolRegistry::new();
         reg.register(Arc::new(
-            builtin::read_file::ReadFileTool::new(test_perms()),
+            builtin::read_file::ReadFileTool::new(),
         ));
-        reg.register(Arc::new(builtin::grep::GrepTool::new(test_perms())));
+        reg.register(Arc::new(builtin::grep::GrepTool::new()));
         Arc::new(reg)
     }
 
@@ -524,15 +530,15 @@ mod tests {
     #[tokio::test]
     async fn delegate_missing_params() {
         let tool = DelegateTool::new(
-            test_perms(),
+
             test_core(),
             test_subtools(),
             test_store(),
             test_sessions(),
         );
-        assert!(tool.execute(serde_json::json!({})).await.is_err());
+        assert!(tool.execute(serde_json::json!({}), &test_ctx()).await.is_err());
         assert!(
-            tool.execute(serde_json::json!({"subagent_type": "Explore"}))
+            tool.execute(serde_json::json!({"subagent_type": "Explore"}), &test_ctx())
                 .await
                 .is_err()
         );
@@ -541,7 +547,7 @@ mod tests {
     #[tokio::test]
     async fn delegate_unknown_type() {
         let tool = DelegateTool::new(
-            test_perms(),
+
             test_core(),
             test_subtools(),
             test_store(),
@@ -551,7 +557,7 @@ mod tests {
             .execute(serde_json::json!({
                 "subagent_type": "invalid",
                 "prompt": "test"
-            }))
+            }), &test_ctx())
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Unknown subagent_type"));
@@ -566,7 +572,7 @@ mod tests {
         ]));
         let sessions = test_sessions();
         let tool = DelegateTool::new(
-            test_perms(),
+
             core,
             test_subtools(),
             test_store(),
@@ -576,7 +582,7 @@ mod tests {
             .execute(serde_json::json!({
                 "subagent_type": "Explore",
                 "prompt": "find X"
-            }))
+            }), &test_ctx())
             .await;
         assert!(res.is_ok(), "delegate failed: {:?}", res.err());
         let out = res.unwrap();
@@ -596,7 +602,7 @@ mod tests {
         ]));
         let sessions = test_sessions();
         let delegate = DelegateTool::new(
-            test_perms(),
+
             core,
             test_subtools(),
             test_store(),
@@ -606,7 +612,7 @@ mod tests {
             .execute(serde_json::json!({
                 "subagent_type": "Explore",
                 "prompt": "p"
-            }))
+            }), &test_ctx())
             .await
             .unwrap();
         let id = out
@@ -624,7 +630,7 @@ mod tests {
             .execute(serde_json::json!({
                 "subagent_id": id,
                 "message": "more?"
-            }))
+            }), &test_ctx())
             .await;
         assert!(res.is_ok(), "send_message failed: {:?}", res.err());
         assert_eq!(res.unwrap(), "follow-up answer");
@@ -637,7 +643,7 @@ mod tests {
             .execute(serde_json::json!({
                 "subagent_id": "nonexistent",
                 "message": "x"
-            }))
+            }), &test_ctx())
             .await;
         assert!(res.is_err());
         assert!(res.unwrap_err().contains("Unknown subagent_id"));

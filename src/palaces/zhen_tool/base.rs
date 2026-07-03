@@ -1,10 +1,14 @@
 use async_trait::async_trait;
+use crate::stems::action::ExecContext;
 
 /// 震三宫 — BaseTool trait
 ///
 /// Every tool must implement this trait. The `ceremony()` method
 /// declares which of the six ceremonial stems the tool belongs to,
 /// enabling GeJu evaluation.
+///
+/// 工具自身为 stateless 单例（注册于地盘，六仪不动）。
+/// 权限通过 ExecContext 在调用时注入（值符随时干旋转）。
 #[async_trait]
 pub trait BaseTool: Send + Sync {
     /// Unique tool name (e.g., "read_file", "write_file", "shell")
@@ -35,8 +39,9 @@ pub trait BaseTool: Send + Sync {
     /// Every tool MUST explicitly declare this — no default.
     fn is_concurrency_safe(&self) -> bool;
 
-    /// Execute the tool with the given JSON input
-    async fn execute(&self, input: serde_json::Value) -> Result<String, String>;
+    /// Execute the tool with the given JSON input and execution context.
+    /// Permissions are injected via `ctx` rather than held by the tool struct.
+    async fn execute(&self, input: serde_json::Value, ctx: &ExecContext) -> Result<String, String>;
 
     /// Target palace for GeJu evaluation.
     ///
@@ -64,7 +69,8 @@ pub trait BaseTool: Send + Sync {
         &self,
         input: serde_json::Value,
         _tx: &tokio::sync::mpsc::UnboundedSender<crate::plates::tian_heaven::r#loop::AgentEvent>,
+        ctx: &ExecContext,
     ) -> Result<String, String> {
-        self.execute(input).await
+        self.execute(input, ctx).await
     }
 }

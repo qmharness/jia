@@ -570,10 +570,12 @@ async fn stream_anthropic_response(
         }
     }
     // Emit a CacheHit usage signal when caching is active so the 神盘 can
-    // observe hit rate (P2 telemetry). Folded into the Usage chunk.
+    // observe hit rate (P2 telemetry). Note: input_tokens from the API already
+    // includes cache tokens (cache_read + cache_creation), so we emit a separate
+    // CacheHit chunk for telemetry rather than inflating the Usage chunk.
     if cache_read > 0 || cache_creation > 0 {
         let _ = tx.send(Ok(StreamChunk::Usage {
-            input_tokens: input_tokens + cache_read + cache_creation,
+            input_tokens,
             output_tokens,
         }));
         let _ = tx.send(Ok(StreamChunk::CacheHit {

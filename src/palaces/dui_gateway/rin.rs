@@ -23,12 +23,12 @@
 //     {"type":"confirm_resolved","id":"...","resolved":true}
 //     {"type":"answer_resolved","id":"...","resolved":true}
 
-use std::sync::Arc;
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::mpsc;
 
+use std::sync::Arc;
 use crate::plates::di_earth::EarthPlate;
 use crate::plates::ren_human::HumanPlate;
 use crate::plates::shen_spirit::RuntimeEvent;
@@ -49,13 +49,6 @@ pub fn spawn_rin_listener(
     let _ = std::fs::remove_file(&rin_sock);
 
     tokio::spawn(async move {
-        // Set restrictive permissions so only the daemon's UID can connect.
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&rin_sock, std::fs::Permissions::from_mode(0o600));
-        }
-
         let listener = match UnixListener::bind(&rin_sock) {
             Ok(l) => l,
             Err(e) => {
@@ -63,6 +56,13 @@ pub fn spawn_rin_listener(
                 return;
             }
         };
+
+        // Set restrictive permissions so only the daemon's UID can connect.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&rin_sock, std::fs::Permissions::from_mode(0o600));
+        }
 
         tracing::info!("rin: listening on {}", rin_sock.display());
 
@@ -562,12 +562,10 @@ async fn handle_rin_connection(
                                 return;
                             }
 
-                            // Build session-scoped tools for this project
-                            let scoped_tools = earth.rebuild_tools_for_root(
+                            let mut agent = Agent::with_session(sid.clone(), earth.clone(), history, manas, distilled_hashes);
+                            agent.exec_ctx = earth.build_worktree_exec_ctx(
                                 std::path::Path::new(&effective_cwd)
                             );
-
-                            let mut agent = Agent::with_session(sid.clone(), earth.clone(), history, manas, distilled_hashes, scoped_tools);
                             // P3 · apply user-set interaction mode (from /plan slash)
                             if let Some(mode) = earth.session_modes.lock().unwrap().get(&sid).copied() {
                                 agent.interaction_mode = mode;

@@ -1,3 +1,4 @@
+use std::sync::Arc;
 // ── Socket Connection ─────────────────────────────────────
 //
 // Unix socket connection to the Jia daemon via ~/.jia/rin.sock.
@@ -11,7 +12,6 @@
 
 use std::io;
 use std::path::Path;
-use std::sync::Arc;
 
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};

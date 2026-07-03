@@ -1,12 +1,11 @@
 // ── browser_navigate — Navigate browser to a URL via CDP Page.navigate ──
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::palaces::qian_permission::PermissionMatrix;
+use crate::stems::action::ExecContext;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::intent::CeremoniesIntent;
 use crate::stems::intent::CommunicateAction;
@@ -17,14 +16,12 @@ use crate::palaces::zhen_tool::browser_cdp;
 
 pub struct BrowserNavigateTool {
     #[allow(dead_code)]
-    permissions: Arc<PermissionMatrix>,
     client: reqwest::Client,
 }
 
 impl BrowserNavigateTool {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
+    pub fn new() -> Self {
         Self {
-            permissions,
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(30))
                 .build()
@@ -78,7 +75,7 @@ impl BaseTool for BrowserNavigateTool {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
         let url = input["url"].as_str().ok_or("missing 'url' parameter")?;
         let tab_id = input["tab_id"].as_str();
 

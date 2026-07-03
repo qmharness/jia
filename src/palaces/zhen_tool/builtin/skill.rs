@@ -6,6 +6,7 @@ use serde_json::Value;
 
 use crate::palaces::li_skill::SkillRegistry;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, CommunicateAction};
 
 /// A tool that bridges the ToolRegistry and SkillRegistry, allowing the LLM
@@ -92,7 +93,7 @@ impl BaseTool for SkillTool {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
         let skill_name = input["skill"].as_str().ok_or("Missing 'skill' parameter")?;
 
         let reg = self.registry.read().unwrap_or_else(|e| e.into_inner());
@@ -179,6 +180,12 @@ impl BaseTool for SkillTool {
 
 #[cfg(test)]
 mod tests {
+    fn test_ctx() -> crate::stems::action::ExecContext {
+        use std::sync::Arc;
+        use crate::palaces::qian_permission::PermissionMatrix;
+        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+    }
+
     use super::*;
     use crate::palaces::li_skill::{Skill, SkillRegistry};
     use std::collections::HashMap;
@@ -230,7 +237,7 @@ mod tests {
     async fn skill_tool_execute_returns_prompt() {
         let tool = SkillTool::new(test_registry());
         let result = tool
-            .execute(serde_json::json!({"skill": "code-review"}))
+            .execute(serde_json::json!({"skill": "code-review"}), &test_ctx())
             .await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("SQL injection"));
@@ -240,7 +247,7 @@ mod tests {
     async fn skill_tool_unknown_skill_returns_error_with_list() {
         let tool = SkillTool::new(test_registry());
         let result = tool
-            .execute(serde_json::json!({"skill": "nonexistent"}))
+            .execute(serde_json::json!({"skill": "nonexistent"}), &test_ctx())
             .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -251,7 +258,7 @@ mod tests {
     #[tokio::test]
     async fn skill_tool_missing_param() {
         let tool = SkillTool::new(test_registry());
-        let result = tool.execute(serde_json::json!({})).await;
+        let result = tool.execute(serde_json::json!({}), &test_ctx()).await;
         assert!(result.is_err());
     }
 }

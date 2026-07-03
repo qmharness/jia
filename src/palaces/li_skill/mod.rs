@@ -1,9 +1,9 @@
+use std::sync::Arc;
 pub mod evolution;
 pub mod loader;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::RwLock;
 use std::time::Duration;
 

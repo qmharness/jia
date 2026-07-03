@@ -1,15 +1,16 @@
+use std::sync::Arc;
 // ── Ask User Question Tool — Interactive user query ─────────
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use async_trait::async_trait;
 use serde_json::Value;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::palaces::qian_permission::PermissionMatrix;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::plates::tian_heaven::r#loop::AgentEvent;
+use crate::stems::action::ExecContext;
 use crate::stems::CeremoniesIntent;
 use crate::stems::intent::CommunicateAction;
 
@@ -22,17 +23,14 @@ pub struct PendingQuestion {
 
 pub struct AskUserQuestionTool {
     pending_questions: Arc<Mutex<HashMap<String, PendingQuestion>>>,
-    permissions: Arc<PermissionMatrix>,
 }
 
 impl AskUserQuestionTool {
     pub fn new(
         pending_questions: Arc<Mutex<HashMap<String, PendingQuestion>>>,
-        permissions: Arc<PermissionMatrix>,
     ) -> Self {
         Self {
             pending_questions,
-            permissions,
         }
     }
 }
@@ -90,7 +88,7 @@ impl BaseTool for AskUserQuestionTool {
         })
     }
 
-    async fn execute(&self, _input: Value) -> Result<String, String> {
+    async fn execute(&self, _input: Value, _ctx: &ExecContext) -> Result<String, String> {
         // Never called directly — execute_with_tx is used instead.
         Err("ask_user requires event channel access".into())
     }
@@ -99,6 +97,7 @@ impl BaseTool for AskUserQuestionTool {
         &self,
         input: Value,
         tx: &mpsc::UnboundedSender<AgentEvent>,
+        ctx: &ExecContext,
     ) -> Result<String, String> {
         let question = input["question"]
             .as_str()
@@ -113,7 +112,7 @@ impl BaseTool for AskUserQuestionTool {
 
         let id = uuid::Uuid::new_v4().to_string();
         let token = uuid::Uuid::new_v4().to_string();
-        let timeout_secs = self.permissions.confirmation_timeout.as_secs();
+        let timeout_secs = ctx.permissions.confirmation_timeout.as_secs();
 
         let (otx, orx) = oneshot::channel::<String>();
 

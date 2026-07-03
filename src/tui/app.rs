@@ -809,28 +809,21 @@ impl App {
     fn refresh_project_info(&mut self) {
         if let Ok(cwd) = std::env::current_dir() {
             let config_path = cwd.join(".jia").join("config.toml");
-            // Retry up to 10 times (100ms each) for daemon to write the file
-            for _ in 0..10 {
-                if let Ok(content) = std::fs::read_to_string(&config_path) {
-                    for line in content.lines() {
-                        if let Some(v) = line
-                            .strip_prefix("id = \"")
-                            .and_then(|s| s.strip_suffix('"'))
-                        {
-                            self.project_id = v.to_string();
-                        }
-                        if let Some(v) = line
-                            .strip_prefix("name = \"")
-                            .and_then(|s| s.strip_suffix('"'))
-                        {
-                            self.project_name = v.to_string();
-                        }
+            if let Ok(content) = std::fs::read_to_string(&config_path) {
+                for line in content.lines() {
+                    if let Some(v) = line
+                        .strip_prefix("id = \"")
+                        .and_then(|s| s.strip_suffix('"'))
+                    {
+                        self.project_id = v.to_string();
                     }
-                    if !self.project_id.is_empty() {
-                        return; // welcome box shows project info
+                    if let Some(v) = line
+                        .strip_prefix("name = \"")
+                        .and_then(|s| s.strip_suffix('"'))
+                    {
+                        self.project_name = v.to_string();
                     }
                 }
-                std::thread::sleep(std::time::Duration::from_millis(100));
             }
         }
     }

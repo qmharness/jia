@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use std::sync::Arc;
+use std::collections::HashSet;
 use std::time::Duration;
 
 use futures::StreamExt;

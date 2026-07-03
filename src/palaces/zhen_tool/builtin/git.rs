@@ -1,12 +1,11 @@
 // ── Git Tool — Execute safe git commands ─────────────────────
 
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::palaces::qian_permission::PermissionMatrix;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::CeremoniesIntent;
 use crate::stems::intent::ExecAction;
 
@@ -17,13 +16,11 @@ const ALLOWED_COMMANDS: &[&str] = &[
 
 const DANGEROUS_PATTERNS: &[&str] = &["push --force", "reset --hard", "clean -f", "clean -d"];
 
-pub struct GitTool {
-    permissions: Arc<PermissionMatrix>,
-}
+pub struct GitTool;
 
 impl GitTool {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
-        Self { permissions }
+    pub fn new() -> Self {
+        Self
     }
 }
 
@@ -64,7 +61,7 @@ impl BaseTool for GitTool {
         false
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
         let subcmd = input["subcommand"]
             .as_str()
             .ok_or("Missing 'subcommand' parameter")?;
@@ -84,7 +81,7 @@ impl BaseTool for GitTool {
             }
         }
 
-        let project_root = &self.permissions.sandbox.project_root;
+        let project_root = &ctx.permissions.sandbox.project_root;
 
         let output = tokio::process::Command::new("git")
             .args(subcmd.split_whitespace())

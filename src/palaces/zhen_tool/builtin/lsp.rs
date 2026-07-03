@@ -1,14 +1,16 @@
+use std::sync::Arc;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use crate::palaces::qian_permission::{PathOp, PermissionMatrix};
+use crate::palaces::qian_permission::PathOp;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, ReadAction};
 
 /// 震三宫 · LSP — semantic code navigation (go-to-def / references / hover /
@@ -21,14 +23,12 @@ use crate::stems::intent::{CeremoniesIntent, ReadAction};
 /// server state via didOpen).
 pub struct LspTool {
     manager: Arc<LspManager>,
-    permissions: Arc<PermissionMatrix>,
 }
 
 impl LspTool {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
+    pub fn new() -> Self {
         Self {
             manager: Arc::new(LspManager::new()),
-            permissions,
         }
     }
 }
@@ -79,7 +79,7 @@ impl BaseTool for LspTool {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
         let operation = input["operation"]
             .as_str()
             .ok_or("Missing 'operation' parameter")?
@@ -94,7 +94,7 @@ impl BaseTool for LspTool {
             .ok_or("Missing 'character' parameter")? as u32;
 
         // Sandbox the file path
-        let path = self.permissions.verify_path(&file, PathOp::Read)?;
+        let path = ctx.permissions.verify_path(&file, PathOp::Read)?;
         let lang = LanguageKind::from_path(&path)
             .ok_or_else(|| format!("no language server for file: {}", path.display()))?;
 
@@ -498,6 +498,14 @@ impl Drop for LspServerHandle {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use crate::palaces::qian_permission::PermissionMatrix;
+    fn test_ctx() -> crate::stems::action::ExecContext {
+        use std::sync::Arc;
+        use crate::palaces::qian_permission::PermissionMatrix;
+        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+    }
+
     use super::*;
 
     #[test]
@@ -528,8 +536,8 @@ mod tests {
 
     #[tokio::test]
     async fn lsp_missing_params() {
-        let tool = LspTool::new(Arc::new(PermissionMatrix::default()));
-        let result = tool.execute(json!({})).await;
+        let tool = LspTool::new();
+        let result = tool.execute(json!({}), &test_ctx()).await;
         assert!(result.is_err());
     }
 
@@ -550,14 +558,14 @@ mod tests {
         )
         .unwrap();
 
-        let tool = LspTool::new(Arc::new(PermissionMatrix::default()));
+        let tool = LspTool::new();
         let result = tool
             .execute(json!({
                 "operation": "document_symbol",
                 "file": file.to_string_lossy(),
                 "line": 0,
                 "character": 0
-            }))
+            }), &test_ctx())
             .await;
         assert!(result.is_ok(), "document_symbol failed: {:?}", result.err());
         let out = result.unwrap();
@@ -569,14 +577,14 @@ mod tests {
     async fn lsp_rust_analyzer_skips_when_unavailable() {
         // If rust-analyzer isn't installed, the tool returns a clear error
         // rather than spawning a broken proxy.
-        let tool = LspTool::new(Arc::new(PermissionMatrix::default()));
+        let tool = LspTool::new();
         let result = tool
             .execute(json!({
                 "operation": "hover",
                 "file": "src/palaces/zhen_tool/builtin/grep.rs",
                 "line": 0,
                 "character": 0
-            }))
+            }), &test_ctx())
             .await;
         if LanguageKind::Rust.server_command().is_some() {
             assert!(result.is_ok(), "hover failed: {:?}", result.err());

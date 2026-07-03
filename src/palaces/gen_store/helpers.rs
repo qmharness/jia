@@ -5,34 +5,23 @@ use rusqlite;
 use crate::utils::truncate_title;
 
 pub(crate) fn extract_content_text(content_type: &str, content_json: &str) -> String {
+    let v: serde_json::Value = match serde_json::from_str(content_json) {
+        Ok(v) => v,
+        Err(_) => return String::new(),
+    };
     match content_type {
         "KeyValue" => {
-            let key = json_field(content_json, "key").unwrap_or_default();
-            let value = json_field(content_json, "value").unwrap_or_default();
+            let key = v["key"].as_str().unwrap_or_default();
+            let value = v["value"].as_str().unwrap_or_default();
             format!("{key}: {value}")
         }
         "Triple" => {
-            let subject = json_field(content_json, "subject").unwrap_or_default();
-            let predicate = json_field(content_json, "predicate").unwrap_or_default();
-            let object = json_field(content_json, "object").unwrap_or_default();
+            let subject = v["subject"].as_str().unwrap_or_default();
+            let predicate = v["predicate"].as_str().unwrap_or_default();
+            let object = v["object"].as_str().unwrap_or_default();
             format!("{subject} {predicate} {object}")
         }
-        _ => json_field(content_json, "text")
-            .unwrap_or_default()
-            .to_string(),
-    }
-}
-
-pub(crate) fn json_field<'a>(json: &'a str, key: &str) -> Option<&'a str> {
-    let key_pat = format!("\"{key}\":");
-    let after_key = json.find(&key_pat)?;
-    let val_start = after_key + key_pat.len();
-    let rest = &json[val_start..].trim_start();
-    if let Some(stripped) = rest.strip_prefix('"') {
-        let end = stripped.find('"')?;
-        Some(&stripped[..end])
-    } else {
-        None
+        _ => v["text"].as_str().unwrap_or_default().to_string(),
     }
 }
 
@@ -183,17 +172,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn json_field_extracts_string_value() {
-        let json = r#"{"key": "value", "num": 42}"#;
-        assert_eq!(json_field(json, "key"), Some("value"));
-    }
-
-    #[test]
-    fn json_field_returns_none_for_missing() {
-        assert_eq!(json_field(r#"{"a":1}"#, "b"), None);
-    }
-
-    #[test]
     fn extract_content_text_keyvalue() {
         let result = extract_content_text("KeyValue", r#"{"key":"editor","value":"vim"}"#);
         assert_eq!(result, "editor: vim");
@@ -212,6 +190,13 @@ mod tests {
     fn extract_content_text_freetext() {
         let result = extract_content_text("FreeText", r#"{"text":"hello world"}"#);
         assert_eq!(result, "hello world");
+    }
+
+    #[test]
+    fn extract_content_text_handles_escaped_quotes() {
+        // This would have been truncated by the old hand-written json_field parser
+        let result = extract_content_text("FreeText", r#"{"text":"say \"hello\" to the user"}"#);
+        assert_eq!(result, "say \"hello\" to the user");
     }
 
     #[test]

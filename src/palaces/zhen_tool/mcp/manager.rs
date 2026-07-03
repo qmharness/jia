@@ -1,10 +1,9 @@
+use std::sync::Arc;
 // ── MCP Manager — Connect servers, discover tools, register ───
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use crate::palaces::kun_config::McpServerConfig;
-use crate::palaces::qian_permission::PermissionMatrix;
 use crate::palaces::zhen_tool::ToolRegistry;
 
 use super::connection::McpConnection;
@@ -19,7 +18,6 @@ impl McpManager {
     pub fn connect_all(
         servers: &[McpServerConfig],
         registry: &mut ToolRegistry,
-        permissions: Arc<PermissionMatrix>,
     ) {
         if servers.is_empty() {
             return;
@@ -68,7 +66,6 @@ impl McpManager {
                         let tool = McpTool::new(
                             def,
                             conn.clone(),
-                            permissions.clone(),
                             sandbox_params.clone(),
                             &read_only_tools,
                         );

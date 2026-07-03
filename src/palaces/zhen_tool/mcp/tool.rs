@@ -1,12 +1,12 @@
+use std::sync::Arc;
 // ── McpTool — BaseTool wrapper for a single MCP tool ─────────
 
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::palaces::qian_permission::PermissionMatrix;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::CeremoniesIntent;
 use crate::stems::intent::{ExecAction, ReadAction};
 
@@ -16,12 +16,11 @@ use super::protocol::McpToolDef;
 /// A single MCP tool exposed as a framework BaseTool.
 ///
 /// Owns an `Arc<McpConnection>` so it can call `tools/call`
-/// when the agent invokes it. Carries a PermissionMatrix for
-/// sandboxing declared params and read-only classification.
+/// when the agent invokes it. Permissions are injected via ExecContext
+/// at execution time for sandboxing declared params.
 pub struct McpTool {
     def: McpToolDef,
     connection: Arc<McpConnection>,
-    permissions: Arc<PermissionMatrix>,
     sandbox_params: Vec<String>,
     read_only: bool,
 }
@@ -30,7 +29,6 @@ impl McpTool {
     pub fn new(
         def: McpToolDef,
         connection: Arc<McpConnection>,
-        permissions: Arc<PermissionMatrix>,
         sandbox_params: Vec<String>,
         read_only_tools: &[String],
     ) -> Self {
@@ -38,7 +36,6 @@ impl McpTool {
         Self {
             def,
             connection,
-            permissions,
             sandbox_params,
             read_only,
         }
@@ -75,8 +72,8 @@ impl BaseTool for McpTool {
         false
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
-        let sandboxed = self
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
+        let sandboxed = ctx
             .permissions
             .sandbox_known_params(&input, &self.sandbox_params)?;
         let args = match &sandboxed {

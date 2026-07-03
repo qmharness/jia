@@ -1,7 +1,7 @@
+use std::sync::Arc;
 // ── Plugin Manager: WASM plugin discovery & lifecycle ──
 
 use std::path::Path;
-use std::sync::Arc;
 
 use crate::palaces::zhen_tool::registry::ToolRegistry;
 use crate::palaces::zhen_tool::wasm_plugin::{self, WasmPlugin};

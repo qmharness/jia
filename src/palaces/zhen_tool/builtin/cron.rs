@@ -1,14 +1,15 @@
+use std::sync::Arc;
 // ── Cron Tool — Schedule recurring tasks ─────────────────────
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::CeremoniesIntent;
 use crate::stems::intent::ExecAction;
 
@@ -189,19 +190,25 @@ impl CronFileStore {
     }
 
     /// Write a single job file and update the mtime cache.
-    fn persist_one(&self, job: &CronJobFile) {
+    fn persist_one(&self, job: &CronJobFile) -> Result<(), String> {
         let path = self.dir.join(format!("{}.json", job.name));
-        if let Ok(json) = serde_json::to_string_pretty(job)
-            && std::fs::write(&path, &json).is_ok()
-            && let Ok(meta) = std::fs::metadata(&path)
-            && let Ok(modified) = meta.modified()
-            && let Ok(dur) = modified.duration_since(std::time::UNIX_EPOCH)
-        {
-            self.mtimes
-                .lock()
-                .unwrap()
-                .insert(job.name.clone(), dur.as_secs());
-        }
+        let json = serde_json::to_string_pretty(job)
+            .map_err(|e| format!("serialize cron job '{}': {e}", job.name))?;
+        std::fs::write(&path, &json)
+            .map_err(|e| format!("write cron job '{}': {e}", job.name))?;
+        let meta = std::fs::metadata(&path)
+            .map_err(|e| format!("stat cron job '{}': {e}", job.name))?;
+        let modified = meta
+            .modified()
+            .map_err(|e| format!("mtime cron job '{}': {e}", job.name))?;
+        let dur = modified
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| format!("duration cron job '{}': {e}", job.name))?;
+        self.mtimes
+            .lock()
+            .unwrap()
+            .insert(job.name.clone(), dur.as_secs());
+        Ok(())
     }
 
     /// Delete a job file from disk and remove from mtime cache.
@@ -435,7 +442,9 @@ impl CronStore {
             job_file = job.to_file();
             guard.push(job);
         }
-        self.file_store.persist_one(&job_file);
+        if let Err(e) = self.file_store.persist_one(&job_file) {
+            tracing::warn!("Failed to persist cron job: {e}");
+        }
         Ok(())
     }
 
@@ -483,7 +492,9 @@ impl CronStore {
             }
             job_file = job.to_file();
         }
-        self.file_store.persist_one(&job_file);
+        if let Err(e) = self.file_store.persist_one(&job_file) {
+            tracing::warn!("Failed to persist cron job: {e}");
+        }
         Ok(())
     }
 
@@ -498,7 +509,9 @@ impl CronStore {
             job.enabled = enabled;
             job_file = job.to_file();
         }
-        self.file_store.persist_one(&job_file);
+        if let Err(e) = self.file_store.persist_one(&job_file) {
+            tracing::warn!("Failed to persist cron job: {e}");
+        }
         Ok(())
     }
 
@@ -514,7 +527,9 @@ impl CronStore {
             }
         }
         if let Some(jf) = job_file {
-            self.file_store.persist_one(&jf);
+            if let Err(e) = self.file_store.persist_one(&jf) {
+                tracing::warn!("Failed to persist cron job: {e}");
+            }
         }
     }
 
@@ -625,7 +640,7 @@ impl BaseTool for CronTool {
         false
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
         let action = input["action"]
             .as_str()
             .ok_or("Missing 'action' parameter")?;

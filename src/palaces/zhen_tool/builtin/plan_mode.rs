@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, ReadAction};
 
 /// P3 · Plan-mode control tools (谋划态).
@@ -48,7 +49,7 @@ impl BaseTool for EnterPlanModeTool {
         serde_json::json!({ "type": "object", "properties": {} })
     }
 
-    async fn execute(&self, _input: Value) -> Result<String, String> {
+    async fn execute(&self, _input: Value, _ctx: &ExecContext) -> Result<String, String> {
         Ok(
             "Entered planning mode (谋划态). You are now read-only: investigate \
             and design a plan, then call exit_plan_mode to submit it for approval."
@@ -98,7 +99,7 @@ impl BaseTool for ExitPlanModeTool {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
         let plan = input["plan"].as_str().unwrap_or("");
         if plan.is_empty() {
             Ok("Exited planning mode. Write/exec tools are available again.".to_string())
@@ -112,12 +113,18 @@ impl BaseTool for ExitPlanModeTool {
 
 #[cfg(test)]
 mod tests {
+    fn test_ctx() -> crate::stems::action::ExecContext {
+        use std::sync::Arc;
+        use crate::palaces::qian_permission::PermissionMatrix;
+        crate::stems::action::ExecContext { permissions: Arc::new(PermissionMatrix::default()) }
+    }
+
     use super::*;
 
     #[tokio::test]
     async fn enter_plan_mode_ack() {
         let out = EnterPlanModeTool
-            .execute(serde_json::json!({}))
+            .execute(serde_json::json!({}), &test_ctx())
             .await
             .unwrap();
         assert!(out.contains("planning mode"));
@@ -126,7 +133,7 @@ mod tests {
     #[tokio::test]
     async fn exit_plan_mode_with_plan() {
         let out = ExitPlanModeTool
-            .execute(serde_json::json!({ "plan": "do X then Y" }))
+            .execute(serde_json::json!({ "plan": "do X then Y" }), &test_ctx())
             .await
             .unwrap();
         assert!(out.contains("do X then Y"));

@@ -3,13 +3,12 @@
 // Sends keyDown + keyUp events for the given key. Useful for Enter (submit forms),
 // Escape (close dialogs), Tab (navigate fields), arrow keys, and shortcuts.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::palaces::qian_permission::PermissionMatrix;
+use crate::stems::action::ExecContext;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::intent::CeremoniesIntent;
 use crate::stems::intent::CommunicateAction;
@@ -22,14 +21,12 @@ const OPT_HTML_JS: &str = include_str!("opt_html.js");
 
 pub struct BrowserPressKeyTool {
     #[allow(dead_code)]
-    permissions: Arc<PermissionMatrix>,
     client: reqwest::Client,
 }
 
 impl BrowserPressKeyTool {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
+    pub fn new() -> Self {
         Self {
-            permissions,
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(30))
                 .build()
@@ -83,7 +80,7 @@ impl BaseTool for BrowserPressKeyTool {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
         let key = input["key"].as_str().ok_or("missing 'key' parameter")?;
         let tab_id = input["tab_id"].as_str();
 
