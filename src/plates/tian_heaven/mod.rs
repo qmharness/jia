@@ -11,6 +11,7 @@ mod loop_prompt;
 
 use super::di_earth::EarthPlate;
 use crate::palaces::xun_context::{ContextWindow, ToolOutputBudget};
+use crate::principles::SystemPrinciple;
 use crate::stems::action::ExecContext;
 use crate::stems::Stem;
 use crate::types::HistoryEntry;
@@ -37,6 +38,10 @@ pub struct Agent {
     /// Some(path) = inside a worktree; exit restores exec_ctx and optionally
     /// removes the worktree.
     pub worktree_root: Option<std::path::PathBuf>,
+    /// Layer 4 · self-evolution principles loaded at session start.
+    /// Applied to tighten execution mode after GeJu evaluation.
+    /// Persisted across sessions — principles only tighten, never relax.
+    pub principles: Vec<SystemPrinciple>,
     pub turn_count: u32,
     pub max_turns: u32,
     /// Unified conversation history (messages + tool calls, persists across turns)
@@ -102,10 +107,18 @@ impl Agent {
             earth.config.app_config.security.compaction_threshold,
         );
         let exec_ctx = ExecContext { permissions: earth.permissions.clone() };
+        let principles = earth
+            .store
+            .load_principles()
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|j| serde_json::from_str::<SystemPrinciple>(j).ok())
+            .collect();
         let mut s = Self {
             id,
             earth: earth.clone(),
             exec_ctx,
+            principles,
             turn_count: 0,
             max_turns: 25,
             history: Vec::new(),
@@ -145,9 +158,17 @@ impl Agent {
             earth.config.app_config.security.compaction_threshold,
         );
         let exec_ctx = ExecContext { permissions: earth.permissions.clone() };
+        let principles = earth
+            .store
+            .load_principles()
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|j| serde_json::from_str::<SystemPrinciple>(j).ok())
+            .collect();
         let mut s = Self {
             id,
             exec_ctx,
+            principles,
             earth,
             turn_count: 0,
             max_turns: 25,

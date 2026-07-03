@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 
 use crate::palaces::li_skill::evolution::EvolutionEngine;
+use crate::principles::SystemPrinciple;
 use crate::palaces::zhong_core::JiaCore;
 use crate::telemetry::metrics::{JIA_ATMA_GRAHA, JIA_SEEDS_TOTAL};
 use crate::vijnana::alaya::SeedStore;
@@ -31,9 +32,24 @@ impl super::Agent {
             tracing::warn!(session = %self.id, error = %e, "Failed to save session");
         }
 
+        // L4 · 自进化 — derive system principles from this session's error patterns
+        // before snapshots are consumed by consolidation below.
+        let snapshots = self.working_memory.snapshots.clone();
+        if !snapshots.is_empty() {
+            let new_principles = SystemPrinciple::derive(&self.id, &snapshots, &self.manas);
+            if !new_principles.is_empty() {
+                if let Ok(json) = serde_json::to_string(&new_principles) {
+                    if let Err(e) = store.save_principles(&self.id, &json) {
+                        tracing::warn!(error = %e, "Layer4: persist failed");
+                    } else {
+                        tracing::info!(count = new_principles.len(), "Layer4: derived");
+                    }
+                }
+            }
+        }
+
         // L2 batch consolidation: extract cross-turn causal/entity facts from snapshots.
         // Requires ≥3 snapshots for meaningful pattern extraction.
-        let snapshots = self.working_memory.snapshots.clone();
         if snapshots.len() >= 3 {
             match ConsolidationEngine::run(
                 self.id.clone(),

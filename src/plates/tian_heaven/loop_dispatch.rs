@@ -37,6 +37,8 @@ pub async fn dispatch_one_tool(
     interaction_mode: super::InteractionMode,
     user_hooks: &[CompiledHook],
     exec_ctx: &ExecContext,
+    principles: &[crate::principles::SystemPrinciple],
+    atma_graha: f32,
 ) -> (String, Option<String>, String, String, Stem, Palace) {
     // GeJu Layer 3 runtime supplement: refuse tools with consecutive failure streak.
     if let Some(&count) = tool_failure_count.get(&tc.name)
@@ -135,7 +137,16 @@ pub async fn dispatch_one_tool(
     }
 
     let geju = GeJu::new(heaven_stem, earth_stem);
-    let geju_result = geju.evaluate();
+    let mut geju_result = geju.evaluate();
+
+    // Layer 4 · 自进化 — tighten execution mode with system principles
+    // (单向收紧: only escalate, never relax). Principles loaded at session start
+    // from persisted store; matching is O(n) on the very small principles set.
+    let geju_key = geju_result.name.clone();
+    for p in principles.iter().filter(|p| p.geju_key == geju_key) {
+        p.tighten(&mut geju_result, atma_graha);
+    }
+
     let geju_name = geju_result.name.clone();
     let execution_mode = format!("{:?}", geju_result.execution_mode).to_lowercase();
 

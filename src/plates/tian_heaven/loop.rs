@@ -465,6 +465,8 @@ impl super::Agent {
                         self.interaction_mode,
                         &self.earth.user_hooks,
                         &self.exec_ctx,
+                        &self.principles,
+                        self.manas.atma_graha,
                     )
                     .await;
 
