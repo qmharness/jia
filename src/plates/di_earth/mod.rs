@@ -465,22 +465,22 @@ impl EarthPlate {
                 (response, tool_calls)
             });
 
-            agent
-                .run(
+            let cancel = CancellationToken::new();
+            tokio::select! {
+                _ = agent.run(
                     messages,
                     &earth.main_core,
                     &human_plate,
                     &event_bus,
                     &earth.spirit.hook_registry,
                     tx,
-                    &CancellationToken::new(),
-                )
-                .await;
-            agent
-                .post_loop(store, &earth.main_core, earth.aux_core.as_deref())
-                .await;
+                    &cancel,
+                ) => {
+                    agent
+                        .post_loop(store, &earth.main_core, earth.aux_core.as_deref())
+                        .await;
 
-            match collect_handle.await {
+                    match collect_handle.await {
                 Ok((mut response, tool_calls)) => {
                     let was_empty = response.is_empty();
                     if was_empty {
@@ -558,6 +558,12 @@ impl EarthPlate {
                         session_id: session_id.clone(),
                         timestamp: crate::utils::unix_now() as u64,
                     });
+                }
+            }
+                }
+                _ = tokio::time::sleep(std::time::Duration::from_secs(600)) => {
+                    cancel.cancel();
+                    tracing::warn!(job = %job_name, "cron agent timed out after 10min");
                 }
             }
         });

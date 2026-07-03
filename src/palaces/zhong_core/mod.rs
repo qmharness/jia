@@ -265,6 +265,10 @@ impl LlmProvider for AnthropicProvider {
                 let mut buffer = String::new();
                 let mut input_tokens: u64 = 0;
                 let mut output_tokens: u64 = 0;
+                let mut tool_use_state: std::collections::HashMap<
+                    usize,
+                    (String, String, String),
+                > = std::collections::HashMap::new();
 
                 loop {
                     let chunk = match tokio::time::timeout(
@@ -305,9 +309,59 @@ impl LlmProvider for AnthropicProvider {
                                         input_tokens = u;
                                     }
                                 }
+                                Some("content_block_start") => {
+                                    if event["content_block"]["type"].as_str()
+                                        == Some("tool_use")
+                                    {
+                                        let idx =
+                                            event["index"].as_u64().unwrap_or(0) as usize;
+                                        let id = event["content_block"]["id"]
+                                            .as_str()
+                                            .unwrap_or("")
+                                            .to_string();
+                                        let name = event["content_block"]["name"]
+                                            .as_str()
+                                            .unwrap_or("")
+                                            .to_string();
+                                        tool_use_state.insert(idx, (id, name, String::new()));
+                                    }
+                                }
                                 Some("content_block_delta") => {
-                                    if let Some(text) = event["delta"]["text"].as_str() {
-                                        let _ = tx.send(Ok(StreamChunk::Delta(text.to_string())));
+                                    match event["delta"]["type"].as_str() {
+                                        Some("text_delta") => {
+                                            if let Some(text) =
+                                                event["delta"]["text"].as_str()
+                                            {
+                                                let _ = tx.send(Ok(StreamChunk::Delta(
+                                                    text.to_string(),
+                                                )));
+                                            }
+                                        }
+                                        Some("input_json_delta") => {
+                                            let idx =
+                                                event["index"].as_u64().unwrap_or(0) as usize;
+                                            if let Some(entry) =
+                                                tool_use_state.get_mut(&idx)
+                                                && let Some(partial) =
+                                                    event["delta"]["partial_json"].as_str()
+                                                {
+                                                    entry.2.push_str(partial);
+                                                }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                Some("content_block_stop") => {
+                                    let idx =
+                                        event["index"].as_u64().unwrap_or(0) as usize;
+                                    if let Some((id, name, args)) =
+                                        tool_use_state.remove(&idx)
+                                    {
+                                        let _ = tx.send(Ok(StreamChunk::NativeToolCall {
+                                            id,
+                                            name,
+                                            arguments: args,
+                                        }));
                                     }
                                 }
                                 Some("message_delta") => {

@@ -52,21 +52,25 @@ pub async fn handle_chat(
             m
         }));
 
-        let stream = llm.infer_stream(messages, None, None);
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let stream = llm.infer_stream(messages, None, Some(cancel.clone()));
 
-        let sse_stream = stream.filter_map(|chunk| {
-            let event = match chunk {
-                Ok(crate::palaces::zhong_core::StreamChunk::Delta(delta)) => {
-                    Some(StreamEvent::Delta { content: delta })
-                }
-                Ok(crate::palaces::zhong_core::StreamChunk::Usage { .. }) => None,
-                Ok(crate::palaces::zhong_core::StreamChunk::CacheHit { .. }) => None,
-                Ok(crate::palaces::zhong_core::StreamChunk::NativeToolCall { .. }) => None,
-                Err(e) => Some(StreamEvent::Error { message: e }),
-            };
-            let json = serde_json::to_string(&event?).ok()?;
-            Some(Ok(Event::default().data(json)))
-        });
+        let sse_stream = CancelOnDropStream {
+            inner: stream.filter_map(|chunk| {
+                let event = match chunk {
+                    Ok(crate::palaces::zhong_core::StreamChunk::Delta(delta)) => {
+                        Some(StreamEvent::Delta { content: delta })
+                    }
+                    Ok(crate::palaces::zhong_core::StreamChunk::Usage { .. }) => None,
+                    Ok(crate::palaces::zhong_core::StreamChunk::CacheHit { .. }) => None,
+                    Ok(crate::palaces::zhong_core::StreamChunk::NativeToolCall { .. }) => None,
+                    Err(e) => Some(StreamEvent::Error { message: e }),
+                };
+                let json = serde_json::to_string(&event?).ok()?;
+                Some(Ok(Event::default().data(json)))
+            }),
+            token: cancel,
+        };
 
         let done = tokio_stream::once({
             let done_json = serde_json::to_string(&StreamEvent::Done).unwrap_or_default();
