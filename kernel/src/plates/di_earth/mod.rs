@@ -298,14 +298,27 @@ impl EarthPlate {
 
         // Load skills from skills/ directory
         let mut skill_registry = SkillRegistry::new();
-        let skills_dir = std::path::PathBuf::from(
-            option_env!("CARGO_WORKSPACE_DIR").unwrap_or(env!("CARGO_MANIFEST_DIR"))
-        ).join("skills");
+        // Resolve skills/ directory. The kernel crate's CARGO_MANIFEST_DIR
+        // points to kernel/, so we try the parent directory first, then fall
+        // back to CWD-relative for development convenience.
+        let skills_dir = {
+            let manifest_parent = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .map(|p| p.join("skills"))
+                .unwrap_or_default();
+            if manifest_parent.is_dir() {
+                manifest_parent
+            } else {
+                std::path::PathBuf::from("skills")
+            }
+        };
         if skills_dir.is_dir() {
             match SkillLoader::load_directory_sync(&skills_dir, &mut skill_registry) {
                 Ok(n) => tracing::info!("Loaded {n} skills from skills/"),
                 Err(e) => tracing::warn!("Failed to load skills: {e}"),
             }
+        } else {
+            tracing::warn!("Skills directory not found: {}", skills_dir.display());
         }
         let skills = Arc::new(std::sync::RwLock::new(skill_registry));
 

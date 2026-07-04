@@ -1,6 +1,16 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::Json;
+
+/// Resolve the skills/ directory. CARGO_MANIFEST_DIR for the kernel crate
+/// is `kernel/`, so we go up one level to the project root.
+fn skills_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|p| p.join("skills"))
+        .unwrap_or_else(|| PathBuf::from("skills"))
+}
 use axum::extract::State;
 
 use crate::palaces::li_skill::SkillRegistry;
@@ -27,6 +37,7 @@ pub async fn handle_skills(State(state): State<Arc<AppState>>) -> Json<serde_jso
     };
     let reg = earth.skills.read().unwrap_or_else(|e| e.into_inner());
     let skills = reg.list_all_with_status();
+    tracing::info!("Skills API: {} skills loaded", skills.len());
     let list: Vec<_> = skills
         .iter()
         .map(|(s, disabled)| {
@@ -95,7 +106,7 @@ pub async fn handle_skills_reload(State(state): State<Arc<AppState>>) -> Json<se
         None => return Json(serde_json::json!({"error": "Agent not initialized"})),
     };
     let mut new_reg = SkillRegistry::new();
-    let skills_dir = std::path::PathBuf::from(option_env!("CARGO_WORKSPACE_DIR").unwrap_or(env!("CARGO_MANIFEST_DIR"))).join("skills");
+    let skills_dir = skills_dir();
     let loaded = match SkillLoader::load_directory_sync(&skills_dir, &mut new_reg) {
         Ok(n) => {
             // Preserve disabled state across reload
@@ -184,7 +195,7 @@ pub async fn handle_skills_evolve_toggle(
         Ok(_) => {
             // Reload to pick up the change
             let mut new_reg = SkillRegistry::new();
-            let skills_dir = std::path::PathBuf::from(option_env!("CARGO_WORKSPACE_DIR").unwrap_or(env!("CARGO_MANIFEST_DIR"))).join("skills");
+            let skills_dir = skills_dir();
             let _ = SkillLoader::load_directory_sync(&skills_dir, &mut new_reg);
             let old_disabled = {
                 let old = earth.skills.read().unwrap_or_else(|e| e.into_inner());

@@ -499,7 +499,10 @@ pub fn pid_file_path() -> std::path::PathBuf {
 /// the frontend without `--web-dir`. Within the repo layout, this is:
 /// `<jia>/frontend/dist`.
 pub fn default_web_dir() -> PathBuf {
-    PathBuf::from(option_env!("CARGO_WORKSPACE_DIR").unwrap_or(env!("CARGO_MANIFEST_DIR"))).join("frontend/dist")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|p| p.join("frontend").join("dist"))
+        .unwrap_or_else(|| PathBuf::from("frontend/dist"))
 }
 
 impl Default for ServerSection {

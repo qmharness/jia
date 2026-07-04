@@ -20,7 +20,7 @@ async fn main() {
         "jia.log",
     );
 
-    let default_filter = "jia=info,tower_http=info";
+    let default_filter = "jia=info,kernel=info,tower_http=info";
 
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| default_filter.into());
