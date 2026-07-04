@@ -239,8 +239,7 @@ pub async fn run_start(
         }
     }
 
-    let web_dir_default = std::env::current_dir()
-        .unwrap_or_default()
+    let web_dir_default = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("frontend")
         .join("dist");
     let web_dir = web_dir
