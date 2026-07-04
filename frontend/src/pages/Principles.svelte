@@ -142,11 +142,20 @@
 </div>
 
 <style>
+  .page { display: flex; flex-direction: column; height: 100%; }
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid var(--border); }
+  .title { font-size: 16px; font-weight: 600; }
+  .subtitle { font-size: 12px; color: var(--text-tertiary); margin-top: 4px; }
+  .body { flex: 1; overflow-y: auto; padding: 16px 20px; }
+  .section { margin-bottom: 24px; }
+  .section-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+  .table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .table th { text-align: left; font-weight: 500; color: var(--text-tertiary); padding: 4px 8px; border-bottom: 1px solid var(--border); }
+  .table td { padding: 4px 8px; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+  .table .num { text-align: right; }
+  .table .mono { font-family: var(--font-mono, monospace); font-size: 12px; }
+  .empty { text-align: center; color: var(--text-tertiary); padding: 16px; font-size: 13px; }
   .archived-row { opacity: 0.5; }
-  .btn-sm {
-    font-size: 12px; padding: 2px 10px; border-radius: 4px;
-    border: 1px solid var(--border); background: transparent;
-    color: var(--text-secondary); cursor: pointer;
-  }
+  .btn-sm { font-size: 12px; padding: 2px 10px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; }
   .btn-sm:hover { background: var(--bg-tertiary); }
 </style>
