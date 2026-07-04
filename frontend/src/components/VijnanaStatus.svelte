@@ -342,11 +342,11 @@
   .radar-svg { width: 180px; height: 180px; }
   .rleg-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
   .rleg-icon { font-size: 13px; flex-shrink: 0; }
-  .rleg-name { color: var(--text-secondary); min-width: 48px; flex-shrink: 0; }
-  .rleg-raw { font-weight: 700; }
-  .rleg-w { color: var(--text-tertiary); font-size: 10px; }
-  .rleg-c { font-weight: 600; font-size: 11px; }
-  .rleg-track { height: 4px; background: var(--bg-tertiary); border-radius: 2px; overflow: hidden; position: relative; }
+  .rleg-name { color: var(--text-secondary); width: 48px; flex-shrink: 0; }
+  .rleg-raw { font-weight: 700; font-size: 12px; width: 32px; text-align: right; flex-shrink: 0; }
+  .rleg-w { color: var(--text-tertiary); font-size: 10px; width: 30px; text-align: center; flex-shrink: 0; }
+  .rleg-c { font-weight: 600; font-size: 11px; width: 34px; text-align: right; flex-shrink: 0; }
+  .rleg-track { flex: 1; height: 5px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; position: relative; }
   .rleg-fill { height: 100%; border-radius: 2px; transition: width .5s; }
   .dim-threshold { position: absolute; top: 0; width: 1px; height: 100%; background: var(--error); opacity: 0.5; }
 
