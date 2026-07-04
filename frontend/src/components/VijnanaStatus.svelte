@@ -146,8 +146,7 @@
         </div>
         <div class="threshold-line">
           <span class="threshold-label">{t('vijnana.threshold')} (0.75)</span>
-          {@const tpos = Math.min(95, (0.75 / Math.max(entropy.current.total, 0.01)) * 100)}
-          <div class="threshold-marker" style="left:{tpos}%"></div>
+          <div class="threshold-marker" style="left:{Math.min(95, (0.75 / Math.max(entropy.current.total, 0.01)) * 100)}%"></div>
         </div>
       </section>
     {/if}
