@@ -1,11 +1,13 @@
 import type { Provider, SessionMeta, StreamAgentParams, VijnanaState, VijnanaSeedsResponse } from './types';
 
-// In Vite dev mode, use same-origin requests (proxied to daemon via vite.config.ts)
+// In Vite dev mode, use same-origin requests (proxied to daemon via vite.config.ts).
 // In Tauri production, use the __JIA_API_BASE__ injected by initialization_script.
-// Fall back to 127.0.0.1:3000 when running standalone without Vite proxy.
+// In jia web, use window.location.origin (daemon serves the HTML, so origin is the
+// correct address even with --port override). Fall back to 127.0.0.1:3000 otherwise.
 const isViteDev = typeof window !== 'undefined' && window.location.hostname === 'localhost' && window.location.port === '5173';
 const injectedBase = (typeof window !== 'undefined' && (window as any).__JIA_API_BASE__) || '';
-export const API_BASE = isViteDev ? '' : (injectedBase || 'http://127.0.0.1:3000');
+const webOrigin = (typeof window !== 'undefined' && window.location.origin) || '';
+export const API_BASE = isViteDev ? '' : (injectedBase || webOrigin || 'http://127.0.0.1:3000');
 const D = API_BASE;
 // 本模块内所有 fetch 调用先等 token 就绪再发出。
 // 用同名 const 遮蔽全局 fetch,使下方所有 fetch(...) 自动经过 token 门控,无需逐处改动。

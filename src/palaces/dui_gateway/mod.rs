@@ -173,11 +173,12 @@ pub fn build_router(state: Arc<AppState>, web_dir: String) -> Router {
                     let path = format!("{web}/index.html");
                     match tokio::fs::read_to_string(&path).await {
                         Ok(html) => {
-                            // Inject only API_BASE; token is obtained via POST /auth/session
+                            // Inject only API_BASE (empty = let frontend fall back to
+                            // its default); token is obtained via POST /auth/session
                             // (localhost-gated) so it never appears in page source.
                             let injected = html.replace(
                                 "<head>",
-                                "<head>\n<script>window.__JIA_API_BASE__ = \"http://127.0.0.1:3000\";</script>",
+                                "<head>\n<script>window.__JIA_API_BASE__ = \"\";</script>",
                             );
                             Html(injected)
                         }
