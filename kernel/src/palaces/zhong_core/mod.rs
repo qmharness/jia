@@ -264,6 +264,17 @@ impl JiaCore {
         }
     }
 
+    /// Create a JiaCore backed by a `ProviderRouter` for multi-provider failover.
+    /// `kind` should be the primary provider's kind (used for tools API selection).
+    pub(crate) fn with_router(
+        router: router::ProviderRouter,
+        kind: String,
+        model: String,
+        context_window: usize,
+    ) -> Self {
+        Self { provider: Box::new(router), provider_kind: kind, model, context_window }
+    }
+
     /// LLM 推理 — 仅 crate 内部可调用
     pub(crate) fn infer(
         &self,

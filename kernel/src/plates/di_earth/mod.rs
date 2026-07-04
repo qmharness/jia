@@ -40,7 +40,7 @@ use crate::palaces::zhen_tool::builtin::web_execute_js::WebExecuteJsTool;
 use crate::palaces::zhen_tool::builtin::web_fetch::WebFetchTool;
 use crate::palaces::zhen_tool::builtin::worktree::{EnterWorktreeTool, ExitWorktreeTool};
 use crate::palaces::zhen_tool::builtin::write_file::WriteFileTool;
-use crate::palaces::zhong_core::JiaCore;
+use crate::palaces::zhong_core::{JiaCore, LlmProvider};
 use crate::stems::action::ExecContext;
 
 use crate::palaces::zhen_tool::ToolRegistry;
@@ -142,7 +142,33 @@ impl EarthPlate {
             .default_main_provider()
             .expect("no default provider configured");
         let default_model = default_profile.default_main_model().to_string();
-        let main_core = Arc::new(JiaCore::new(&default_profile, &default_model));
+        let default_kind = default_profile.kind.clone();
+        let context_window = default_profile.context_window.unwrap_or(8192);
+
+        // Build ProviderRouter from all configured providers for failover.
+        // Providers without priority default to lowest — they are tried last.
+        // Sort ascending: lower priority = higher precedence.
+        let mut router_providers: Vec<(u32, Box<dyn LlmProvider>)> = config_loader
+            .app_config
+            .providers
+            .iter()
+            .map(|(_name, profile)| {
+                let model = profile.default_main_model().to_string();
+                let p = crate::palaces::zhong_core::create_provider(profile, &model);
+                let pri = profile.priority.unwrap_or(u32::MAX);
+                (pri, p)
+            })
+            .collect();
+        router_providers.sort_by_key(|(pri, _)| *pri);
+
+        let router = crate::palaces::zhong_core::router::ProviderRouter::new(router_providers);
+        let main_core = Arc::new(JiaCore::with_router(
+            router,
+            default_kind,
+            default_model,
+            context_window,
+        ));
+
         let aux_core = config_loader
             .app_config
             .default_aux_model_provider
