@@ -244,7 +244,8 @@ const T: Record<string, Record<Locale, string>> = {
   // ── Vijnana Status ──
   'vijnana.title': { zh: '唯识', en: 'Vijnana' },
   'vijnana.tabStatus': { zh: '状态', en: 'Status' },
-  'vijnana.tabContent': { zh: '内容', en: 'Seeds' },
+  'vijnana.tabSeeds': { zh: '种子', en: 'Seeds' },
+  'vijnana.tabHistory': { zh: '消解历史', en: 'History' },
   'vijnana.loadError': { zh: '唯识状态加载失败', en: 'Failed to load vijnana state' },
   'vijnana.selfModel': { zh: '自我模型', en: 'Self Model' },
   'vijnana.stability': { zh: '稳定性', en: 'Stability' },

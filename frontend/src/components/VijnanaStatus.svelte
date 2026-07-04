@@ -6,6 +6,8 @@
   import { t } from '../lib/i18n';
   import { formatTime } from '../lib/time';
 
+  let { hideHistory = false, statusOnly = false }: { hideHistory?: boolean; statusOnly?: boolean } = $props();
+
   let manas = $state<VijnanaManas | null>(null);
   let entropy = $state<VijnanaEntropy | null>(null);
   let loading = $state(true);
@@ -64,6 +66,7 @@
   {:else if !manas}
     <p class="msg">{t('common.noData')}</p>
   {:else}
+    {#if !statusOnly}
     <!-- ── Self Model ────────────────────────────── -->
     <section class="card">
       <h3 class="section-title">{t('vijnana.selfModel')}</h3>
@@ -137,7 +140,9 @@
           </div>
         </div>
       </section>
+    {/if}
 
+    {#if !hideHistory}
       <!-- ── Dissolution History ────────────────────────────── -->
       <section class="card">
         <div class="section-header">
@@ -257,6 +262,7 @@
         {/if}
       </section>
     {/if}
+  {/if}
   {/if}
 </div>
 

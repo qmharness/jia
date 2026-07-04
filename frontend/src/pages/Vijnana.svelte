@@ -3,7 +3,7 @@
   import VijnanaSeeds from '../components/VijnanaSeeds.svelte';
   import { t } from '../lib/i18n';
 
-  let tab = $state<'status' | 'seeds'>('status');
+  let tab = $state<'status' | 'seeds' | 'history'>('status');
 </script>
 
 <div class="page">
@@ -11,22 +11,17 @@
     <h2 class="title">{t('vijnana.title')}</h2>
   </div>
   <nav class="tab-bar">
-    <button
-      class="tab-btn"
-      class:active={tab === 'status'}
-      onclick={() => tab = 'status'}
-    >{t('vijnana.tabStatus')}</button>
-    <button
-      class="tab-btn"
-      class:active={tab === 'seeds'}
-      onclick={() => tab = 'seeds'}
-    >{t('vijnana.tabContent')}</button>
+    <button class="tab-btn" class:active={tab === 'status'}  onclick={() => tab = 'status'}>{t('vijnana.tabStatus')}</button>
+    <button class="tab-btn" class:active={tab === 'seeds'}   onclick={() => tab = 'seeds'}>{t('vijnana.tabSeeds')}</button>
+    <button class="tab-btn" class:active={tab === 'history'} onclick={() => tab = 'history'}>{t('vijnana.tabHistory')}</button>
   </nav>
   <div class="body">
     {#if tab === 'status'}
-      <VijnanaStatus />
-    {:else}
+      <VijnanaStatus hideHistory />
+    {:else if tab === 'seeds'}
       <VijnanaSeeds />
+    {:else}
+      <VijnanaStatus statusOnly />
     {/if}
   </div>
 </div>
