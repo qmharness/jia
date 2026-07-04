@@ -64,7 +64,7 @@ pub async fn handle_chat(
                     Ok(crate::palaces::zhong_core::StreamChunk::Usage { .. }) => None,
                     Ok(crate::palaces::zhong_core::StreamChunk::CacheHit { .. }) => None,
                     Ok(crate::palaces::zhong_core::StreamChunk::NativeToolCall { .. }) => None,
-                    Err(e) => Some(StreamEvent::Error { message: e }),
+                    Err(e) => Some(StreamEvent::Error { message: e.to_string() }),
                 };
                 let json = serde_json::to_string(&event?).ok()?;
                 Some(Ok(Event::default().data(json)))
@@ -401,6 +401,7 @@ mod tests {
             skills: registry.clone(),
             cron: CronStore::new(dirs.path().join("cron")),
             task_store: TaskStore::new(),
+            store_async: crate::palaces::gen_store::async_store::StoreAsync::new(store.clone()),
             store: store.clone(),
             spirit: Arc::new(SpiritPlate::new()),
             user_hooks: Arc::new(Vec::new()),

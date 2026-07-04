@@ -263,4 +263,16 @@ mod tests {
         // Token is cancelled on drop
         assert!(token.is_cancelled());
     }
+
+    // ── Auth middleware tests ────────────────────────────────────
+
+    // ── Auth token extraction ────────────────────────────────────
+
+    #[test]
+    fn constant_time_eq_rejects_different_lengths() {
+        // Verify constant-time comparison is timing-safe for auth
+        assert!(constant_time_eq(b"secret", b"secret"));
+        assert!(!constant_time_eq(b"secret", b"wrong!"));
+        assert!(!constant_time_eq(b"short", b"longer_secret"));
+    }
 }

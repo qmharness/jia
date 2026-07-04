@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use crate::error::ToolError;
 use serde_json::Value;
 
 use crate::palaces::qian_permission::PathOp;
@@ -85,12 +86,12 @@ impl BaseTool for ScratchpadWriteTool {
         })
     }
 
-    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, ToolError> {
         let key = input["key"].as_str().ok_or("Missing 'key' parameter")?;
         if !valid_key(key) {
             return Err(format!(
                 "invalid key '{key}': must be non-empty [A-Za-z0-9_-]+"
-            ));
+            ).into());
         }
         let content = input["content"]
             .as_str()
@@ -164,19 +165,19 @@ impl BaseTool for ScratchpadReadTool {
         })
     }
 
-    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, ToolError> {
         let key = input["key"].as_str().ok_or("Missing 'key' parameter")?;
         if !valid_key(key) {
             return Err(format!(
                 "invalid key '{key}': must be non-empty [A-Za-z0-9_-]+"
-            ));
+            ).into());
         }
         let path = scratchpad_path(ctx, key);
         let canonical = ctx
             .permissions
             .verify_path(&path.to_string_lossy(), PathOp::Read)?;
-        std::fs::read_to_string(&canonical)
-            .map_err(|e| format!("scratchpad key '{key}' not readable: {e}"))
+        Ok(std::fs::read_to_string(&canonical)
+            .map_err(|e| ToolError::exec(self.name(), format!("scratchpad key '{key}' not readable: {e}")))?)
     }
 }
 

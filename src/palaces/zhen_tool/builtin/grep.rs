@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use crate::error::ToolError;
 use serde_json::Value;
 
 use crate::palaces::qian_permission::PathOp;
@@ -72,7 +73,7 @@ impl BaseTool for GrepTool {
         })
     }
 
-    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, ToolError> {
         let pattern = input["pattern"]
             .as_str()
             .ok_or("Missing 'pattern' parameter")?;

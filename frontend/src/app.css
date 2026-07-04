@@ -1,0 +1,267 @@
+@import "tailwindcss";
+
+/* ── Tailwind v4 @theme — 仅非主题相关的固定 Token ──── */
+/* 主题色（--accent / --accent-hover / --accent-light 等）  */
+/* 继续由 App.svelte 的 $effect 运行时注入，不放入 @theme      */
+@theme {
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+
+  --shadow-xs: 0 0.5px 1px rgba(0, 0, 0, .04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, .06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, .08);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, .1);
+
+  --font-system: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+
+  --ease-out: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --animate-fade-in: fadeIn 150ms var(--ease-out);
+  --animate-slide-up: slideUp 250ms var(--ease-out);
+  --animate-scale-in: scaleIn 250ms var(--ease-spring);
+
+  /* 语义色 — 固定，不随主题变化 */
+  --color-success: #34c759;
+  --color-success-light: #ebf9ee;
+  --color-error: #ff3b30;
+  --color-error-light: #fff0ef;
+  --color-warning: #ff9500;
+  --color-warning-light: #fff6eb;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Jia — macOS-inspired.
+
+   Frosted sidebar, clean content area, system typography,
+   vibrant blue accent, generous radii, precise shadows.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Design Tokens ─────────────────────────────────────────── */
+:root {
+  /* Background — light, airy, with subtle material variation */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f7;
+  --bg-tertiary: #e8e8ed;
+  --bg-sidebar: rgba(246, 246, 248, 0.7);
+  --bg-surface: #fafafa;
+
+  /* Text — high contrast, crisp */
+  --text-primary: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-tertiary: #aeaeb2;
+
+  /* Borders — barely there */
+  --border: #e5e5ea;
+  --border-strong: #d1d1d6;
+
+  /* Accent — macOS Graphite */
+  --accent: #6e6e73;
+  --accent-hover: #555558;
+  --accent-light: rgba(110, 110, 115, 0.08);
+  --accent-glow: rgba(110, 110, 115, 0.12);
+
+  /* Semantic */
+  --success: #34c759;
+  --success-light: #ebf9ee;
+  --error: #ff3b30;
+  --error-light: #fff0ef;
+  --warning: #ff9500;
+  --warning-light: #fff6eb;
+
+  /* Radii — macOS-generous */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+
+  /* Shadows — soft, layered */
+  --shadow-xs: 0 0.5px 1px rgba(0, 0, 0, .04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, .06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, .08);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, .1);
+  --shadow-sidebar: 1px 0 0 rgba(0, 0, 0, .06);
+
+  /* Typography — SF Pro via system stack */
+  --font-system: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-8: 48px;
+
+  /* Animation — spring-like easing */
+  --ease-out: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+
+  font-family: var(--font-system);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* ── Reset ──────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body { overflow: hidden; overscroll-behavior: none; }
+body { min-height: 100vh; }
+
+button {
+  cursor: pointer;
+  font-family: var(--font-system);
+  font-size: inherit;
+  border: none;
+  background: none;
+  color: inherit;
+  /* 关闭原生按钮外观 —— 否则 WebKit 会画一层原生背景(悬停高亮),background:none 压不掉 */
+  -webkit-appearance: none;
+  appearance: none;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+input, textarea, select {
+  font-family: var(--font-system);
+  font-size: inherit;
+  color: inherit;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  outline: none;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+a { color: var(--accent); text-decoration: none; }
+
+/* ── Scrollbar — macOS-style thin, overlay ──────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, .18);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, .32); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* ── Selection — macOS blue ─────────────────────────────────── */
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* ── Layout ──────────────────────────────────────────────────── */
+.layout {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Resizable sidebar divider */
+.sidebar-divider {
+  width: 2px; flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  transition: background var(--duration-fast);
+}
+.sidebar-divider:hover,
+.sidebar-divider.dragging {
+  background: var(--accent);
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+/* ── Page shell ──────────────────────────────────────────────── */
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.page-header {
+  padding: var(--space-5) var(--space-6) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-shrink: 0;
+  background: var(--bg-primary);
+}
+
+.page-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
+
+.page-subtitle {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: var(--space-1);
+}
+
+.page-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-5) var(--space-6);
+}
+
+/* ── Utilities ───────────────────────────────────────────────── */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+code, pre {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* ── Keyframes ──────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}

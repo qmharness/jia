@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use crate::error::ToolError;
 use serde_json::Value;
 
 use crate::palaces::qian_permission::PathOp;
@@ -61,7 +62,7 @@ impl BaseTool for ReadFileTool {
         })
     }
 
-    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, ToolError> {
         let path = input["path"].as_str().ok_or("Missing 'path' parameter")?;
         let canonical = ctx.permissions.verify_path(path, PathOp::Read)?;
 
@@ -130,7 +131,7 @@ mod tests {
             .execute(serde_json::json!({"path": "Cargo.toml"}), &test_ctx())
             .await;
         assert!(result.is_ok());
-        assert!(result.unwrap().contains("[package]"));
+        assert!(result.unwrap().to_string().contains("[package]"));
     }
 
     #[tokio::test]
@@ -164,11 +165,11 @@ mod tests {
         assert!(result.is_ok());
         let content = result.unwrap();
         assert!(
-            content.contains("[truncated at line 2"),
+            content.to_string().contains("[truncated at line 2"),
             "should have truncation marker, got: {content}"
         );
         // Must contain the first line of Cargo.toml
-        assert!(content.contains("[package]"), "should contain file content");
+        assert!(content.to_string().contains("[package]"), "should contain file content");
     }
 
     #[tokio::test]
@@ -178,6 +179,6 @@ mod tests {
             .execute(serde_json::json!({"path": "/etc/passwd"}), &test_ctx())
             .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("outside project root"));
+        assert!(result.unwrap_err().to_string().contains("outside project root"));
     }
 }

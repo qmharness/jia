@@ -5,7 +5,7 @@ use std::sync::Mutex;
 
 use tokio_util::sync::CancellationToken;
 
-use crate::palaces::gen_store::Store;
+use crate::palaces::gen_store::{async_store::StoreAsync, Store};
 use crate::palaces::kan_io::ChannelManager;
 use crate::palaces::kun_config::{AppConfig, ConfigLoader};
 use crate::palaces::li_skill::SkillRegistry;
@@ -90,6 +90,7 @@ pub struct EarthPlate {
     pub cron: Arc<CronStore>,           // (cron runner)
     pub task_store: Arc<TaskStore>,     // 任务管理
     pub store: Arc<Store>,              // 艮八
+    pub store_async: StoreAsync,        // 艮八 · async facade
     pub spirit: Arc<SpiritPlate>,       // 神盘
     /// P4 · compiled user-configurable hooks (人盘门规 / 神盘观测). Empty by
     /// default; regexes pre-compiled at assemble to avoid hot-path cost (O4).
@@ -287,6 +288,7 @@ impl EarthPlate {
 
         // Open Store before tool registration so tools can receive it
         let store = Arc::new(Store::open(&db_path.to_string_lossy()));
+        let store_async = StoreAsync::new(store.clone());
 
         // Register NamaRupaTool — agentic graph memory (nāma-rūpa)
         tool_registry.register(Arc::new(NamaRupaTool::new(store.clone())));
@@ -360,6 +362,7 @@ impl EarthPlate {
             skills,
             cron: cron_store.clone(),
             task_store: task_store.clone(),
+            store_async,
             store,
             spirit: Arc::new(spirit),
             user_hooks,

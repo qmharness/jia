@@ -4,6 +4,7 @@
 // Escape (close dialogs), Tab (navigate fields), arrow keys, and shortcuts.
 
 use std::time::Duration;
+use crate::error::ToolError;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -86,7 +87,7 @@ impl BaseTool for BrowserPressKeyTool {
         })
     }
 
-    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
         let key = input["key"].as_str().ok_or("missing 'key' parameter")?;
         let tab_id = input["tab_id"].as_str();
 

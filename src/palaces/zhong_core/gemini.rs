@@ -1,5 +1,6 @@
 // ── Gemini Provider (Google Generative Language API) ──────────
 
+use crate::error::ProviderError;
 use std::pin::Pin;
 
 use futures::Stream;
@@ -93,7 +94,7 @@ impl LlmProvider for GeminiProvider {
         messages: Vec<Message>,
         tools: Option<&[ToolSchema]>,
         cancel_token: Option<CancellationToken>,
-    ) -> Pin<Box<dyn Stream<Item = Result<StreamChunk, String>> + Send>> {
+    ) -> Pin<Box<dyn Stream<Item = Result<StreamChunk, ProviderError>> + Send>> {
         let (tx, rx) = mpsc::unbounded_channel();
 
         let body = build_gemini_body(&messages, self.max_tokens, tools);
@@ -114,7 +115,7 @@ impl LlmProvider for GeminiProvider {
                 {
                     Ok(r) => r,
                     Err(e) => {
-                        let _ = tx.send(Err(format!("Network error: {e}")));
+                        let _ = tx.send(Err(ProviderError::Network(e.to_string())));
                         return;
                     }
                 };
@@ -141,13 +142,13 @@ impl LlmProvider for GeminiProvider {
                     {
                         Ok(Some(Ok(bytes))) => bytes,
                         Ok(Some(Err(e))) => {
-                            let _ = tx.send(Err(format!("Stream error: {e}")));
+                            let _ = tx.send(Err(ProviderError::Stream(e.to_string())));
                             return;
                         }
                         Ok(None) => break,
                         Err(_elapsed) => {
                             let _ = tx
-                                .send(Err("LLM stream stalled — no data received for 30s".into()));
+                                .send(Err(ProviderError::StreamStalled));
                             return;
                         }
                     };
@@ -169,7 +170,7 @@ impl LlmProvider for GeminiProvider {
 
                         if let Some(err) = event["error"].as_object() {
                             let msg = err["message"].as_str().unwrap_or("Unknown Gemini error");
-                            let _ = tx.send(Err(format!("Provider error: {msg}")));
+                            let _ = tx.send(Err(ProviderError::Provider(msg.to_string())));
                             return;
                         }
 

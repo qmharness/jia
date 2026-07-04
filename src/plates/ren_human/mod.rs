@@ -25,23 +25,12 @@ pub struct HumanPlate {
     pub gates: [GateState; 8],
     pub permissions: Arc<PermissionMatrix>,
     pub pending_confirmations: Arc<Mutex<HashMap<String, PendingConfirmation>>>,
+    /// Test-only: when set, `request_confirmation` returns this value immediately.
+    #[doc(hidden)]
+    pub confirmation_override: Option<bool>,
 }
 
-/// 人盘分发错误
-#[derive(Debug, Clone)]
-pub enum DispatchError {
-    Denied(String),
-    ToolError(String),
-}
-
-impl std::fmt::Display for DispatchError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DispatchError::Denied(reason) => write!(f, "Execution denied: {reason}"),
-            DispatchError::ToolError(msg) => write!(f, "Tool error: {msg}"),
-        }
-    }
-}
+pub use crate::error::DispatchError;
 
 impl HumanPlate {
     pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
@@ -49,6 +38,7 @@ impl HumanPlate {
             gates: [GateState::Open; 8],
             permissions,
             pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
+            confirmation_override: None,
         }
     }
 
@@ -60,6 +50,7 @@ impl HumanPlate {
             gates: [GateState::Open; 8],
             permissions,
             pending_confirmations,
+            confirmation_override: None,
         }
     }
 
@@ -99,7 +90,7 @@ impl HumanPlate {
                 let output = tool
                     .execute_with_tx(input.clone(), tx, exec_ctx)
                     .await
-                    .map_err(DispatchError::ToolError)?;
+                    .map_err(|e| DispatchError::ToolError(e.to_string()))?;
                 Ok(ToolResult {
                     call_id: String::new(),
                     output,
@@ -229,7 +220,7 @@ impl HumanPlate {
         let output = tool
             .execute_with_tx(input.clone(), tx, exec_ctx)
             .await
-            .map_err(DispatchError::ToolError)?;
+            .map_err(|e| DispatchError::ToolError(e.to_string()))?;
         Ok(ToolResult {
             call_id: String::new(),
             output,
@@ -280,7 +271,7 @@ impl HumanPlate {
         let output = tool
             .execute_with_tx(sandboxed, tx, exec_ctx)
             .await
-            .map_err(DispatchError::ToolError)?;
+            .map_err(|e| DispatchError::ToolError(e.to_string()))?;
         Ok(ToolResult {
             call_id: String::new(),
             output,
@@ -296,6 +287,9 @@ impl HumanPlate {
         reason: &str,
         tx: &tokio::sync::mpsc::UnboundedSender<AgentEvent>,
     ) -> bool {
+        if let Some(v) = self.confirmation_override {
+            return v;
+        }
         let id = uuid::Uuid::new_v4().to_string();
         let token = uuid::Uuid::new_v4().to_string();
         let timeout_secs = self.permissions.confirmation_timeout.as_secs();
@@ -377,6 +371,7 @@ pub enum GateState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ToolError;
     use crate::geju::ExecutionMode;
     use crate::palaces::qian_permission::PermissionMatrix;
     use crate::plates::shen_spirit::EventBus;
@@ -406,7 +401,7 @@ mod tests {
             &self,
             input: serde_json::Value,
             _ctx: &ExecContext,
-        ) -> Result<String, String> {
+        ) -> Result<String, ToolError> {
             Ok(format!("echo: {}", input))
         }
     }
@@ -435,7 +430,7 @@ mod tests {
             &self,
             input: serde_json::Value,
             _ctx: &ExecContext,
-        ) -> Result<String, String> {
+        ) -> Result<String, ToolError> {
             Ok(format!("exec: {}", input))
         }
     }
@@ -489,7 +484,8 @@ mod tests {
 
     #[tokio::test]
     async fn dispatch_denied() {
-        let (plate, eb, tx) = make_plate();
+        let (mut plate, eb, tx) = make_plate();
+        plate.confirmation_override = Some(false);
         let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
         let geju = make_geju(ExecutionMode::Denied);
         let result = plate
@@ -557,7 +553,8 @@ mod tests {
 
     #[tokio::test]
     async fn denied_escalates_when_shangmen_open() {
-        let (plate, eb, tx) = make_plate();
+        let (mut plate, eb, tx) = make_plate();
+        plate.confirmation_override = Some(false);
         // ShangMen is Open by default — Denied should escalate to Guarded+UserConfirmation
         let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
         let geju = make_geju(ExecutionMode::Denied);
@@ -638,6 +635,7 @@ mod tests {
     #[tokio::test]
     async fn sandbox_downgrades_when_dumen_closed() {
         let (mut plate, eb, tx) = make_plate();
+        plate.confirmation_override = Some(false);
         plate.gates[HumanGate::DuMen as usize] = GateState::Closed;
         let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
         let geju = make_geju(ExecutionMode::Sandbox);

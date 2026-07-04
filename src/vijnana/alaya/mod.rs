@@ -1,3 +1,4 @@
+use crate::error::JiaError;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -131,40 +132,40 @@ impl SeedStore {
         Self { store }
     }
 
-    pub fn insert(&self, seed: &Seed) -> Result<(), String> {
-        let json = serde_json::to_string(seed).map_err(|e| e.to_string())?;
-        self.store.insert_seed(&json).map_err(|e| e.to_string())
+    pub fn insert(&self, seed: &Seed) -> Result<(), JiaError> {
+        let json = serde_json::to_string(seed)?;
+        Ok(self.store.insert_seed(&json)?)
     }
 
-    pub fn load_by_session(&self, session_id: &str) -> Result<Vec<Seed>, String> {
+    pub fn load_by_session(&self, session_id: &str) -> Result<Vec<Seed>, JiaError> {
         let jsons = self
             .store
             .load_seeds_by_session(session_id)
-            .map_err(|e| e.to_string())?;
+            ?;
         jsons
             .into_iter()
-            .map(|j| serde_json::from_str(&j).map_err(|e| e.to_string()))
+            .map(|j| serde_json::from_str(&j).map_err(JiaError::from))
             .collect()
     }
 
     /// Load ALL seeds (agent-wide, no session_id filter).
-    pub fn load_all(&self) -> Result<Vec<Seed>, String> {
-        let jsons = self.store.load_all_seeds().map_err(|e| e.to_string())?;
+    pub fn load_all(&self) -> Result<Vec<Seed>, JiaError> {
+        let jsons = self.store.load_all_seeds()?;
         jsons
             .into_iter()
-            .map(|j| serde_json::from_str(&j).map_err(|e| e.to_string()))
+            .map(|j| serde_json::from_str(&j).map_err(JiaError::from))
             .collect()
     }
 
     /// Load top N seeds by strength, no palace/stem filter.
-    fn load_top(&self, limit: usize) -> Result<Vec<Seed>, String> {
+    fn load_top(&self, limit: usize) -> Result<Vec<Seed>, JiaError> {
         let jsons = self
             .store
             .load_top_seeds(limit)
-            .map_err(|e| e.to_string())?;
+            ?;
         jsons
             .into_iter()
-            .map(|j| serde_json::from_str(&j).map_err(|e| e.to_string()))
+            .map(|j| serde_json::from_str(&j).map_err(JiaError::from))
             .collect()
     }
 
@@ -336,11 +337,11 @@ impl SeedStore {
 
     /// FTS5 search for seeds with text similar to `query`.
     /// Returns up to `limit` content texts of the most similar seeds found.
-    pub fn search_similar_texts(&self, query: &str, limit: usize) -> Result<Vec<String>, String> {
+    pub fn search_similar_texts(&self, query: &str, limit: usize) -> Result<Vec<String>, JiaError> {
         let results = self
             .store
             .search_seeds(query, limit)
-            .map_err(|e| e.to_string())?;
+            ?;
         Ok(results
             .into_iter()
             .filter_map(|(json, _rank)| {

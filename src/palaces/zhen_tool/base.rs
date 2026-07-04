@@ -1,3 +1,4 @@
+use crate::error::ToolError;
 use crate::stems::action::ExecContext;
 use async_trait::async_trait;
 
@@ -41,7 +42,7 @@ pub trait BaseTool: Send + Sync {
 
     /// Execute the tool with the given JSON input and execution context.
     /// Permissions are injected via `ctx` rather than held by the tool struct.
-    async fn execute(&self, input: serde_json::Value, ctx: &ExecContext) -> Result<String, String>;
+    async fn execute(&self, input: serde_json::Value, ctx: &ExecContext) -> Result<String, ToolError>;
 
     /// Target palace for GeJu evaluation.
     ///
@@ -70,7 +71,7 @@ pub trait BaseTool: Send + Sync {
         input: serde_json::Value,
         _tx: &tokio::sync::mpsc::UnboundedSender<crate::plates::tian_heaven::r#loop::AgentEvent>,
         ctx: &ExecContext,
-    ) -> Result<String, String> {
+    ) -> Result<String, ToolError> {
         self.execute(input, ctx).await
     }
 }

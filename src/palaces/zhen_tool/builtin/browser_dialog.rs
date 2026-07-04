@@ -4,6 +4,7 @@
 // If prompt_text is provided, fills the prompt input before accepting.
 
 use std::time::Duration;
+use crate::error::ToolError;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -88,7 +89,7 @@ impl BaseTool for BrowserDialogTool {
         })
     }
 
-    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
         let action = input["action"]
             .as_str()
             .ok_or("missing 'action' parameter")?;

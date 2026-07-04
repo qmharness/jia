@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use crate::error::ToolError;
 use serde_json::Value;
 
 use crate::palaces::qian_permission::PathOp;
@@ -62,7 +63,7 @@ impl BaseTool for WriteFileTool {
         false
     }
 
-    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, ToolError> {
         let path = input["path"].as_str().ok_or("Missing 'path' parameter")?;
         let content = input["content"]
             .as_str()

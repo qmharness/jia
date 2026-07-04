@@ -1,4 +1,5 @@
 use std::time::SystemTime;
+use crate::error::ToolError;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -80,7 +81,7 @@ impl BaseTool for GlobTool {
         })
     }
 
-    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, ToolError> {
         let pattern = input["pattern"]
             .as_str()
             .ok_or("Missing 'pattern' parameter")?;
@@ -96,7 +97,7 @@ impl BaseTool for GlobTool {
             return Err(format!(
                 "path is not a directory: {}",
                 search_root.display()
-            ));
+            ).into());
         };
 
         // Compose full glob pattern: <root>/<pattern>

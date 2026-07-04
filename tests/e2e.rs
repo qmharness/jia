@@ -154,6 +154,7 @@ fn temp_earth(store: Arc<Store>, temp_dir: &std::path::Path) -> Arc<EarthPlate> 
         skills: Arc::new(std::sync::RwLock::new(SkillRegistry::new())),
         cron: jia::palaces::zhen_tool::builtin::cron::CronStore::new(tmp.join("cron")),
         task_store: jia::palaces::zhen_tool::builtin::task::TaskStore::new(),
+        store_async: jia::palaces::gen_store::async_store::StoreAsync::new(store.clone()),
         store,
         spirit: Arc::new(SpiritPlate::new()),
         user_hooks: Arc::new(Vec::new()),

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use crate::error::ToolError;
 use std::sync::Weak;
 
 use async_trait::async_trait;
@@ -70,7 +71,7 @@ impl BaseTool for ToolSearchTool {
         })
     }
 
-    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
         let query = input["query"].as_str().ok_or("Missing 'query' parameter")?;
         let limit = input["limit"].as_u64().unwrap_or(8) as usize;
         let query_lower = query.to_lowercase();
@@ -169,7 +170,7 @@ mod tests {
         fn is_concurrency_safe(&self) -> bool {
             true
         }
-        async fn execute(&self, _input: Value, _ctx: &ExecContext) -> Result<String, String> {
+        async fn execute(&self, _input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
             Ok("ok".into())
         }
     }

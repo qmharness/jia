@@ -4,6 +4,7 @@
 // input/change events so JS frameworks (React, Vue) detect the change.
 
 use std::time::Duration;
+use crate::error::ToolError;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -91,7 +92,7 @@ impl BaseTool for BrowserTypeTool {
         })
     }
 
-    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
         let ref_str = input["ref"].as_str().ok_or("missing 'ref' parameter")?;
         let text = input["text"].as_str().ok_or("missing 'text' parameter")?;
         let tab_id = input["tab_id"].as_str();

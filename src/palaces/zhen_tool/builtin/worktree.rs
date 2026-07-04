@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use crate::error::ToolError;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -122,7 +123,7 @@ impl BaseTool for EnterWorktreeTool {
         })
     }
 
-    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, ToolError> {
         let name = input["name"]
             .as_str()
             .ok_or("Missing 'name' parameter")?
@@ -205,7 +206,7 @@ impl BaseTool for ExitWorktreeTool {
         })
     }
 
-    async fn execute(&self, _input: Value, _ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, _input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
         // Marker tool — the agent loop handles the actual restore + removal so
         // it can swap active_tools (which the stateless tool cannot reach).
         Ok("Exiting worktree; tools restored to the main project root.".to_string())

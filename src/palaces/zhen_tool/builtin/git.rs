@@ -1,6 +1,7 @@
 // ── Git Tool — Execute safe git commands ─────────────────────
 
 use async_trait::async_trait;
+use crate::error::ToolError;
 use serde_json::Value;
 
 use crate::palaces::zhen_tool::base::BaseTool;
@@ -66,7 +67,7 @@ impl BaseTool for GitTool {
         false
     }
 
-    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, ToolError> {
         let subcmd = input["subcommand"]
             .as_str()
             .ok_or("Missing 'subcommand' parameter")?;
@@ -77,12 +78,12 @@ impl BaseTool for GitTool {
                 "Git subcommand '{}' is not allowed. Allowed: {}",
                 first_word,
                 ALLOWED_COMMANDS.join(", "),
-            ));
+            ).into());
         }
 
         for pattern in DANGEROUS_PATTERNS {
             if subcmd.contains(pattern) {
-                return Err(format!("Dangerous git operation '{}' is blocked.", pattern));
+                return Err(format!("Dangerous git operation '{}' is blocked.", pattern).into());
             }
         }
 
@@ -99,7 +100,7 @@ impl BaseTool for GitTool {
         let stderr = String::from_utf8_lossy(&output.stderr);
 
         if !output.status.success() {
-            return Err(format!("git failed ({}): {}", output.status, stderr.trim()));
+            return Err(format!("git failed ({}): {}", output.status, stderr.trim()).into());
         }
 
         let out = stdout.trim().to_string();

@@ -1,0 +1,31 @@
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "cp index.dev.html index.html && vite build",
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.0.0",
+    "@tailwindcss/vite": "^4.3.0",
+    "@tsconfig/svelte": "^5.0.8",
+    "@types/node": "^24.12.2",
+    "cross-env": "^10.1.0",
+    "svelte": "^5.55.4",
+    "svelte-check": "^4.4.6",
+    "tailwindcss": "^4.3.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.10",
+    "jsdom": "^29.1.1",
+    "playwright": "^1.59.1"
+  },
+  "dependencies": {
+    "@tauri-apps/plugin-dialog": "^2.7.1",
+    "dompurify": "^3.4.11",
+    "marked": "^18.0.3"
+  }
+}

@@ -42,10 +42,7 @@ jobs:
 
       - name: Test
         run: |
-          cargo test ${{ matrix.features }} -- \
-            --skip denied_escalates_when_shangmen_open \
-            --skip dispatch_denied \
-            --skip sandbox_downgrades_when_dumen_closed
+          cargo test ${{ matrix.features }}
 
   build:
     name: Build (release)

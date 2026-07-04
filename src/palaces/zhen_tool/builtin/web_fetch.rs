@@ -1,4 +1,5 @@
 use std::time::Duration;
+use crate::error::ToolError;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -69,7 +70,7 @@ impl BaseTool for WebFetchTool {
         })
     }
 
-    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
         let url = input["url"].as_str().ok_or("Missing 'url' parameter")?;
 
         let parsed = url::Url::parse(url).map_err(|e| format!("Invalid URL: {e}"))?;
@@ -78,7 +79,7 @@ impl BaseTool for WebFetchTool {
             return Err(format!(
                 "Unsupported URL scheme '{}': only http/https allowed",
                 parsed.scheme()
-            ));
+            ).into());
         }
 
         // SSRF protection: resolve hostname and block private/reserved IPs
@@ -101,7 +102,7 @@ impl BaseTool for WebFetchTool {
                     return Err(format!(
                         "SSRF blocked: URL resolves to private/reserved IP {}",
                         addr.ip()
-                    ));
+                    ).into());
                 }
             }
         }
@@ -118,7 +119,7 @@ impl BaseTool for WebFetchTool {
             .headers()
             .get("content-type")
             .and_then(|v| v.to_str().ok())
-            .is_some_and(|ct| ct.contains("text/html") || ct.contains("application/xhtml"));
+            .is_some_and(|ct| ct.to_string().contains("text/html") || ct.to_string().contains("application/xhtml"));
 
         let body = response
             .text()
@@ -284,24 +285,24 @@ mod tests {
     fn test_html_to_text_basic() {
         let html = "<html><body><h1>Title</h1><p>Hello <b>world</b></p></body></html>";
         let text = html_to_text(html);
-        assert!(text.contains("Title"));
-        assert!(text.contains("Hello world"));
+        assert!(text.to_string().contains("Title"));
+        assert!(text.to_string().contains("Hello world"));
     }
 
     #[test]
     fn test_html_to_text_removes_script() {
         let html = "<html><script>alert('xss')</script><p>Safe</p></html>";
         let text = html_to_text(html);
-        assert!(!text.contains("alert"));
-        assert!(text.contains("Safe"));
+        assert!(!text.to_string().contains("alert"));
+        assert!(text.to_string().contains("Safe"));
     }
 
     #[test]
     fn test_html_to_text_decodes_entities() {
         let html = "<p>Hello &amp; goodbye</p>";
         let text = html_to_text(html);
-        assert!(text.contains("&"));
-        assert!(!text.contains("&amp;"));
+        assert!(text.to_string().contains("&"));
+        assert!(!text.to_string().contains("&amp;"));
     }
 
     #[test]
@@ -327,6 +328,6 @@ mod tests {
             )
             .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Unsupported"));
+        assert!(result.unwrap_err().to_string().contains("Unsupported"));
     }
 }

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use crate::error::ToolError;
 // ── Ask User Question Tool — Interactive user query ─────────
 
 use std::collections::HashMap;
@@ -84,7 +85,7 @@ impl BaseTool for AskUserQuestionTool {
         })
     }
 
-    async fn execute(&self, _input: Value, _ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, _input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
         // Never called directly — execute_with_tx is used instead.
         Err("ask_user requires event channel access".into())
     }
@@ -94,7 +95,7 @@ impl BaseTool for AskUserQuestionTool {
         input: Value,
         tx: &mpsc::UnboundedSender<AgentEvent>,
         ctx: &ExecContext,
-    ) -> Result<String, String> {
+    ) -> Result<String, ToolError> {
         let question = input["question"]
             .as_str()
             .ok_or("Missing 'question' parameter")?

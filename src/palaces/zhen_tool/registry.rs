@@ -97,6 +97,7 @@ impl Default for ToolRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ToolError;
     use crate::stems::action::ExecContext;
     use crate::stems::intent::ReadAction;
 
@@ -124,7 +125,7 @@ mod tests {
             &self,
             _input: serde_json::Value,
             _ctx: &ExecContext,
-        ) -> Result<String, String> {
+        ) -> Result<String, ToolError> {
             Ok("ok".into())
         }
     }
@@ -154,7 +155,7 @@ mod tests {
             &self,
             _input: serde_json::Value,
             _ctx: &ExecContext,
-        ) -> Result<String, String> {
+        ) -> Result<String, ToolError> {
             Ok("ok".into())
         }
     }

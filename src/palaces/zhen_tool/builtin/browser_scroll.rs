@@ -1,6 +1,7 @@
 // ── browser_scroll — Scroll the page without heavy DOM snapshots ──
 
 use std::time::Duration;
+use crate::error::ToolError;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -84,7 +85,7 @@ impl BaseTool for BrowserScrollTool {
         })
     }
 
-    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
         let direction = input["direction"]
             .as_str()
             .ok_or("missing 'direction' parameter")?;

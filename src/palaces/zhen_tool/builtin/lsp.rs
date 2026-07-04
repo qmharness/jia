@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use crate::error::ToolError;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
@@ -85,7 +86,7 @@ impl BaseTool for LspTool {
         })
     }
 
-    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, ToolError> {
         let operation = input["operation"]
             .as_str()
             .ok_or("Missing 'operation' parameter")?
@@ -106,11 +107,12 @@ impl BaseTool for LspTool {
 
         let manager = self.manager.clone();
         // LSP JSON-RPC is blocking IO — run off the async runtime.
-        tokio::task::spawn_blocking(move || {
+        let inner = tokio::task::spawn_blocking(move || {
             manager.run_operation(&path, lang, &operation, line, character)
         })
         .await
-        .map_err(|e| format!("LSP task join error: {e}"))?
+        .map_err(|e| ToolError::exec(self.name(), format!("LSP task join error: {e}")))?;
+        Ok(inner?)
     }
 }
 
@@ -604,7 +606,7 @@ mod tests {
             assert!(result.is_ok(), "hover failed: {:?}", result.err());
         } else {
             assert!(result.is_err(), "expected error when server missing");
-            assert!(result.unwrap_err().contains("no language server"));
+            assert!(result.unwrap_err().to_string().contains("no language server"));
         }
     }
 }

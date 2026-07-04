@@ -403,6 +403,7 @@ mod tests {
             skills: registry,
             cron: CronStore::new(dirs.cron_path.clone()),
             task_store: TaskStore::new(),
+            store_async: crate::palaces::gen_store::async_store::StoreAsync::new(store.clone()),
             store,
             spirit: Arc::new(SpiritPlate::new()),
             user_hooks: Arc::new(Vec::new()),

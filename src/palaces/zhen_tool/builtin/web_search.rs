@@ -1,4 +1,5 @@
 use std::time::Duration;
+use crate::error::ToolError;
 
 use async_trait::async_trait;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
@@ -71,7 +72,7 @@ impl BaseTool for WebSearchTool {
         })
     }
 
-    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
         let query = input["query"].as_str().ok_or("Missing 'query' parameter")?;
 
         if query.trim().is_empty() {

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use crate::error::ToolError;
 // ── WASM Plugin: dynamic .wasm tool loading via wasmtime ──
 
 use std::path::{Path, PathBuf};
@@ -137,7 +138,7 @@ impl BaseTool for WasmPlugin {
         self.meta.concurrency_safe
     }
 
-    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
         let request = PluginRequest {
             tool: &self.meta.name,
             input: &input,

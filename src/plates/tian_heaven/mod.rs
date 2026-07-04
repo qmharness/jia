@@ -535,6 +535,7 @@ mod tests {
                 tmp.to_path_buf().join("cron"),
             ),
             task_store: crate::palaces::zhen_tool::builtin::task::TaskStore::new(),
+            store_async: crate::palaces::gen_store::async_store::StoreAsync::new(store.clone()),
             store,
             spirit: Arc::new(SpiritPlate::new()),
             user_hooks: Arc::new(Vec::new()),

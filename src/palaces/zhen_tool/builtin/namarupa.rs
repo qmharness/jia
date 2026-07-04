@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use crate::error::ToolError;
 // ── NamaRupa Tool — Agentic graph memory for nāma-rūpa ──────
 
 use async_trait::async_trait;
@@ -382,20 +383,20 @@ impl BaseTool for NamaRupaTool {
         })
     }
 
-    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
         let action = input["action"]
             .as_str()
             .ok_or("Missing 'action' parameter")?;
 
         match action {
-            "query" => self.handle_query(&input),
-            "save" => self.handle_save(&input),
-            "delete" => self.handle_delete(&input),
-            "contradictions" => self.handle_contradictions(&input),
+            "query" => Ok(self.handle_query(&input)?),
+            "save" => Ok(self.handle_save(&input)?),
+            "delete" => Ok(self.handle_delete(&input)?),
+            "contradictions" => Ok(self.handle_contradictions(&input)?),
             _ => Err(format!(
                 "Unknown action '{}'. Use 'query', 'save', 'delete', or 'contradictions'.",
                 action
-            )),
+            ).into()),
         }
     }
 }

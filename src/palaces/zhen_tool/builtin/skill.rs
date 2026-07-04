@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use crate::error::ToolError;
 use std::sync::RwLock;
 
 use async_trait::async_trait;
@@ -93,7 +94,7 @@ impl BaseTool for SkillTool {
         })
     }
 
-    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
         let skill_name = input["skill"].as_str().ok_or("Missing 'skill' parameter")?;
 
         let reg = self.registry.read().unwrap_or_else(|e| e.into_inner());
@@ -113,7 +114,7 @@ impl BaseTool for SkillTool {
 
         // Serve a bundled script
         if let Some(script_name) = input["script"].as_str() {
-            return skill.scripts.get(script_name).cloned().ok_or_else(|| {
+            return Ok(skill.scripts.get(script_name).cloned().ok_or_else(|| {
                 let available: Vec<_> = skill.scripts.keys().map(|k| k.as_str()).collect();
                 if available.is_empty() {
                     format!("Skill '{}' has no bundled scripts.", skill_name)
@@ -125,12 +126,12 @@ impl BaseTool for SkillTool {
                         available.join(", ")
                     )
                 }
-            });
+            })?);
         }
 
         // Serve a bundled reference
         if let Some(ref_name) = input["reference"].as_str() {
-            return skill.references.get(ref_name).cloned().ok_or_else(|| {
+            return Ok(skill.references.get(ref_name).cloned().ok_or_else(|| {
                 let available: Vec<_> = skill.references.keys().map(|k| k.as_str()).collect();
                 if available.is_empty() {
                     format!("Skill '{}' has no bundled references.", skill_name)
@@ -142,7 +143,7 @@ impl BaseTool for SkillTool {
                         available.join(", ")
                     )
                 }
-            });
+            })?);
         }
 
         // Default: return the skill prompt
@@ -231,8 +232,8 @@ mod tests {
     #[tokio::test]
     async fn skill_tool_lists_available_skills() {
         let tool = SkillTool::new(test_registry());
-        assert!(tool.description().contains("code-review"));
-        assert!(tool.description().contains("safety"));
+        assert!(tool.description().to_string().contains("code-review"));
+        assert!(tool.description().to_string().contains("safety"));
     }
 
     #[tokio::test]
@@ -242,7 +243,7 @@ mod tests {
             .execute(serde_json::json!({"skill": "code-review"}), &test_ctx())
             .await;
         assert!(result.is_ok());
-        assert!(result.unwrap().contains("SQL injection"));
+        assert!(result.unwrap().to_string().contains("SQL injection"));
     }
 
     #[tokio::test]
@@ -253,8 +254,8 @@ mod tests {
             .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("code-review"));
-        assert!(err.contains("safety"));
+        assert!(err.to_string().contains("code-review"));
+        assert!(err.to_string().contains("safety"));
     }
 
     #[tokio::test]

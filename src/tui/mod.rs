@@ -12,6 +12,11 @@
 mod app;
 mod composer;
 mod connection;
+pub mod markdown;
+pub mod wrapping;
+pub mod state;
+pub mod security;
+pub mod widgets;
 mod render;
 
 use std::time::Duration;
@@ -28,7 +33,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use self::app::Event as AppEvent;
+use self::state::Event as AppEvent;
 
 /// Inline viewport height in rows (active turn + input + status). History
 /// scrolls above this region into the terminal's native scrollback via
@@ -70,7 +75,7 @@ pub async fn run(_config: crate::config::AppConfig) {
     };
 
     // Send model_info query and wait for the response.
-    let mut llm = app::LlmInfo {
+    let mut llm = state::LlmInfo {
         model_id: String::new(),
         provider: String::new(),
     };
@@ -81,7 +86,7 @@ pub async fn run(_config: crate::config::AppConfig) {
     // Read the response — the reader task should send it promptly.
     while let Some(event) = socket_rx.recv().await {
         if let connection::SocketEvent::ModelInfo { provider, model } = event {
-            llm = app::LlmInfo {
+            llm = state::LlmInfo {
                 model_id: model,
                 provider,
             };

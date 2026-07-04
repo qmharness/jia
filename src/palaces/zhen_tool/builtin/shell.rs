@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use crate::error::ToolError;
 use serde_json::Value;
 
 use crate::palaces::zhen_tool::base::BaseTool;
@@ -56,11 +57,11 @@ impl BaseTool for ShellTool {
         false
     }
 
-    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, ToolError> {
         let cmd = input["command"]
             .as_str()
             .ok_or("Missing 'command' parameter")?;
-        ctx.permissions.execute_sandboxed(cmd).await
+        Ok(ctx.permissions.execute_sandboxed(cmd).await?)
     }
 }
 
@@ -89,7 +90,7 @@ mod tests {
             .execute(serde_json::json!({"command": "echo hello"}), &test_ctx())
             .await;
         assert!(result.is_ok());
-        assert!(result.unwrap().contains("hello"));
+        assert!(result.unwrap().to_string().contains("hello"));
     }
 
     #[tokio::test]
@@ -109,6 +110,6 @@ mod tests {
             )
             .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("blocked pattern"));
+        assert!(result.unwrap_err().to_string().contains("blocked pattern"));
     }
 }

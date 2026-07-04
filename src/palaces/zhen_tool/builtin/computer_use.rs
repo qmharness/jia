@@ -5,6 +5,7 @@
 // and CGWindowListCreateImage for screenshots.
 
 use std::time::Duration;
+use crate::error::ToolError;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -63,7 +64,7 @@ impl BaseTool for ComputerUseTool {
         schema::parameters_schema()
     }
 
-    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
         let parsed: ComputerUseInput =
             serde_json::from_value(input).map_err(|e| format!("Invalid input: {e}"))?;
 
@@ -82,7 +83,7 @@ impl BaseTool for ComputerUseTool {
 }
 
 #[cfg(target_os = "macos")]
-async fn execute_macos(input: ComputerUseInput) -> Result<String, String> {
+async fn execute_macos(input: ComputerUseInput) -> Result<String, ToolError> {
     use crate::palaces::zhen_tool::computer_driver::MacOsBackend;
 
     let backend = MacOsBackend;

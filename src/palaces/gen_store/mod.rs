@@ -15,43 +15,11 @@ pub struct TierBudgetReport {
     pub archive_deleted: usize,
 }
 
-#[derive(Debug)]
-pub enum StoreError {
-    Sqlite(rusqlite::Error),
-    Serde(serde_json::Error),
-    Pool(String),
-}
-
-impl std::fmt::Display for StoreError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            StoreError::Sqlite(e) => write!(f, "SQLite error: {e}"),
-            StoreError::Serde(e) => write!(f, "JSON error: {e}"),
-            StoreError::Pool(e) => write!(f, "Pool error: {e}"),
-        }
-    }
-}
-
-impl From<rusqlite::Error> for StoreError {
-    fn from(e: rusqlite::Error) -> Self {
-        StoreError::Sqlite(e)
-    }
-}
-
-impl From<serde_json::Error> for StoreError {
-    fn from(e: serde_json::Error) -> Self {
-        StoreError::Serde(e)
-    }
-}
-
-impl From<r2d2::Error> for StoreError {
-    fn from(e: r2d2::Error) -> Self {
-        StoreError::Pool(e.to_string())
-    }
-}
+pub use crate::error::StoreError;
 
 // ── Submodules ──────────────────────────────────────────────────
 
+pub mod async_store;
 mod graph;
 mod helpers;
 #[allow(unused_imports)]

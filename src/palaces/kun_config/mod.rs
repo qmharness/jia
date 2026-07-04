@@ -37,6 +37,25 @@ pub enum Commands {
         #[arg(default_value = ".")]
         path: PathBuf,
     },
+    /// Start the gateway with the web dashboard (foreground).
+    /// Shortcut for `jia gateway daemon --web-dir <frontend/dist>`.
+    Web {
+        /// Config file path (default: config.toml in current directory)
+        #[arg(long = "config", env = "JIA_CONFIG")]
+        config_path: Option<PathBuf>,
+
+        /// HTTP server listen address (overrides config file)
+        #[arg(long, env = "JIA_HOST")]
+        host: Option<String>,
+
+        /// HTTP server listen port (overrides config file)
+        #[arg(long, env = "JIA_PORT")]
+        port: Option<u16>,
+
+        /// Frontend directory (default: CARGO_MANIFEST_DIR/frontend/dist)
+        #[arg(long = "web-dir", env = "JIA_WEB_DIR")]
+        web_dir: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -55,7 +74,7 @@ pub enum GatewayAction {
         #[arg(long, env = "JIA_PORT")]
         port: Option<u16>,
 
-        /// Frontend directory override (default: CARGO_MANIFEST_DIR/frontend/dist)
+        /// Frontend directory (default: none; use `jia web` for the dashboard with default path)
         #[arg(long = "web-dir", env = "JIA_WEB_DIR")]
         web_dir: Option<PathBuf>,
     },
@@ -463,6 +482,15 @@ pub fn pid_file_path() -> std::path::PathBuf {
     default_data_dir().join("gateway.pid")
 }
 
+/// Default web dashboard directory.
+///
+/// Resolved at compile time relative to the crate root so `jia web` finds
+/// the frontend without `--web-dir`. Within the repo layout, this is:
+/// `<jia>/frontend/dist`.
+pub fn default_web_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/dist")
+}
+
 impl Default for ServerSection {
     fn default() -> Self {
         Self {
@@ -508,24 +536,24 @@ impl AppConfig {
             JiaError::Config(format!(
                 "Cannot read config file {}: {e}",
                 toml_path.display()
-            ))
+            ).into())
         })?;
         let mut toml: JiaToml = toml::from_str(&toml_str).map_err(|e| {
-            JiaError::Config(format!("Invalid config file {}: {e}", toml_path.display()))
+            JiaError::Config(format!("Invalid config file {}: {e}", toml_path.display()).into())
         })?;
 
         if toml.providers.is_empty() {
             return Err(JiaError::Config(format!(
                 "Config file {} has no [providers] section",
                 toml_path.display()
-            )));
+            ).into()));
         }
         for (name, p) in &toml.providers {
             if p.models.is_empty() {
                 return Err(JiaError::Config(format!(
                     "Provider '{name}' in {} has empty models list",
                     toml_path.display()
-                )));
+                ).into()));
             }
         }
 
@@ -536,7 +564,7 @@ impl AppConfig {
                 "Config file {}: default_provider '{}' not found in [providers] section",
                 toml_path.display(),
                 dp,
-            )));
+            ).into()));
         }
 
         // Env var takes priority over config file for api_key
@@ -601,7 +629,7 @@ impl AppConfig {
             .ok_or_else(|| {
                 JiaError::Config(format!(
                     "no provider '{name}' or default provider '{default_name}'"
-                ))
+                ).into())
             })
     }
 

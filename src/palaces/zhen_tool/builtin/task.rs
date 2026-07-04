@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use crate::error::ToolError;
 // ── Task Tool — Create and track sub-tasks ───────────────────
 
 use async_trait::async_trait;
@@ -170,7 +171,7 @@ impl BaseTool for TaskTool {
         false
     }
 
-    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
         let action = input["action"]
             .as_str()
             .ok_or("Missing 'action' parameter")?;
@@ -205,16 +206,16 @@ impl BaseTool for TaskTool {
                             })
                         })
                         .collect();
-                    serde_json::to_string_pretty(&summary)
-                        .map_err(|e| format!("Serialization error: {e}"))
+                    Ok(serde_json::to_string_pretty(&summary)
+                        .map_err(|e| ToolError::exec(self.name(), format!("Serialization error: {e}")))?)
                 }
             }
             "get" => {
                 let id = input["id"].as_str().ok_or("Missing 'id' parameter")?;
                 match self.store.get(id)? {
-                    Some(task) => serde_json::to_string_pretty(&task)
-                        .map_err(|e| format!("Serialization error: {e}")),
-                    None => Err(format!("Task '{id}' not found")),
+                    Some(task) => Ok(serde_json::to_string_pretty(&task)
+                        .map_err(|e| ToolError::exec(self.name(), format!("Serialization error: {e}")))?),
+                    None => Err(format!("Task '{id}' not found").into()),
                 }
             }
             "update" => {
@@ -225,11 +226,11 @@ impl BaseTool for TaskTool {
                 let status = TaskStatus::from_str(status_str)
                     .ok_or_else(|| format!("Invalid status: '{status_str}'. Valid: pending, in_progress, completed, deleted"))?;
                 let task = self.store.update_status(id, status)?;
-                serde_json::to_string_pretty(&task).map_err(|e| format!("Serialization error: {e}"))
+                Ok(serde_json::to_string_pretty(&task).map_err(|e| ToolError::exec(self.name(), format!("Serialization error: {e}")))?)
             }
             _ => Err(format!(
                 "Unknown action: '{action}'. Valid: create, list, get, update"
-            )),
+            ).into()),
         }
     }
 }

@@ -3,6 +3,7 @@
 // Returns a base64-encoded PNG image. Useful for vision-based verification.
 
 use std::time::Duration;
+use crate::error::ToolError;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -79,7 +80,7 @@ impl BaseTool for BrowserScreenshotTool {
         })
     }
 
-    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
         let tab_id = input["tab_id"].as_str();
 
         let tabs = browser_cdp::get_tabs(&self.client).await?;

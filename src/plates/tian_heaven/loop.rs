@@ -64,10 +64,10 @@ impl super::Agent {
         }
 
         // Persist initial history so user message survives before first turn
-        if let Ok(json) = serde_json::to_string(&self.history)
-            && let Err(e) = self.earth.store.save_session(&self.id, &json)
-        {
-            tracing::warn!(session = %self.id, error = %e, "Failed to save initial session");
+        if let Ok(json) = serde_json::to_string(&self.history) {
+            if let Err(e) = self.earth.store_async.save_session(&self.id, &json).await {
+                tracing::warn!(session = %self.id, error = %e, "Failed to save initial session");
+            }
         }
 
         loop {
@@ -359,7 +359,7 @@ impl super::Agent {
                     }
                     Some(Err(e)) => {
                         tracing::error!(session = %self.id, error = %e, "LLM inference error");
-                        let _ = tx.send(AgentEvent::Error(e));
+                        let _ = tx.send(AgentEvent::Error(e.to_string()));
                         return;
                     }
                     None => break,
@@ -636,10 +636,10 @@ impl super::Agent {
             });
 
             // Incremental persist: save history after each turn
-            if let Ok(json) = serde_json::to_string(&self.history)
-                && let Err(e) = self.earth.store.save_session(&self.id, &json)
-            {
-                tracing::warn!(session = %self.id, error = %e, "Failed to save session incrementally");
+            if let Ok(json) = serde_json::to_string(&self.history) {
+                if let Err(e) = self.earth.store_async.save_session(&self.id, &json).await {
+                    tracing::warn!(session = %self.id, error = %e, "Failed to save session incrementally");
+                }
             }
         }
 

@@ -1,6 +1,7 @@
 // ── browser_snapshot — Get structured page content via Accessibility.getFullAXTree ──
 
 use std::collections::HashMap;
+use crate::error::ToolError;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -80,7 +81,7 @@ impl BaseTool for BrowserSnapshotTool {
         })
     }
 
-    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
         let tab_id = input["tab_id"].as_str();
 
         let tabs = browser_cdp::get_tabs(&self.client).await?;

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use crate::error::ToolError;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -179,7 +180,7 @@ impl BaseTool for DelegateTool {
         true
     }
 
-    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, ToolError> {
         let subagent_type = SubagentType::from_str(
             input["subagent_type"]
                 .as_str()
@@ -418,7 +419,7 @@ impl BaseTool for SendMessageTool {
         })
     }
 
-    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, ToolError> {
         let subagent_id = input["subagent_id"]
             .as_str()
             .ok_or("Missing 'subagent_id' parameter")?;
@@ -554,7 +555,7 @@ mod tests {
             )
             .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Unknown subagent_type"));
+        assert!(result.unwrap_err().to_string().contains("Unknown subagent_type"));
     }
 
     /// P8 · delegate stores a session and returns a subagent_id (mock core, no
@@ -577,7 +578,7 @@ mod tests {
             .await;
         assert!(res.is_ok(), "delegate failed: {:?}", res.err());
         let out = res.unwrap();
-        assert!(out.contains("Sub-agent "), "expected id in output: {out}");
+        assert!(out.to_string().contains("Sub-agent "), "expected id in output: {out}");
         assert_eq!(
             sessions.lock().unwrap().len(),
             1,
@@ -640,6 +641,6 @@ mod tests {
             )
             .await;
         assert!(res.is_err());
-        assert!(res.unwrap_err().contains("Unknown subagent_id"));
+        assert!(res.unwrap_err().to_string().contains("Unknown subagent_id"));
     }
 }

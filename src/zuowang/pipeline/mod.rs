@@ -1,3 +1,4 @@
+use crate::error::JiaError;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -73,7 +74,7 @@ impl ZuowangPipeline {
     ///
     /// Acquires an exclusive lock to prevent concurrent dissolve runs.
     /// Returns early if entropy does not exceed the threshold.
-    pub fn dissolve(store: Arc<Store>, threshold: f32) -> Result<ZuowangReport, String> {
+    pub fn dissolve(store: Arc<Store>, threshold: f32) -> Result<ZuowangReport, JiaError> {
         // Prevent concurrent dissolve runs on this agent's store
         let Ok(_guard) = store.dissolve_lock.try_lock() else {
             tracing::debug!("Zuowang: another dissolve already in progress, skipping");
@@ -99,7 +100,7 @@ impl ZuowangPipeline {
         };
 
         // ── Layer 1: SNAPSHOT (agent-wide) ────────────────
-        let seed_jsons = store.load_all_seeds().map_err(|e| e.to_string())?;
+        let seed_jsons = store.load_all_seeds()?;
 
         // Adaptive threshold: more seeds → naturally higher entropy → lower bar.
         // Only lowers the threshold (never raises), with a floor of 0.05.
@@ -199,7 +200,7 @@ impl ZuowangPipeline {
             .collect();
 
         if !to_delete.is_empty() {
-            store.delete_seeds(&to_delete).map_err(|e| e.to_string())?;
+            store.delete_seeds(&to_delete)?;
             dissolved = to_delete.len();
         }
 
@@ -215,7 +216,7 @@ impl ZuowangPipeline {
         if !to_downgrade.is_empty() {
             store
                 .set_tier_batch(&to_downgrade, "Archive")
-                .map_err(|e| e.to_string())?;
+                ?;
             downgraded = to_downgrade.len();
         }
 
@@ -235,7 +236,7 @@ impl ZuowangPipeline {
         if !to_weaken.is_empty() {
             store
                 .weaken_seeds(&to_weaken, 0.5)
-                .map_err(|e| e.to_string())?;
+                ?;
             weakened = to_weaken.len();
         }
 
@@ -254,7 +255,7 @@ impl ZuowangPipeline {
         if !always_to_downgrade.is_empty() {
             store
                 .set_tier_batch(&always_to_downgrade, "OnDemand")
-                .map_err(|e| e.to_string())?;
+                ?;
         }
 
         // ── Score distribution for dashboard ──
@@ -307,7 +308,7 @@ impl ZuowangPipeline {
 
         // ── Layer 4: VERIFY ────────────────────────────────
         // Re-query the DB to verify mutations were actually applied.
-        let remaining_jsons = store.load_all_seeds().map_err(|e| e.to_string())?;
+        let remaining_jsons = store.load_all_seeds()?;
         let remaining: Vec<Seed> = remaining_jsons
             .iter()
             .filter_map(|j| serde_json::from_str(j).ok())

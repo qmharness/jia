@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use crate::error::ToolError;
 // ── McpTool — BaseTool wrapper for a single MCP tool ─────────
 
 use async_trait::async_trait;
@@ -71,7 +72,7 @@ impl BaseTool for McpTool {
         false
     }
 
-    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, ToolError> {
         let sandboxed = ctx
             .permissions
             .sandbox_known_params(&input, &self.sandbox_params)?;
@@ -80,6 +81,6 @@ impl BaseTool for McpTool {
             Value::Object(o) if o.is_empty() => None,
             _ => Some(sandboxed),
         };
-        self.connection.call_tool(&self.def.name, args).await
+        Ok(self.connection.call_tool(&self.def.name, args).await?)
     }
 }

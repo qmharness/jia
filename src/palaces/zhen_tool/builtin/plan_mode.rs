@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use crate::error::ToolError;
 use serde_json::Value;
 
 use crate::palaces::zhen_tool::base::BaseTool;
@@ -49,7 +50,7 @@ impl BaseTool for EnterPlanModeTool {
         serde_json::json!({ "type": "object", "properties": {} })
     }
 
-    async fn execute(&self, _input: Value, _ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, _input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
         Ok(
             "Entered planning mode (谋划态). You are now read-only: investigate \
             and design a plan, then call exit_plan_mode to submit it for approval."
@@ -99,7 +100,7 @@ impl BaseTool for ExitPlanModeTool {
         })
     }
 
-    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
         let plan = input["plan"].as_str().unwrap_or("");
         if plan.is_empty() {
             Ok("Exited planning mode. Write/exec tools are available again.".to_string())

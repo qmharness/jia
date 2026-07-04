@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use crate::error::ToolError;
 use serde_json::Value;
 
 use crate::palaces::qian_permission::PathOp;
@@ -69,7 +70,7 @@ impl BaseTool for EditTool {
         false
     }
 
-    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, String> {
+    async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, ToolError> {
         let path = input["path"].as_str().ok_or("Missing 'path' parameter")?;
         let old_string = input["old_string"]
             .as_str()
@@ -90,7 +91,7 @@ impl BaseTool for EditTool {
             return Err(format!(
                 "old_string not found in file '{}'",
                 canonical.display()
-            ));
+            ).into());
         }
 
         if matches.len() > 1 {
@@ -109,7 +110,7 @@ impl BaseTool for EditTool {
                 canonical.display(),
                 line_num + 1,
                 &content[line_start..line_end].trim(),
-            ));
+            ).into());
         }
 
         let pos = matches[0].0;
@@ -213,7 +214,7 @@ mod tests {
             )
             .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("matches multiple locations"));
+        assert!(result.unwrap_err().to_string().contains("matches multiple locations"));
     }
 
     #[tokio::test]
