@@ -298,7 +298,9 @@ impl EarthPlate {
 
         // Load skills from skills/ directory
         let mut skill_registry = SkillRegistry::new();
-        let skills_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("skills");
+        let skills_dir = std::path::PathBuf::from(
+            option_env!("CARGO_WORKSPACE_DIR").unwrap_or(env!("CARGO_MANIFEST_DIR"))
+        ).join("skills");
         if skills_dir.is_dir() {
             match SkillLoader::load_directory_sync(&skills_dir, &mut skill_registry) {
                 Ok(n) => tracing::info!("Loaded {n} skills from skills/"),
