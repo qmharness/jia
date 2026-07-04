@@ -70,7 +70,7 @@
 
   function entropyPoint(v: number, i: number): string {
     const a = (i / 4) * 2 * Math.PI - Math.PI / 2;
-    const r = Math.max(0.5, v * 48);
+    const r = Math.max(0.5, v * 60);
     return `${(r * Math.cos(a)).toFixed(1)},${(r * Math.sin(a)).toFixed(1)}`;
   }
 
@@ -134,26 +134,21 @@
     <!-- ── Memory Entropy ───────────────────────────────── -->
     {#if entropy}
       <section class="card">
-        <h3 class="section-title">{t('vijnana.memEntropy')}
-          <span style="float:right;font-size:24px;font-weight:700;color:{barColor(entropy.current.total)}">
-            {(entropy.current.total * 100).toFixed(0)}%
-            {#if entropy.current.total >= 0.75}<span style="font-size:12px">⚠</span>{/if}
-          </span>
-        </h3>
+        <h3 class="section-title">{t('vijnana.memEntropy')}</h3>
 
         <div class="entropy-grid">
-          <section class="card" style="display:flex;align-items:center;justify-content:center;padding:12px">
-            <svg viewBox="-55 -55 110 110" class="radar-svg">
-              <circle cx="0" cy="0" r="12.5" fill="none" stroke="var(--bg-tertiary)" stroke-width="0.5"/>
-              <circle cx="0" cy="0" r="25" fill="none" stroke="var(--bg-tertiary)" stroke-width="0.5"/>
-              <circle cx="0" cy="0" r="37.5" fill="none" stroke="var(--error)" stroke-width="0.8" stroke-dasharray="2,2"/>
-              <circle cx="0" cy="0" r="48" fill="none" stroke="var(--bg-tertiary)" stroke-width="0.5"/>
-              <line x1="0" y1="-50" x2="0" y2="50" stroke="var(--bg-tertiary)" stroke-width="0.5"/>
-              <line x1="-50" y1="0" x2="50" y2="0" stroke="var(--bg-tertiary)" stroke-width="0.5"/>
-              <text x="0" y="-53" text-anchor="middle" font-size="5" fill="var(--text-tertiary)">{dims[0].icon}</text>
-              <text x="53" y="0" text-anchor="middle" dominant-baseline="middle" font-size="5" fill="var(--text-tertiary)">{dims[1].icon}</text>
-              <text x="0" y="55" text-anchor="middle" font-size="5" fill="var(--text-tertiary)">{dims[2].icon}</text>
-              <text x="-53" y="0" text-anchor="middle" dominant-baseline="middle" font-size="5" fill="var(--text-tertiary)">{dims[3].icon}</text>
+          <section class="card" style="display:flex;align-items:center;justify-content:center;padding:8px">
+            <svg viewBox="-70 -70 140 140" class="radar-svg">
+              <circle cx="0" cy="0" r="15" fill="none" stroke="var(--bg-tertiary)" stroke-width="0.5"/>
+              <circle cx="0" cy="0" r="30" fill="none" stroke="var(--bg-tertiary)" stroke-width="0.5"/>
+              <circle cx="0" cy="0" r="45" fill="none" stroke="var(--error)" stroke-width="0.8" stroke-dasharray="2,2"/>
+              <circle cx="0" cy="0" r="60" fill="none" stroke="var(--bg-tertiary)" stroke-width="0.5"/>
+              <line x1="0" y1="-60" x2="0" y2="60" stroke="var(--bg-tertiary)" stroke-width="0.5"/>
+              <line x1="-60" y1="0" x2="60" y2="0" stroke="var(--bg-tertiary)" stroke-width="0.5"/>
+              <text x="0" y="-65" text-anchor="middle" font-size="10" fill="var(--text-primary)">{dims[0].icon}</text>
+              <text x="65" y="4" text-anchor="middle" font-size="10" fill="var(--text-primary)">{dims[1].icon}</text>
+              <text x="0" y="69" text-anchor="middle" font-size="10" fill="var(--text-primary)">{dims[2].icon}</text>
+              <text x="-65" y="4" text-anchor="middle" font-size="10" fill="var(--text-primary)">{dims[3].icon}</text>
               <polygon points={radarRaw} fill={barColor(entropy.current.total)} fill-opacity="0.25" stroke={barColor(entropy.current.total)} stroke-width="1.2"/>
               <polygon points={radarWeighted} fill={barColor(entropy.current.total)} fill-opacity="0.12" stroke={barColor(entropy.current.total)} stroke-width="0.6" stroke-dasharray="2,1"/>
             </svg>
@@ -345,7 +340,7 @@
   .entropy-stack { margin-bottom: 16px; }
   /* Radar chart */
   .entropy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
-  .radar-svg { width: 140px; height: 140px; }
+  .radar-svg { width: 180px; height: 180px; }
   .rleg-item { display: flex; flex-direction: column; gap: 2px; }
   .rleg-icon { font-size: 13px; }
   .rleg-name { font-size: 11px; color: var(--text-secondary); }
