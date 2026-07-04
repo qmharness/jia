@@ -148,6 +148,7 @@
               </div>
               <div class="dim-bar-track">
                 <div class="dim-bar-fill" style="width:{Math.min(100, raw * 100)}%;background:{barColor(raw)}"></div>
+                <div class="dim-threshold" style="left:75%"></div>
               </div>
             </div>
           {/each}
@@ -161,8 +162,9 @@
             {#if i < dims.length - 1}<span style="color:var(--text-tertiary)"> + </span>{/if}
           {/each}
           <span> = <b style="color:{barColor(entropy.current.total)}">{entropy.current.total.toFixed(2)}</b></span>
+          <span style="color:var(--text-tertiary);margin-left:4px">(threshold 0.75)</span>
           {#if entropy.current.total >= 0.75}
-            <span style="color:var(--error);margin-left:8px;font-size:12px">≥ 0.75 ⚠</span>
+            <span style="color:var(--error);margin-left:8px;font-size:12px;font-weight:600">⚠ exceeded</span>
           {/if}
         </div>
       </section>
@@ -327,8 +329,9 @@
   .dim-raw { font-size: 22px; font-weight: 700; }
   .dim-arrow { font-size: 12px; color: var(--text-tertiary); }
   .dim-contrib { font-size: 14px; font-weight: 600; }
-  .dim-bar-track { height: 5px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; }
+  .dim-bar-track { height: 5px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; position: relative; }
   .dim-bar-fill { height: 100%; border-radius: 3px; transition: width .5s; }
+  .dim-threshold { position: absolute; top: 0; width: 1px; height: 100%; background: var(--error); opacity: 0.5; }
 
   /* Entropy summary */
   .entropy-summary { font-size: 12px; color: var(--text-secondary); padding-top: 10px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px; }
