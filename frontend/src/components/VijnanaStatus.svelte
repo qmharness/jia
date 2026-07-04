@@ -68,6 +68,15 @@
     expanded = expanded === row ? null : row;
   }
 
+  function entropyPoint(v: number, i: number): string {
+    const a = (i / 4) * 2 * Math.PI - Math.PI / 2;
+    const r = Math.max(0.5, v * 48);
+    return `${(r * Math.cos(a)).toFixed(1)},${(r * Math.sin(a)).toFixed(1)}`;
+  }
+
+  const radarRaw = $derived(dims.map((d, i) => entropyPoint(entropy?.current[d.key] ?? 0, i)).join(' '));
+  const radarWeighted = $derived(dims.map((d, i) => entropyPoint((entropy?.current[d.key] ?? 0) * d.weight * 4, i)).join(' '));
+
   const dims = [
     { key: 'staleness' as const,     labelKey: 'vijnana.staleness' as const,     weight: 0.30, icon: '🕐' },
     { key: 'contradiction' as const, labelKey: 'vijnana.contradiction' as const, weight: 0.20, icon: '⚡' },
@@ -128,30 +137,45 @@
         <h3 class="section-title">{t('vijnana.memEntropy')}
           <span style="float:right;font-size:24px;font-weight:700;color:{barColor(entropy.current.total)}">
             {(entropy.current.total * 100).toFixed(0)}%
+            {#if entropy.current.total >= 0.75}<span style="font-size:12px">⚠</span>{/if}
           </span>
         </h3>
 
-        <div class="dim-cards">
-          {#each dims as dim}
-            {@const raw = entropy.current[dim.key]}
-            {@const contrib = raw * dim.weight}
-            <div class="dim-card" class:dim-alert={raw > 0.6}>
-              <div class="dim-head">
-                <span class="dim-icon">{dim.icon}</span>
-                <span class="dim-name">{t(dim.labelKey)}</span>
-                <span class="dim-weight">×{dim.weight.toFixed(2)}</span>
+        <div class="radar-row">
+          <svg viewBox="-55 -55 110 110" class="radar-svg">
+            <circle cx="0" cy="0" r="12.5" fill="none" stroke="var(--bg-tertiary)" stroke-width="0.5"/>
+            <circle cx="0" cy="0" r="25" fill="none" stroke="var(--bg-tertiary)" stroke-width="0.5"/>
+            <circle cx="0" cy="0" r="37.5" fill="none" stroke="var(--error)" stroke-width="0.8" stroke-dasharray="2,2"/>
+            <circle cx="0" cy="0" r="48" fill="none" stroke="var(--bg-tertiary)" stroke-width="0.5"/>
+            <line x1="0" y1="-50" x2="0" y2="50" stroke="var(--bg-tertiary)" stroke-width="0.5"/>
+            <line x1="-50" y1="0" x2="50" y2="0" stroke="var(--bg-tertiary)" stroke-width="0.5"/>
+            <text x="0" y="-53" text-anchor="middle" font-size="5" fill="var(--text-tertiary)">{dims[0].icon}</text>
+            <text x="53" y="0" text-anchor="middle" dominant-baseline="middle" font-size="5" fill="var(--text-tertiary)">{dims[1].icon}</text>
+            <text x="0" y="55" text-anchor="middle" font-size="5" fill="var(--text-tertiary)">{dims[2].icon}</text>
+            <text x="-53" y="0" text-anchor="middle" dominant-baseline="middle" font-size="5" fill="var(--text-tertiary)">{dims[3].icon}</text>
+            <polygon points={radarRaw} fill={barColor(entropy.current.total)} fill-opacity="0.25" stroke={barColor(entropy.current.total)} stroke-width="1.2"/>
+            <polygon points={radarWeighted} fill={barColor(entropy.current.total)} fill-opacity="0.12" stroke={barColor(entropy.current.total)} stroke-width="0.6" stroke-dasharray="2,1"/>
+          </svg>
+
+          <div class="radar-legend">
+            {#each dims as dim}
+              {@const raw = entropy.current[dim.key]}
+              {@const contrib = raw * dim.weight}
+              <div class="rleg-item">
+                <div class="rleg-icon">{dim.icon}</div>
+                <div class="rleg-name">{t(dim.labelKey)}</div>
+                <div class="rleg-vals">
+                  <span class="rleg-raw" style="color:{barColor(raw)}">{raw.toFixed(2)}</span>
+                  <span class="rleg-w">×{dim.weight.toFixed(2)}</span>
+                  <span class="rleg-c" style="color:{barColor(raw)}">={contrib.toFixed(2)}</span>
+                </div>
+                <div class="rleg-track">
+                  <div class="rleg-fill" style="width:{Math.min(100, raw * 100)}%;background:{barColor(raw)}"></div>
+                  <div class="dim-threshold" style="left:75%"></div>
+                </div>
               </div>
-              <div class="dim-body">
-                <span class="dim-raw" style="color:{barColor(raw)}">{raw.toFixed(2)}</span>
-                <span class="dim-arrow">→</span>
-                <span class="dim-contrib" style="color:{barColor(raw)}">{contrib.toFixed(2)}</span>
-              </div>
-              <div class="dim-bar-track">
-                <div class="dim-bar-fill" style="width:{Math.min(100, raw * 100)}%;background:{barColor(raw)}"></div>
-                <div class="dim-threshold" style="left:75%"></div>
-              </div>
-            </div>
-          {/each}
+            {/each}
+          </div>
         </div>
 
         <div class="entropy-summary">
@@ -317,20 +341,19 @@
 
   /* Entropy Stack */
   .entropy-stack { margin-bottom: 16px; }
-  /* Entropy dim cards */
-  .dim-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
-  .dim-card { background: var(--bg-secondary); border-radius: var(--radius-sm); padding: 12px; border: 1px solid transparent; transition: border-color .3s; }
-  .dim-card.dim-alert { border-color: var(--error); background: color-mix(in srgb, var(--error) 5%, var(--bg-secondary)); }
-  .dim-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-  .dim-icon { font-size: 14px; }
-  .dim-name { font-size: 12px; color: var(--text-secondary); flex: 1; }
-  .dim-weight { font-size: 10px; color: var(--text-tertiary); background: var(--bg-tertiary); padding: 1px 6px; border-radius: 3px; }
-  .dim-body { display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px; }
-  .dim-raw { font-size: 22px; font-weight: 700; }
-  .dim-arrow { font-size: 12px; color: var(--text-tertiary); }
-  .dim-contrib { font-size: 14px; font-weight: 600; }
-  .dim-bar-track { height: 5px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; position: relative; }
-  .dim-bar-fill { height: 100%; border-radius: 3px; transition: width .5s; }
+  /* Radar chart */
+  .radar-row { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 14px; }
+  .radar-svg { width: 150px; height: 150px; flex-shrink: 0; }
+  .radar-legend { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+  .rleg-item { display: flex; flex-direction: column; gap: 2px; }
+  .rleg-icon { font-size: 13px; }
+  .rleg-name { font-size: 11px; color: var(--text-secondary); }
+  .rleg-vals { display: flex; align-items: baseline; gap: 4px; font-size: 12px; }
+  .rleg-raw { font-weight: 700; }
+  .rleg-w { color: var(--text-tertiary); font-size: 10px; }
+  .rleg-c { font-weight: 600; font-size: 11px; }
+  .rleg-track { height: 4px; background: var(--bg-tertiary); border-radius: 2px; overflow: hidden; position: relative; }
+  .rleg-fill { height: 100%; border-radius: 2px; transition: width .5s; }
   .dim-threshold { position: absolute; top: 0; width: 1px; height: 100%; background: var(--error); opacity: 0.5; }
 
   /* Entropy summary */
