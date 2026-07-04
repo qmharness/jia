@@ -149,10 +149,45 @@ async fn main() {
             config_path,
             host,
             port,
-            web_dir,
+            web_dir: _,
         } => {
-            let web_dir = web_dir.unwrap_or_else(jia::config::default_web_dir);
-            run_start(config_path, host, port, Some(web_dir)).await;
+            // If daemon is already running, just open the browser.
+            if let Some((daemon_host, daemon_port)) = is_daemon_running() {
+                let url = format!("http://{daemon_host}:{daemon_port}");
+                println!("jia gateway is already running at {url}");
+                open_browser(&url);
+                return;
+            }
+
+            // Otherwise, start daemon in background, wait for it, then open browser.
+            spawn_daemon(config_path, host.clone(), port);
+
+            // Determine the address to wait for
+            let target_host = host.unwrap_or_else(|| "127.0.0.1".to_string());
+            let target_port = port.unwrap_or(3000);
+            let url = format!("http://{target_host}:{target_port}");
+
+            // Wait up to 10 seconds for the server to become reachable
+            let addr = format!("{target_host}:{target_port}");
+            let mut attempts = 0;
+            loop {
+                if std::net::TcpStream::connect_timeout(
+                    &addr.parse().expect("invalid socket addr"),
+                    std::time::Duration::from_millis(500),
+                )
+                .is_ok()
+                {
+                    println!("jia gateway is ready at {url}");
+                    open_browser(&url);
+                    break;
+                }
+                attempts += 1;
+                if attempts >= 20 {
+                    eprintln!("jia gateway did not start within 10 seconds");
+                    std::process::exit(1);
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
         }
         Commands::Init { path } => {
             let abs_path = std::path::absolute(&path).unwrap_or_else(|_| path.clone());
@@ -194,7 +229,7 @@ async fn main() {
 
 // ── CLI subcommand modules ──────────────────────────────
 mod cli;
-use cli::start::{spawn_daemon, daemonize, gateway_status, stop_running_instance, run_start};
+use cli::start::{spawn_daemon, daemonize, gateway_status, stop_running_instance, run_start, is_daemon_running, open_browser};
 #[cfg(feature = "tui")]
 use cli::tui::run_tui;
 use cli::doctor::run_doctor;

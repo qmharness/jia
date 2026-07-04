@@ -448,5 +448,75 @@ pub async fn run_start(
     let _ = std::fs::remove_file(&pid_path);
 }
 
+/// Check if a jia daemon is currently running.
+/// Returns `Some((host, port))` if alive, `None` otherwise.
+pub fn is_daemon_running() -> Option<(String, u16)> {
+    let pid_path = jia::palaces::kun_config::pid_file_path();
+    let pid_str = std::fs::read_to_string(&pid_path).ok()?;
+    let pid: u32 = pid_str.trim().parse().ok()?;
+
+    #[cfg(unix)]
+    let alive = std::process::Command::new("kill")
+        .arg("-0")
+        .arg(pid.to_string())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    #[cfg(not(unix))]
+    let alive = false;
+
+    if !alive {
+        let _ = std::fs::remove_file(&pid_path);
+        return None;
+    }
+
+    // Extract host/port from process command line
+    #[cfg(unix)]
+    if let Ok(output) = std::process::Command::new("ps")
+        .args(["-o", "command=", "-p", &pid.to_string()])
+        .output()
+    {
+        let cmdline = String::from_utf8_lossy(&output.stdout);
+        let port: u16 = if let Some(pos) = cmdline.find("--port") {
+            cmdline[pos..]
+                .split_whitespace()
+                .nth(1)
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(3000)
+        } else {
+            3000
+        };
+        let host = if let Some(pos) = cmdline.find("--host") {
+            cmdline[pos..]
+                .split_whitespace()
+                .nth(1)
+                .unwrap_or("127.0.0.1")
+                .to_string()
+        } else {
+            "127.0.0.1".to_string()
+        };
+        return Some((host, port));
+    }
+    None
+}
+
+/// Open the system browser at the given URL.
+pub fn open_browser(url: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg(url).spawn();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd")
+            .args(["/c", "start", url])
+            .spawn();
+    }
+}
+
 // ── Doctor ─────────────────────────────────────────────────
 
