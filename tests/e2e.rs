@@ -195,9 +195,15 @@ async fn run_agent(
         evs
     });
 
-    agent
-        .run(messages, core, human, eb, hooks, tx, &cancel)
-        .await;
+    let ctx = jia::plates::tian_heaven::r#loop::RunContext {
+        core,
+        human_plate: human,
+        event_bus: eb,
+        hook_registry: hooks,
+        tx,
+        cancel_token: &cancel,
+    };
+    agent.run(messages, &ctx).await;
 
     match tokio::time::timeout(std::time::Duration::from_secs(120), collect_handle).await {
         Ok(Ok(evs)) => evs,

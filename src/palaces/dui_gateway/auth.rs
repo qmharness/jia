@@ -111,7 +111,7 @@ pub async fn auth_middleware(
     if path == "/"
         || path.starts_with("/static/")
         || path.starts_with("/assets/")
-        || path == "/events"
+        || path == "/auth/session"
         || path == "/health"
         || is_root_asset
     {

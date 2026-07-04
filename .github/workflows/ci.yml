@@ -44,6 +44,12 @@ jobs:
         run: |
           cargo test ${{ matrix.features }}
 
+      - name: Coverage (all-features only)
+        if: matrix.features == '--all-features'
+        run: |
+          cargo install cargo-llvm-cov
+          cargo llvm-cov --fail-under-lines 70
+
   build:
     name: Build (release)
     runs-on: ubuntu-latest
@@ -148,3 +154,34 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: target/${{ matrix.target }}/release/jia-${{ matrix.target }}.tar.gz
+
+  audit:
+    name: Audit (security + licenses)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "stable"
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: Security audit
+        run: cargo audit
+
+  check-windows:
+    name: Check (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "stable"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check compile
+        run: cargo check --no-default-features

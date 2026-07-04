@@ -261,7 +261,15 @@ pub async fn handle_agent(
                         let human_plate = HumanPlate::with_state(permissions, pending_confirmations);
 
                         let _start = std::time::Instant::now();
-                        agent.run(req.messages, &main_core, &human_plate, &event_bus, &earth_for_spawn.spirit.hook_registry, tx, &agent_token).await;
+                        let ctx = crate::plates::tian_heaven::r#loop::RunContext {
+                            core: &main_core,
+                            human_plate: &human_plate,
+                            event_bus: &event_bus,
+                            hook_registry: &earth_for_spawn.spirit.hook_registry,
+                            tx,
+                            cancel_token: &agent_token,
+                        };
+                        agent.run(req.messages, &ctx).await;
                         agent.post_loop(store, &main_core, aux_core.as_ref()).await;
                         JIA_REQUEST_DURATION_SECONDS.observe(_start.elapsed().as_secs_f64());
                         session_tokens.remove(&sid);

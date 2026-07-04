@@ -1,11 +1,14 @@
 //! dui_gateway — HTTP API Gateway (兑七)
 
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::Mutex;
 
 use axum::Router;
-use axum::response::Html;
+use axum::extract::ConnectInfo;
+use axum::http::StatusCode;
+use axum::response::{Html, Json};
 use axum::routing::{delete, get, patch, post};
 use tokio_util::sync::CancellationToken;
 use tower_http::cors::CorsLayer;
@@ -91,7 +94,7 @@ impl SessionTokens {
     pub fn list_active(&self) -> Vec<SessionInfo> {
         self.tokens
             .lock()
-            .unwrap()
+            .expect("SessionTokens lock poisoned")
             .values()
             .map(|(_, info)| info.clone())
             .collect()
@@ -133,6 +136,7 @@ pub fn build_router(state: Arc<AppState>, web_dir: String) -> Router {
         .route("/tools", get(handle_tools))
         .route("/providers", get(handle_providers))
         .route("/health", get(handle_health))
+        .route("/auth/session", post(handle_auth_session))
         .route("/ready", get(handle_ready))
         .route("/metrics", get(handle_metrics))
         .route("/monitor", get(handle_monitor))
@@ -163,23 +167,19 @@ pub fn build_router(state: Arc<AppState>, web_dir: String) -> Router {
         .route("/events", get(handle_events))
         .route("/", get({
             let web = web_dir.clone();
-            let app_state = state.clone();
             move || {
                 let web = web.clone();
-                let app_state = app_state.clone();
                 async move {
                     let path = format!("{web}/index.html");
                     match tokio::fs::read_to_string(&path).await {
                         Ok(html) => {
-                            if let Some(key) = &app_state.api_key {
-                                let injected = html.replace(
-                                    "<head>",
-                                    &format!("<head>\n<script>window.__JIA_API_BASE__ = \"\";window.__JIA_TOKEN__ = \"{key}\";</script>"),
-                                );
-                                Html(injected)
-                            } else {
-                                Html(html)
-                            }
+                            // Inject only API_BASE; token is obtained via POST /auth/session
+                            // (localhost-gated) so it never appears in page source.
+                            let injected = html.replace(
+                                "<head>",
+                                "<head>\n<script>window.__JIA_API_BASE__ = \"http://127.0.0.1:3000\";</script>",
+                            );
+                            Html(injected)
                         }
                         Err(_) => Html("<h1>jia is running. web/index.html not found.</h1>".into()),
                     }
@@ -266,6 +266,24 @@ pub fn create_app_with_earth(web_dir: String, earth: Arc<EarthPlate>) -> Router 
     });
 
     build_router(state, web_dir)
+}
+
+// ── Auth session (localhost-gated token delivery) ──────────
+
+/// Returns the `api_key` as a JSON token. Only allowed from loopback
+/// addresses (127.0.0.1 / ::1). This replaces the old pattern of
+/// injecting `__JIA_TOKEN__` into the landing page HTML.
+async fn handle_auth_session(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !addr.ip().is_loopback() {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    match &state.api_key {
+        Some(token) => Ok(Json(serde_json::json!({"token": token}))),
+        None => Err(StatusCode::NOT_FOUND),
+    }
 }
 
 mod agent;

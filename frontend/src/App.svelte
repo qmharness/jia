@@ -2,7 +2,7 @@
   import { store, setPage, saveSelectedProvider, saveTheme, saveLocale, saveSelectedModel, saveSelectedAux, showToast } from './lib/store.svelte';
   import { uiStore } from './lib/stores/ui.svelte';
   import { getTheme } from './lib/themes';
-  import { fetchProviders, fetchConfig, API_BASE } from './lib/api';
+  import { fetchProviders, fetchConfig, API_BASE, tokenReady, TOKEN } from './lib/api';
   import { onMount, onDestroy } from 'svelte';
   import type { SSEEvent } from './lib/types';
 
@@ -33,10 +33,10 @@
     eventsSource?.close();
   });
 
-  function connectEvents() {
+  async function connectEvents() {
+    await tokenReady;
     try {
-      const token = (window as any).__JIA_TOKEN__ || '';
-      const url = `${API_BASE}/events${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+      const url = `${API_BASE}/events?token=${encodeURIComponent(TOKEN)}`;
       eventsSource = new EventSource(url);
 
       eventsSource.onmessage = (e) => {

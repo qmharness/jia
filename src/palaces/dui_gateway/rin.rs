@@ -557,7 +557,15 @@ async fn handle_rin_connection(
                             }
                             let human_plate = HumanPlate::with_state(permissions, pending_confirmations);
 
-                            agent.run(messages, &main_core, &human_plate, &event_bus, &earth.spirit.hook_registry, tx, &agent_token).await;
+                            let ctx = crate::plates::tian_heaven::r#loop::RunContext {
+                                core: &main_core,
+                                human_plate: &human_plate,
+                                event_bus: &event_bus,
+                                hook_registry: &earth.spirit.hook_registry,
+                                tx,
+                                cancel_token: &agent_token,
+                            };
+                            agent.run(messages, &ctx).await;
                             agent.post_loop(store, &main_core, aux_core.as_deref()).await;
                             session_tokens_clone.remove(&sid);
                         }

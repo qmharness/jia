@@ -65,7 +65,7 @@ use crate::plates::shen_spirit::RuntimeEvent;
 use crate::plates::shen_spirit::SpiritPlate;
 use crate::plates::shen_spirit::hook::{Hook, HookEvent, HookResult, SpiritType};
 use crate::plates::tian_heaven::Agent;
-use crate::plates::tian_heaven::r#loop::AgentEvent;
+use crate::plates::tian_heaven::r#loop::{AgentEvent, RunContext};
 use crate::types::{HistoryEntry, Message, Role};
 use crate::vijnana::manas::Manas;
 use tokio_stream::StreamExt;
@@ -468,16 +468,16 @@ impl EarthPlate {
             });
 
             let cancel = CancellationToken::new();
+            let ctx = RunContext {
+                core: &earth.main_core,
+                human_plate: &human_plate,
+                event_bus: &event_bus,
+                hook_registry: &earth.spirit.hook_registry,
+                tx,
+                cancel_token: &cancel,
+            };
             tokio::select! {
-                _ = agent.run(
-                    messages,
-                    &earth.main_core,
-                    &human_plate,
-                    &event_bus,
-                    &earth.spirit.hook_registry,
-                    tx,
-                    &cancel,
-                ) => {
+                _ = agent.run(messages, &ctx) => {
                     agent
                         .post_loop(store, &earth.main_core, earth.aux_core.as_deref())
                         .await;
@@ -670,17 +670,16 @@ async fn run_io_agent(earth: Arc<EarthPlate>, input: crate::palaces::kan_io::Cha
         (response, tool_calls)
     });
 
-    agent
-        .run(
-            messages,
-            &earth.main_core,
-            &human_plate,
-            &earth.spirit.event_bus,
-            &earth.spirit.hook_registry,
-            tx,
-            &tokio_util::sync::CancellationToken::new(),
-        )
-        .await;
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let ctx = RunContext {
+        core: &earth.main_core,
+        human_plate: &human_plate,
+        event_bus: &earth.spirit.event_bus,
+        hook_registry: &earth.spirit.hook_registry,
+        tx,
+        cancel_token: &cancel,
+    };
+    agent.run(messages, &ctx).await;
     agent
         .post_loop(
             earth.store.clone(),

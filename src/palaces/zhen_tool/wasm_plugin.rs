@@ -193,7 +193,7 @@ impl BaseTool for WasmPlugin {
             .map_err(|e| format!("Plugin response parse error: {e}. Output: {output_str}"))?;
 
         if let Some(err) = response.error {
-            return Err(format!("Plugin error: {err}"));
+            return Err(format!("Plugin error: {err}").into());
         }
 
         Ok(if response.stderr.is_empty() {

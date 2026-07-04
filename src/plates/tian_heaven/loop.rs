@@ -41,7 +41,7 @@ pub struct RunContext<'a> {
 impl super::Agent {
     #[tracing::instrument(skip(self, messages, ctx), fields(session = %self.id))]
     pub async fn run(&mut self, messages: Vec<Message>, ctx: &RunContext<'_>) {
-        let _ = tx.send(AgentEvent::Session {
+        let _ = ctx.tx.send(AgentEvent::Session {
             session_id: self.id.clone(),
         });
 
@@ -80,14 +80,14 @@ impl super::Agent {
                     turns = self.turn_count,
                     "Agent hit max turn limit"
                 );
-                let _ = tx.send(AgentEvent::Error(format!(
+                let _ = ctx.tx.send(AgentEvent::Error(format!(
                     "Reached maximum turns ({})",
                     self.max_turns
                 )));
                 break;
             }
 
-            event_bus.emit(RuntimeEvent::TurnStart {
+            ctx.event_bus.emit(RuntimeEvent::TurnStart {
                 turn: self.turn_count as u64,
             });
 
@@ -107,7 +107,7 @@ impl super::Agent {
             // `system_full` is the concatenated text used for compaction and
             // token counting (llm_messages[0] stays a System message so the
             // existing compaction logic is unchanged).
-            let system_prompt = self.build_system_prompt(core);
+            let system_prompt = self.build_system_prompt(ctx.core);
             let system_full = if system_prompt.dynamic.is_empty() {
                 system_prompt.stable.clone()
             } else {
@@ -121,7 +121,7 @@ impl super::Agent {
             let threshold = (self.context_window.max_tokens as f64
                 * self.context_window.compaction_threshold) as usize;
             if pre_tokens > threshold {
-                let _ = tx.send(AgentEvent::ContextPressure {
+                let _ = ctx.tx.send(AgentEvent::ContextPressure {
                     tokens: pre_tokens,
                     threshold,
                 });
@@ -140,13 +140,13 @@ impl super::Agent {
                     // GeJu gate — informational only (no Bing pattern yields Denied)
                     let geju = GeJu::new(Stem::Bing, Palace::Gen.stem());
                     let gr = geju.evaluate();
-                    event_bus.emit(RuntimeEvent::GeJuResult {
+                    ctx.event_bus.emit(RuntimeEvent::GeJuResult {
                         tool: "compaction".into(),
                         pattern: gr.name.clone(),
                         mode: format!("{:?}", gr.execution_mode).to_lowercase(),
                     });
 
-                    let _ = tx.send(AgentEvent::Compacting);
+                    let _ = ctx.tx.send(AgentEvent::Compacting);
 
                     // Build indexed message list for compaction (tool calls → User messages)
                     let compact_msgs: Vec<Message> = to_llm_messages(&self.history);
@@ -192,8 +192,8 @@ impl super::Agent {
                             let prev = self.compaction_summary.as_deref();
                             match ContextWindow::summarize(
                                 &victims,
-                                core,
-                                Some(cancel_token.clone()),
+                                ctx.core,
+                                Some(ctx.cancel_token.clone()),
                                 prev,
                             )
                             .await
@@ -246,8 +246,8 @@ impl super::Agent {
                         self.cc_tokens_after = t_after;
 
                         fire_void_hooks(
-                            hook_registry,
-                            event_bus,
+                            ctx.hook_registry,
+                            ctx.event_bus,
                             SpiritType::JiuDi,
                             Palace::Gen.stem(),
                             HookEvent::CompactionTriggered {
@@ -285,7 +285,6 @@ impl super::Agent {
             // so the Anthropic provider can cache the stable prefix. Strip the
             // leading System message from llm_messages (it was only there for
             // compaction/token-counting); the system travels separately.
-            let cancel = cancel_token.clone();
             let llm_start = std::time::Instant::now();
             let mut infer_messages = llm_messages;
             if matches!(infer_messages.first().map(|m| m.role), Some(Role::System)) {
@@ -293,7 +292,7 @@ impl super::Agent {
             }
 
             // Build tool schemas for native tools API (openai/anthropic/gemini).
-            let use_native = crate::palaces::zhong_core::use_native_tools(&core.provider_kind);
+            let use_native = crate::palaces::zhong_core::use_native_tools(&ctx.core.provider_kind);
             let tool_schemas: Option<Vec<crate::stems::action::ToolSchema>> = if use_native {
                 let schemas: Vec<_> = self
                     .earth
@@ -313,7 +312,7 @@ impl super::Agent {
             let tools_ref: Option<&[crate::stems::action::ToolSchema]> = tool_schemas.as_deref();
 
             let mut stream =
-                core.infer_with_system(infer_messages, system_prompt, tools_ref, Some(cancel));
+                ctx.core.infer_with_system(infer_messages, system_prompt, tools_ref, Some(ctx.cancel_token.clone()));
             let mut full_response = String::new();
             let mut native_tool_calls: Vec<crate::stems::action::ToolCall> = Vec::new();
 
@@ -334,13 +333,13 @@ impl super::Agent {
                     }
                     Some(Ok(crate::palaces::zhong_core::StreamChunk::Delta(delta))) => {
                         full_response.push_str(&delta);
-                        let _ = tx.send(AgentEvent::Delta(delta));
+                        let _ = ctx.tx.send(AgentEvent::Delta(delta));
                     }
                     Some(Ok(crate::palaces::zhong_core::StreamChunk::Usage {
                         input_tokens,
                         output_tokens,
                     })) => {
-                        event_bus.emit(RuntimeEvent::LlmUsage {
+                        ctx.event_bus.emit(RuntimeEvent::LlmUsage {
                             input_tokens,
                             output_tokens,
                         });
@@ -361,7 +360,7 @@ impl super::Agent {
                     }
                     Some(Err(e)) => {
                         tracing::error!(session = %self.id, error = %e, "LLM inference error");
-                        let _ = tx.send(AgentEvent::Error(e.to_string()));
+                        let _ = ctx.tx.send(AgentEvent::Error(format!("{e}")));
                         return;
                     }
                     None => break,
@@ -371,7 +370,7 @@ impl super::Agent {
             JIA_LLM_DURATION_SECONDS.observe(llm_start.elapsed().as_secs_f64());
 
             // Notify frontend that LLM stream ended (freeze bubble A)
-            let _ = tx.send(AgentEvent::StreamEnd);
+            let _ = ctx.tx.send(AgentEvent::StreamEnd);
 
             // Record assistant response in history
             let response_len = full_response.len();
@@ -420,8 +419,8 @@ impl super::Agent {
             );
 
             fire_void_hooks(
-                hook_registry,
-                event_bus,
+                ctx.hook_registry,
+                ctx.event_bus,
                 SpiritType::TengShe,
                 Stem::Ren,
                 HookEvent::LlmResponse {
@@ -431,14 +430,14 @@ impl super::Agent {
             );
 
             if tool_calls.is_empty() {
-                event_bus.emit(RuntimeEvent::TurnEnd {
+                ctx.event_bus.emit(RuntimeEvent::TurnEnd {
                     turn: self.turn_count as u64,
                 });
                 break;
             }
 
             // Notify frontend that tool batch is starting (create bubble B)
-            let _ = tx.send(AgentEvent::ToolBatchStart);
+            let _ = ctx.tx.send(AgentEvent::ToolBatchStart);
 
             let mut touched_paths: Vec<&str> = Vec::new();
             for tc in &tool_calls {
@@ -460,10 +459,10 @@ impl super::Agent {
                     dispatch_one_tool(
                         tc,
                         &self.earth.tools,
-                        human_plate,
-                        event_bus,
-                        hook_registry,
-                        &tx,
+                        ctx.human_plate,
+                        ctx.event_bus,
+                        ctx.hook_registry,
+                        &ctx.tx,
                         &mut touched_acc,
                         &self.output_budget,
                         &mut self.tool_failure_count,
@@ -596,12 +595,12 @@ impl super::Agent {
                     "enter_plan_mode" => {
                         self.interaction_mode = super::InteractionMode::Planning;
                         tracing::info!(session = %self.id, "entered planning mode");
-                        let _ = tx.send(AgentEvent::InteractionModeChanged { planning: true });
+                        let _ = ctx.tx.send(AgentEvent::InteractionModeChanged { planning: true });
                     }
                     "exit_plan_mode" => {
                         self.interaction_mode = super::InteractionMode::Normal;
                         tracing::info!(session = %self.id, "exited planning mode");
-                        let _ = tx.send(AgentEvent::InteractionModeChanged { planning: false });
+                        let _ = ctx.tx.send(AgentEvent::InteractionModeChanged { planning: false });
                     }
                     _ => {}
                 }
@@ -610,8 +609,8 @@ impl super::Agent {
             self.activate_skills(&touched_paths);
 
             fire_void_hooks(
-                hook_registry,
-                event_bus,
+                ctx.hook_registry,
+                ctx.event_bus,
                 SpiritType::LiuHe,
                 Stem::Geng,
                 HookEvent::BatchEnded {
@@ -633,7 +632,7 @@ impl super::Agent {
                 );
             }
 
-            event_bus.emit(RuntimeEvent::TurnEnd {
+            ctx.event_bus.emit(RuntimeEvent::TurnEnd {
                 turn: self.turn_count as u64,
             });
 
@@ -645,12 +644,12 @@ impl super::Agent {
             }
         }
 
-        event_bus.emit(RuntimeEvent::SessionEnd {
+        ctx.event_bus.emit(RuntimeEvent::SessionEnd {
             session_id: self.id.clone(),
             turns: self.turn_count as u64,
         });
 
-        let _ = tx.send(AgentEvent::Done);
+        let _ = ctx.tx.send(AgentEvent::Done);
     }
 }
 

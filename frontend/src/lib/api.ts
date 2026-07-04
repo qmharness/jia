@@ -7,9 +7,15 @@ const isViteDev = typeof window !== 'undefined' && window.location.hostname === 
 const injectedBase = (typeof window !== 'undefined' && (window as any).__JIA_API_BASE__) || '';
 export const API_BASE = isViteDev ? '' : (injectedBase || 'http://127.0.0.1:3000');
 const D = API_BASE;
-// Token: init script 注入的 window 变量在模块加载时机不一定就绪(实测模块加载时为空、
-// onMount 时才有),故经 Tauri command(api_token)异步获取,所有请求 await tokenReady 后再发。
-let TOKEN = (typeof window !== 'undefined' && (window as any).__JIA_TOKEN__) || '';
+// 本模块内所有 fetch 调用先等 token 就绪再发出。
+// 用同名 const 遮蔽全局 fetch,使下方所有 fetch(...) 自动经过 token 门控,无需逐处改动。
+// NOTE: _origFetch 必须在 tokenReady 之前声明，因为 tokenReady 用它调 /auth/session。
+const _origFetch: typeof window.fetch = window.fetch.bind(window);
+const fetch: typeof window.fetch = (input, init) => tokenReady.then(() => _origFetch(input, init));
+
+// Token: resolves asynchronously via Tauri IPC (jia-app) or POST /auth/session (jia web).
+// All API calls await tokenReady before sending.
+export let TOKEN = (typeof window !== 'undefined' && (window as any).__JIA_TOKEN__) || '';
 
 export const tokenReady: Promise<void> = (async () => {
   try {
@@ -17,9 +23,24 @@ export const tokenReady: Promise<void> = (async () => {
     if (typeof invoke === 'function') {
       const t = await invoke('api_token');
       if (typeof t === 'string' && t) TOKEN = t;
+      return;
     }
   } catch {
-    // 非 Tauri 环境(dev/测试):沿用 window.__JIA_TOKEN__ 或空串。
+    // Not running inside Tauri — fall through to auth/session.
+  }
+
+  // jia web / Vite dev mode: token is not injected into HTML.
+  // Fetch it from the daemon's localhost-gated /auth/session endpoint.
+  if (!TOKEN) {
+    try {
+      const resp = await _origFetch(`${D}/auth/session`, { method: 'POST' });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (typeof data.token === 'string' && data.token) TOKEN = data.token;
+      }
+    } catch {
+      // Daemon not reachable or auth/session not available (gateway-only mode).
+    }
   }
 })();
 
@@ -29,11 +50,6 @@ export function authHeaders(): Record<string, string> {
     Authorization: `Bearer ${TOKEN}`,
   };
 }
-
-// 本模块内所有 fetch 调用先等 token 就绪再发出。
-// 用同名 const 遮蔽全局 fetch,使下方所有 fetch(...) 自动经过 token 门控,无需逐处改动。
-const _origFetch: typeof window.fetch = window.fetch.bind(window);
-const fetch: typeof window.fetch = (input, init) => tokenReady.then(() => _origFetch(input, init));
 
 export interface SessionMessagesResponse {
   session_id: string;
