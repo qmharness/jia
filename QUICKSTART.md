@@ -33,11 +33,15 @@ API keys and other secrets go in `config.toml`.
 
 ```bash
 jia                  # Launch TUI (terminal interface)
-jia gateway start    # Start HTTP/SSE gateway (background)
-jia gateway stop     # Stop gateway
-jia gateway status   # Show gateway status
+jia web              # Start gateway with web dashboard
+jia init             # Initialize a Jia project in current directory
+jia start            # Start gateway (shortcut)
+jia stop             # Stop gateway (shortcut)
+jia restart          # Restart gateway (shortcut)
+jia status           # Show gateway status (shortcut)
 jia doctor           # Diagnostic health check
-jia tui              # Launch TUI explicitly (same as bare `jia`)
+jia gateway start    # Start gateway (full command)
+jia gateway stop     # Stop gateway (full command)
 ```
 
 ## Docker
@@ -49,14 +53,14 @@ docker run -p 3000:3000 -v ./config.toml:/data/config.toml jia
 
 ## IM Bots
 
+```bash
+jia wechat-setup     # QR login for WeChat personal bot
+```
+
 Configure in `config.toml`:
 
 ```toml
-[bots.wechat]
-enabled = true
-
 [bots.telegram]
-enabled = true
 token = "your-bot-token"
 ```
 
