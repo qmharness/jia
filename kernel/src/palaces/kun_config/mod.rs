@@ -33,6 +33,8 @@ pub enum Commands {
     },
     /// Shortcut for `jia gateway stop` — stop the running gateway
     Stop,
+    /// Shortcut for `jia gateway status` — show gateway status
+    Status,
     /// Shortcut for `jia gateway restart` — restart the gateway
     Restart {
         #[arg(long = "config", env = "JIA_CONFIG")]

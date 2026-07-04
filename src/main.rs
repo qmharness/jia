@@ -96,6 +96,9 @@ async fn main() {
         Commands::Stop => {
             stop_running_instance();
         }
+        Commands::Status => {
+            gateway_status();
+        }
         Commands::Restart {
             config_path,
             host,
