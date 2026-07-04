@@ -430,7 +430,6 @@ mod tests {
             earth: Some(Arc::new(earth)),
             pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
             pending_questions: Arc::new(Mutex::new(HashMap::new())),
-            discord_public_key: None,
             api_key: None,
             rate_limiter: Arc::new(RateLimiter::new(0)),
             session_tokens: Arc::new(SessionTokens::new()),

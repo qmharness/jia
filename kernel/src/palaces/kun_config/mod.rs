@@ -331,21 +331,12 @@ pub struct BotsSection {
     #[serde(default)]
     pub telegram: Option<TelegramBotConfig>,
     #[serde(default)]
-    pub discord: Option<DiscordBotConfig>,
-    #[serde(default)]
     pub wechat: Option<WeChatBotConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct TelegramBotConfig {
     pub token: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct DiscordBotConfig {
-    pub token: String,
-    pub application_id: String,
-    pub public_key: String,
 }
 
 /// WeChat personal bot configuration (iLink Bot API).

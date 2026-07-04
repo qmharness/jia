@@ -4,7 +4,6 @@ use std::path::PathBuf;
 
 use tokio::sync::mpsc;
 
-pub mod discord;
 
 use crate::types::Message;
 use crate::types::Role;

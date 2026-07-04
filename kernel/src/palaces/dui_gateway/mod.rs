@@ -110,7 +110,6 @@ pub struct AppState {
     pub earth: Option<Arc<EarthPlate>>,
     pub pending_confirmations: Arc<Mutex<HashMap<String, PendingConfirmation>>>,
     pub pending_questions: Arc<Mutex<HashMap<String, PendingQuestion>>>,
-    pub discord_public_key: Option<String>,
     pub api_key: Option<String>,
     pub rate_limiter: Arc<RateLimiter>,
     pub session_tokens: Arc<SessionTokens>,
@@ -131,7 +130,6 @@ pub fn build_router(state: Arc<AppState>, web_dir: String) -> Router {
         .route("/chat", post(handle_chat))
         .route("/confirm", post(handle_confirm))
         .route("/answer", post(handle_answer))
-        .route("/webhook/discord", post(handle_discord_webhook))
         .route("/files", get(handle_files))
         .route("/config", get(handle_config))
         .route("/tools", get(handle_tools))
@@ -225,7 +223,6 @@ pub fn create_app(config: &AppConfig, web_dir: String) -> Router {
         earth: None,
         pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
         pending_questions: Arc::new(Mutex::new(HashMap::new())),
-        discord_public_key: config.bots.discord.as_ref().map(|d| d.public_key.clone()),
         api_key: config.security.api_key.clone(),
         rate_limiter: Arc::new(RateLimiter::new(config.security.rate_limit_per_minute)),
         session_tokens: Arc::new(SessionTokens::new()),
@@ -241,13 +238,6 @@ pub fn create_app_with_earth(web_dir: String, earth: Arc<EarthPlate>) -> Router 
         .app_config
         .default_main_provider_name()
         .to_string();
-    let discord_public_key = earth
-        .config
-        .app_config
-        .bots
-        .discord
-        .as_ref()
-        .map(|d| d.public_key.clone());
     let pending_confirmations = earth.pending_confirmations.clone();
     let pending_questions = earth.pending_questions.clone();
     let api_key = earth.config.app_config.security.api_key.clone();
@@ -264,7 +254,6 @@ pub fn create_app_with_earth(web_dir: String, earth: Arc<EarthPlate>) -> Router 
         earth: Some(earth),
         pending_confirmations,
         pending_questions,
-        discord_public_key,
         api_key,
         rate_limiter,
         session_tokens: Arc::new(SessionTokens::new()),
@@ -452,7 +441,6 @@ mod tests {
             earth: Some(Arc::new(earth)),
             pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
             pending_questions: Arc::new(Mutex::new(HashMap::new())),
-            discord_public_key: None,
             api_key: None,
             rate_limiter: Arc::new(RateLimiter::new(30)),
             session_tokens: Arc::new(SessionTokens::new()),
@@ -505,7 +493,6 @@ mod tests {
             earth: None,
             pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
             pending_questions: Arc::new(Mutex::new(HashMap::new())),
-            discord_public_key: None,
             api_key: None,
             rate_limiter: Arc::new(RateLimiter::new(30)),
             session_tokens: Arc::new(SessionTokens::new()),

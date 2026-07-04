@@ -160,7 +160,6 @@ pub async fn handle_config(State(state): State<Arc<AppState>>) -> Json<serde_jso
 
         config["bots"] = serde_json::json!({
             "telegram": app.bots.telegram.as_ref().map(|_| true).unwrap_or(false),
-            "discord": app.bots.discord.as_ref().map(|_| true).unwrap_or(false),
             "wechat": app.bots.wechat.as_ref().map(|_| true).unwrap_or(false),
         });
 

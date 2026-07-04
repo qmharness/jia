@@ -172,11 +172,16 @@ Agent 完整 推理→格局判断→工具执行→结果反馈 循环。
 - [x] **P8.4** Git 工具
   - `GitTool`：安全 git 子命令执行（status/diff/log/branch/commit/add/checkout/stash/show/blame/tag）
   - 危险操作拦截（push --force, reset --hard, clean -f/d）
-- [x] **P8.5** IM 机器人（个人微信 + Telegram + Discord）
+- [x] **P8.5** IM 机器人（个人微信 + Telegram）
   - 个人微信（新增）：iLink Bot API 长轮询，QR 码扫码登录，`[bots.wechat]` 配置
   - Telegram：long-polling `getUpdates` 2s 间隔，消息推入 ChannelManager
-  - Discord：Interactions webhook（Ed25519 签名验证 + PING/PONG + APPLICATION_COMMAND deferred response）
-  - 配置：`[bots.wechat]` / `[bots.telegram]` / `[bots.discord]`
+  - Discord：已移除。JIA 聚焦 WebSocket 和长轮询通道，webhook 模式不在当前范围内
+  - 配置：`[bots.wechat]` / `[bots.telegram]`
+- [ ] **P11.x** 更多通道（WebSocket 模式）
+  - Slack（Socket Mode）：`slack-bolt` WebSocket 连接，无需公网端点
+  - QQ：官方 Bot API WebSocket，消息推送 + 群聊支持
+  - 飞书（Feishu/Lark）：WebSocket 长连接，事件订阅
+  - 全部进入 `channels/` crate，统一长连接模式
 - [x] **P8.6** 记忆系统分层预算优化
   - 三层金字塔预算制：Always ≤10 / OnDemand ≤200 / Archive ≤1000
   - `memory_catalog()` SQL 聚合（catalog_stats GROUP BY）替代 load_all，O(1) 与种子数无关
