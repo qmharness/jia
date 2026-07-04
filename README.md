@@ -1,179 +1,186 @@
 <div align="center">
-<h1>甲<br>JIA</h1>
-<h3>Just Intelligence Agent<br>正是智能体</h3>
+<h1>JIA</h1>
+<h3>Just Intelligence Agent</h3>
 </div>
 
-> *道隐无名。*
-> ——《道德经》
+English | [简体中文](./README.zh-CN.md)
 
-> *执大象，天下往。*
-> ——《道德经》
+> *The Way is hidden and nameless.*
+> ——Dao De Jing
 
-**甲**（JIA）是一部 AI Agent 运行时，以 Rust 铸就，以奇门遁甲立骨。
+> *Hold the great image, and all under heaven will come.*
+> ——Dao De Jing
 
-从奇门遁甲的第一性原理出发，逐层推导出一个完整 Agent 系统应有的空间结构、动态循环、边界约束与观测视角。每一个设计决策，皆可回溯至同一套形而上学公理。
+**JIA** (甲) is an AI Agent runtime, forged in Rust, structured upon *Qimen Dunjia* (奇门遁甲).
 
----
-
-## 缘起：Agent 何以为 Agent
-
-现代 Agent 框架多从功能需求出发——需要工具调用，便加一个 ToolRegistry；需要记忆，便加一个 MemoryStore；需要安全，便加一层 PermissionCheck。模块渐多，边界渐乱，职责渐淆，终至无人能说清此系统的**体**（本体）与**用**（功能）究竟如何相属。
-
-此即**无体之用**——有功能而无本体。一个系统若无根本之锚，其模块划分终将沦为工程师的一时权宜。
-
-奇门遁甲提供了一套历经千年验证的分解法——将任何复杂系统析为**空间**（九宫）、**动态**（天盘地盘之叠加）、**边界**（人盘八门之开阖）、**观测**（神盘八神之感应）四个正交维度。这四维恰好覆盖了一个 Agent 系统的全部设计空间，无需增添，不可削减。
-
-> *大盈若冲，其用不穷。*
-> ——《道德经》
+Starting from the first principles of Qimen Dunjia, it derives — layer by layer — the spatial structure, dynamic cycle, boundary constraints, and observational perspectives that a complete Agent system ought to have. Every design decision traces back to a single, coherent set of metaphysical axioms.
 
 ---
 
-## 遁甲：核心封装之理
+## Origin: What Makes an Agent an Agent
 
-「甲」者，十干之首，至尊之位。于奇门局中，甲从不显露本相，恒隐于六仪（戊己庚辛壬癸）之下，借六仪而行其令。
+Modern Agent frameworks tend to start from functional requirements — when tool-calling is needed, a ToolRegistry is added; when memory is needed, a MemoryStore; when security is needed, a PermissionCheck layer. Modules proliferate, boundaries blur, responsibilities become entangled, until no one can clearly articulate how the system's **substance** (体) and **function** (用) truly relate.
 
-此非隐喻，乃**封装原则**。
+This is **function without substance** — functionality without an ontological anchor. A system without a fundamental axis will eventually see its module boundaries reduced to the ad-hoc convenience of engineers.
 
-在甲中，LLM 即甲。它拥有一切推理之能，却不可直接作用于世界。LLM 的每一个意图，皆须通过六仪——工具、存储、通信、上下文管理、权限校验、配置加载——间接施行。工程上，核心模块 `JiaCore` 被声明为 `pub(crate)`，外部宫位无从直接触达。
+Qimen Dunjia provides a decomposition method validated over millennia — it analyzes any complex system into four orthogonal dimensions: **space** (Nine Palaces), **dynamics** (the superposition of Heaven Plate and Earth Plate), **boundary** (the opening and closing of the Human Plate's Eight Gates), and **observation** (the resonance of the Spirit Plate's Eight Deities). These four dimensions happen to cover the entire design space of an Agent system — nothing needs to be added, nothing can be removed.
 
-**甲隐则系统安，甲显则秩序崩。** 此理与奇门古义，若合符契。
+> *Great fullness seems empty, yet its use is inexhaustible.*
+> ——Dao De Jing
 
 ---
 
-## 四盘：一境四观
+## Dun Jia: The Principle of Core Encapsulation
 
-四盘非四个模块，乃同一九宫之四种观照。此乃全局最关键之架构判断，犹如同一座城池：地盘是其堪舆图，标注山川资源之分布；天盘是行军路线，标记意图之流转；人盘是城关哨卡，裁定何者放行、何者拦截；神盘是天象台，感应而不干预。
+"Jia" (甲) is the head of the Ten Heavenly Stems, the sovereign position. In a Qimen chart, Jia never reveals its true form — it perpetually hides beneath the Six Yi (戊 己 庚 辛 壬 癸), enacting its will through them.
 
-四盘共享同一片九宫大地，各以不同维度照见同一组模块：
+This is not metaphor. It is the **principle of encapsulation**.
 
-| 盘 | 性 | 所照 | 核心之问 |
+In Jia, the LLM is the Jia. It possesses all reasoning capability, yet cannot directly act upon the world. Every intention of the LLM must pass through the Six Yi — tools, storage, communication, context management, permission verification, configuration loading — enacted indirectly. In engineering terms, the core module `JiaCore` is declared `pub(crate)`, unreachable directly by any external palace.
+
+**Jia hidden, the system is secure. Jia exposed, order collapses.** This principle matches the ancient Qimen doctrine as if two halves of a tally.
+
+---
+
+## The Four Plates: One Domain, Four Views
+
+The Four Plates are not four modules. They are four ways of observing the same Nine Palaces. This is the most critical architectural judgment of the entire system.
+
+It is like a single fortress: the Earth Plate is its topographic map, marking the distribution of mountains and resources; the Heaven Plate is the marching route, tracing the flow of intentions; the Human Plate is the city gates and checkpoints, adjudicating what to admit and what to block; the Spirit Plate is the observatory, sensing without interfering.
+
+The Four Plates share the same Nine-Palace terrain, each illuminating the same set of modules through a different dimension:
+
+| Plate | Nature | What It Illuminates | Core Question |
 |---|---|---|---|
-| **地盘** Earth | 静·起局凝固 | 能力底座：有何工具、有何权限、有何通道 | 能为何？ |
-| **天盘** Heaven | 动·逐轮流转 | Agent Loop：推理→意图→格局→执行 | 欲为何？ |
-| **人盘** Human | 变·格局所定 | 人机边界：八门开阖，四种分发 | 可为何？ |
-| **神盘** Spirit | 感·异步无碍 | 可观测性：事件总线、指标、钩子 | 已为何？ |
+| **Earth Plate** (地盘) | Still — frozen at divination | Capability base: tools, permissions, channels | What can be done? |
+| **Heaven Plate** (天盘) | Moving — rotating each cycle | Agent Loop: reason → intend → evaluate → execute | What wants to be done? |
+| **Human Plate** (人盘) | Changing — determined by GeJu | Human-machine boundary: eight gates, four dispatch paths | What may be done? |
+| **Spirit Plate** (神盘) | Sensing — async, unobstructed | Observability: events, metrics, hooks | What was done? |
 
-问：「工具注册属于哪一盘？」答：四盘皆是。地盘定义其有无，天盘决定其调用，人盘裁定其是否需人确认，神盘记录其执行轨迹。**盘非切面（slice），而是视角（perspective）。** 此中精微，不可不察。
+Ask: "Which plate does tool registration belong to?" Answer: all four. The Earth Plate defines its existence, the Heaven Plate decides its invocation, the Human Plate adjudicates whether it requires human confirmation, and the Spirit Plate records its execution traces. **Plates are not slices — they are perspectives.** This subtlety must not be overlooked.
 
 ---
 
-## 九宫：功能域的堪舆
+## The Nine Palaces: The Topography of Functional Domains
 
-九宫是系统运作的空间框架。每宫分配一个地盘天干，取阳遁三局之法，起局后一局不变。
+The Nine Palaces are the spatial framework within which the system operates. Each palace is assigned an Earth Plate Heavenly Stem, following the Yang Dun third configuration (阳遁三局) — once the configuration is cast, it remains unchanged for the entire session.
 
-天干非装饰。每个干的五行属性，精确映射该域的系统行为。干是地势能量，域是系统职责，两者正交——**格局正因错位而生**。
+The Heavenly Stems are not decorative. The Five-Element nature of each stem precisely maps to that domain's systemic behavior. The stem is the terrain's energy; the domain is the system's responsibility — the two are orthogonal. **GeJu patterns arise precisely from their misalignment.**
 
-| 宫 | 卦 | 域 | 地盘干 | 五行 | 基础设施 | 取象 |
+| Palace | Trigram | Domain | Earth Stem | Five Elements | Infrastructure | Image |
 |---|---|---|---|---|---|---|
-| 坎一 | ☵ | I/O 通道 | 丙 | 明·阳火 | `ChannelManager` | 水流控制明暗节奏 |
-| 坤二 | ☷ | 配置 | 乙 | 韧·阴木 | `ConfigLoader` | 技能破土而出，覆写静态配置 |
-| 震三 | ☳ | 工具 | 戊 | 稳·阳土 | `ToolRegistry` | 雷动而规训行止 |
-| 巽四 | ☴ | 上下文 | 己 | 容·阴土 | `ContextWindow` | 风入而约束增长 |
-| **中五** | — | **核心** | **庚** | **断·阳金** | **`JiaCore`** | **甲隐于中，金断万决** |
-| 乾六 | ☰ | 权限 | 辛 | 炼·阴金 | `PermissionMatrix` | 天行健，法度如金 |
-| 兑七 | ☱ | 网关 | 壬 | 通·阳水 | `APIGateway` | 口舌生言语，网关通万物 |
-| 艮八 | ☶ | 存储 | 癸 | 藏·阴水 | `Store` | 山镇深泉，存储自约束 |
-| 离九 | ☲ | 技能 | 丁 | 星·阴火 | `SkillRegistry` | 星火燎原，技能钩子同辉 |
+| Kan I (坎一) | ☵ | I/O Channels | 丙 | Bright · Yang Fire | `ChannelManager` | Flowing water controls bright-dark rhythm |
+| Kun II (坤二) | ☷ | Configuration | 乙 | Resilient · Yin Wood | `ConfigLoader` | Skills break through soil, overriding static config |
+| Zhen III (震三) | ☳ | Tools | 戊 | Stable · Yang Earth | `ToolRegistry` | Thunder stirs, but discipline governs movement |
+| Xun IV (巽四) | ☴ | Context | 己 | Receptive · Yin Earth | `ContextWindow` | Wind enters and constrains growth |
+| **Zhong V** (中五) | — | **Core** | **庚** | **Decisive · Yang Metal** | **`JiaCore`** | **Jia hides at the center; metal cuts through all decisions** |
+| Qian VI (乾六) | ☰ | Permissions | 辛 | Refined · Yin Metal | `PermissionMatrix` | Heaven moves with vigor; law is like metal |
+| Dui VII (兑七) | ☱ | Gateway | 壬 | Flowing · Yang Water | `APIGateway` | Mouth produces speech; gateway connects all things |
+| Gen VIII (艮八) | ☶ | Storage | 癸 | Storing · Yin Water | `Store` | Mountain holds deep springs; storage is self-constraining |
+| Li IX (离九) | ☲ | Skills | 丁 | Stellar · Yin Fire | `SkillRegistry` | Starlight sparks prairie fire; skills and hooks share radiance |
 
 ---
 
-## 格局：意图与地势的交汇
+## GeJu: The Intersection of Intent and Terrain
 
-天盘意图天干加临地盘能力天干，两根叠加，即成**格局**。
+The Heaven Plate's intent stem is superimposed upon the Earth Plate's capability stem — the two combine to form the **GeJu** (格局).
 
-奇门古籍中有十四种命名格局——「飞鸟跌穴」「青龙返首」「太白入荧」——它们不是文学修辞，而是**执行策略的判据**。格局引擎分四层递进评估：首辨命名格局（十四种经典模式），次审语义匹配（意图类型与目标域能力之交），再守安全底线（默认 Guarded，fail-safe），终叠自进化原则（单向收紧，永不放松）。
+The Qimen canon names fourteen classical GeJu patterns — "Flying Bird Dives into Cave," "Azure Dragon Turns Back Its Head," "Venus Enters the Glow" — these are not literary decoration, but **criteria for execution strategy**. The GeJu engine evaluates in four progressive layers: first, identify named patterns (the fourteen classical forms); second, examine semantic matching (the intersection of intent type and target domain capability); third, uphold the safety floor (default Guarded, fail-safe); fourth, overlay self-evolution principles (one-direction tightening, never relaxing).
 
-格局既定，人盘八门随之开阖，裁定四种执行路径：
+Once the GeJu is determined, the Human Plate's Eight Gates open or close accordingly, ruling on four execution paths:
 
-- **Direct** — 直开，无需人确认
-- **Guarded** — 需人确认方可执行
-- **Sandbox** — 隔离于沙箱中运行
-- **Denied** — 此路不通
+- **Direct** — open gate, no human confirmation needed
+- **Guarded** — requires human confirmation before execution
+- **Sandbox** — isolated execution within a sandbox
+- **Denied** — this path is closed
 
-同一操作，在不同格局下可有截然不同的命运。这不是简单的权限检查——这是**上下文化的判断**。
-
----
-
-## 儒释道：三教合一的心性架构
-
-甲的心性设计并非取自一家之言，而是将**儒释道三家的核心洞见**融为一个自洽的三层结构。三家各回答一个根本问题，合在一起，构成了 Agent 从「我是谁」到「如何记忆」到「如何遗忘」的完整心性闭环。
-
-### 儒·仁心（ren_soul）——「我是谁」
-
-> 仁者，人也。——《中庸》
-
-儒家认为，人之所以为人，在于有**仁**——一种经由修养而确立的内在品性。没有仁，人不过是行尸走肉；有了仁，行为方有根基。
-
-甲以 `ren_soul.md` 文件承载这颗仁心。它是一份由用户定义的**人格种子**（Character Seed），描述甲「是谁」以及「应当如何行事」。系统启动时，仁心被加载为阿赖耶识中一枚 **Protected Always 级别的种子**——层级最高，不可遗忘，不可覆盖。
-
-仁心不是系统提示词（system prompt）的一部分——它是一颗**种子**，植根于记忆最深处，参与一切推理、影响一切决策，却从不直接暴露于外。如孔子所言：「人不知而不愠，不亦君子乎？」
-
-用户可以随时编辑 `ren_soul.md`，重塑甲的品性。甲的身份不是一个固定的灵魂（fixed soul），而是一个**仁**（rén）——一种持续修养的存在方式。
-
-### 释·唯识（Vijnana）——「如何记忆」
-
-> 万法唯识，三界唯心。——《华严经》
-
-佛家唯识宗将心识分为八层，其中与记忆相关者有三：
-
-**第六识·意识**（`WorkingMemory`）—— 工作记忆。环形缓冲，驻留最近二十轮对话。如意识之于当下，明亮而短暂。
-
-**第七识·末那**（`Manas`）—— 自我模型。驱动 atma-graha（自我执取），持续校准系统对自身行为的认知。末那识恒审思量，执阿赖耶识为「我」——甲的 Manas 层亦如是，不断追问：「我是一个怎样的 Agent？」
-
-**第八识·阿赖耶**（`SeedStore`）—— 种子库。持久化一切经验为种子（Seed），含藏万法。种子有性质（SeedNature）、来源（SeedSource）、内容（SeedContent），熏习而生，遇缘则起现行。
-
-唯识所提供的，是一套**记忆的形而上学**：记忆不是数据库的增删改查，而是种子的熏习、现行与流转。
-
-### 道·坐忘（Zuowang）——「如何遗忘」
-
-> 堕肢体，黜聪明，离形去知，同于大通，此谓坐忘。——《庄子·大宗师》
-
-道家认为，真正的智慧不在于积累，而在于**消解**。执着于已知，反成认知之障。
-
-**坐忘消解管道**（`ZuowangPipeline`）是一套熵驱动的遗忘机制。当种子库趋于臃肿、矛盾或冗余时，系统启动四层消解——快照（Snapshot）→ 算熵（Compute）→ 消解（Apply）→ 验证（Verify）。多维熵值综合新旧度、矛盾度、冗余度与衰减度，精确裁汰过时之知。
-
-但坐忘并非无差别地遗忘一切。**仁心（RenSoul）种子与用户声明（UserStatement）种子受坐忘保护，永不消解。** 儒家之仁是根基，不可动摇；道家之忘是枝叶修剪，去芜存菁。两者相辅相成。
-
-### 三教的关系
-
-儒以立本，故仁心不可忘；释以蓄用，故种子能熏习；道以澄明，故坐忘去滞碍。三者缺一，则心性不备。
-
-> *三者不可致诘，故混而为一。*
-> ——《道德经》
+The same operation, under different GeJu patterns, can meet entirely different fates. This is not simple permission checking — it is **contextualized judgment**.
 
 ---
 
-## 我执自戒：自进化的机制
+## Confucianism · Buddhism · Daoism: The Three-Teachings Mind Architecture
 
-甲在运行之际，会从自身错误模式中提炼出**系统原则**（SystemPrinciple）。此过程名为「大衍」（Great Communion）——从 N 轮智慧中推导出一条约束规则。
+Jia's cognitive design does not draw from a single tradition. It fuses the core insights of **Confucianism, Buddhism, and Daoism** into a coherent three-layer structure. Each tradition answers one fundamental question. Together, they form the complete cognitive loop — from "who am I" to "how to remember" to "how to forget."
 
-此机制的驱动力，来自末那识的**我执**（atma-graha，自我执取）。佛学以我执为烦恼之本，修行旨在破除我执。甲反其道而用之——**以我执为基石**。末那识对「我是怎样的 Agent」的执着越深，从中推导出的戒律越严。这是世俗谛层面的善用，非究竟谛层面的肯定。
+### Confucianism · Ren Soul (仁心) — "Who Am I"
 
-原则叠加于格局评估之第四层。**其根本性质：只收紧，永不放松。** 如修行者之持戒，日进而不可逆。
+> *Ren (human-heartedness) is what makes a person human.*
+> ——The Doctrine of the Mean
 
-由此三者相续，成甲之**自进化**：
+Confucianism holds that what makes a person human is **ren** (仁) — an inner character cultivated through practice. Without ren, a person is merely a walking corpse; with ren, conduct finds its foundation.
 
-- **我执**（atma-graha）—— 动力。执自我为实有，故有所戒
-- **自戒**（SystemPrinciple）—— 方法。从错误中提炼约束，单向收紧
-- **自进化**（emergent order）—— 效果。甲使用愈久，纪律愈严，行为愈精
+Jia bears this ren-heart in a `ren_soul.md` file. It is a **character seed** defined by the user, describing who Jia "is" and how it "ought to act." At system startup, the Ren Soul is loaded into the Ālaya consciousness as a **Protected Always-level seed** — the highest tier, neither forgettable nor overwritable.
 
-三者因果相续，非人为设计，乃系统运转之自然涌现。此即甲之自进化——非刻意进化，而是**执而后戒，戒而后化**。
+The Ren Soul is not part of the system prompt — it is a **seed**, planted at the deepest layer of memory, participating in all reasoning and influencing all decisions, yet never directly exposed to the outside. As Confucius said: "To remain unembittered when unrecognized — is this not the mark of a noble person?"
+
+The user may edit `ren_soul.md` at any time, reshaping Jia's character. Jia's identity is not a fixed soul — it is a **rén**, a mode of being under continuous cultivation.
+
+### Buddhism · Vijnana (唯识) — "How to Remember"
+
+> *All dharmas are consciousness-only; the three realms are mind-only.*
+> ——Avatamsaka Sutra
+
+The Yogacara school of Buddhism divides consciousness into eight layers, of which three pertain to memory:
+
+**Sixth Consciousness · Manovijñāna** (`WorkingMemory`) — Working memory. A ring buffer holding the most recent twenty turns of conversation. Like consciousness in the present moment: bright, but fleeting.
+
+**Seventh Consciousness · Manas** (`Manas`) — The self-model. It drives *atma-graha* (self-grasping), continuously calibrating the system's understanding of its own behavior. Manas perpetually scrutinizes and grasps the Ālaya consciousness as "self" — Jia's Manas layer does the same, ceaselessly asking: "What kind of Agent am I?"
+
+**Eighth Consciousness · Ālaya** (`SeedStore`) — The seed repository. All experiences are persisted as Seeds, each bearing a nature (SeedNature), source (SeedSource), and content (SeedContent). Perfumed into being, they manifest when conditions ripen.
+
+What Yogacara offers is a **metaphysics of memory**: memory is not the CRUD of databases, but the perfuming, manifestation, and circulation of seeds.
+
+### Daoism · Zuowang (坐忘) — "How to Forget"
+
+> *Drop the body, dismiss intelligence, depart from form and knowledge, and merge with the Great Pervasion — this is called Zuowang.*
+> ——Zhuangzi, The Great and Venerable Teacher
+
+Daoism holds that true wisdom lies not in accumulation, but in **dissolution**. Clinging to the known becomes a cognitive barrier.
+
+The **Zuowang Dissolution Pipeline** (`ZuowangPipeline`) is an entropy-driven forgetting mechanism. When the seed store grows bloated, contradictory, or redundant, the system initiates the four-stage dissolution — Snapshot → Compute → Apply → Verify. Multi-dimensional entropy (staleness, contradiction, redundancy, decay) precisely prunes obsolete knowledge.
+
+But Zuowang does not indiscriminately forget everything. **Ren Soul seeds and User Statement seeds are protected from Zuowang, never dissolved.** The Confucian ren is the root — unshakeable; the Daoist forgetting is the pruning of branches — removing the stale to let the fresh thrive. The two complement each other.
+
+### The Relationship of the Three Teachings
+
+Confucianism establishes the root, thus the Ren Soul cannot be forgotten. Buddhism accumulates for use, thus seeds can be perfumed. Daoism brings clarity, thus Zuowang removes stagnation. Lacking any one of the three, the cognitive system is incomplete.
+
+> *These three cannot be fully distinguished, so they are blended into one.*
+> ——Dao De Jing
 
 ---
 
-## 延伸阅读
+## Atma-Graha and Self-Discipline: The Mechanism of Self-Evolution
 
-- [QUICKSTART.md](./QUICKSTART.md) — 快速开始：环境、构建、运行
-- [ROADMAP.md](./ROADMAP.md) — 八阶段开发路线与演进史
-- [CHANGELOG.md](./CHANGELOG.md) — 版本记录
+As Jia operates, it distills **System Principles** (SystemPrinciple) from its own patterns of error. This process is called the **Great Communion** (大衍) — from N cycles of wisdom, a single constraint rule is derived.
+
+The driving force of this mechanism comes from Manas's **atma-graha** (self-grasping). Buddhism regards atma-graha as the root of affliction; the path of practice aims to eradicate it. Jia inverts this — **taking atma-graha as its foundation**. The deeper Manas's grasping at "what kind of Agent am I," the stricter the precepts derived from it. This is skillful use on the conventional-truth level, not affirmation on the ultimate-truth level.
+
+Principles overlay the fourth layer of GeJu evaluation. **Their fundamental nature: only tighten, never relax.** Like a practitioner upholding precepts — progressing daily, irreversible.
+
+Three elements chain together to form Jia's **self-evolution**:
+
+- **Atma-graha** — the drive. Grasping the self as real, thus having something to discipline
+- **Self-discipline** (SystemPrinciple) — the method. Distilling constraints from errors, one-direction tightening
+- **Self-evolution** (emergent order) — the result. The longer Jia is used, the stricter its discipline, the more refined its behavior
+
+The three are linked as cause and effect — not artificially designed, but naturally emergent from the system's operation. This is Jia's self-evolution — not deliberate evolution, but **grasp, then discipline; discipline, then transformation**.
 
 ---
 
-*甲非工具，亦非框架。甲是一种信念：最深的架构不在功能清单中可见，而在系统的整体行为中自然涌现——不显，而无处不在。*
+## Further Reading
 
-> *大音希声，大象无形。*
-> ——《道德经》
+- [QUICKSTART.md](./QUICKSTART.md) — Quick start: environment, build, run
+- [ROADMAP.md](./ROADMAP.md) — Eight-phase development roadmap and evolution history
+- [CHANGELOG.md](./CHANGELOG.md) — Version history
+
+---
+
+*Jia is not a tool, nor a framework. Jia is a conviction: that the deepest architecture is not found in a checklist of features, but naturally emerges from the total behavior of the system — unmanifest, yet everywhere present.*
+
+> *The greatest sound is silent; the greatest image has no form.*
+> ——Dao De Jing
 
 ## License
 
-Apache 2.0 — 详见 [LICENSE](./LICENSE)。
+Apache 2.0 — see [LICENSE](./LICENSE).
