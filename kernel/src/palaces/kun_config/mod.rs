@@ -21,6 +21,27 @@ pub struct CliArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
+    /// Shortcut for `jia gateway start` — start the API gateway in background
+    #[command(visible_alias = "s")]
+    Start {
+        #[arg(long = "config", env = "JIA_CONFIG")]
+        config_path: Option<PathBuf>,
+        #[arg(long, env = "JIA_HOST")]
+        host: Option<String>,
+        #[arg(long, env = "JIA_PORT")]
+        port: Option<u16>,
+    },
+    /// Shortcut for `jia gateway stop` — stop the running gateway
+    Stop,
+    /// Shortcut for `jia gateway restart` — restart the gateway
+    Restart {
+        #[arg(long = "config", env = "JIA_CONFIG")]
+        config_path: Option<PathBuf>,
+        #[arg(long, env = "JIA_HOST")]
+        host: Option<String>,
+        #[arg(long, env = "JIA_PORT")]
+        port: Option<u16>,
+    },
     /// Start the API gateway server
     Gateway {
         #[command(subcommand)]

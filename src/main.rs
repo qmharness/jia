@@ -85,6 +85,26 @@ async fn main() {
     });
 
     match command {
+        // Shortcuts: jia start / stop / restart
+        Commands::Start {
+            config_path,
+            host,
+            port,
+        } => {
+            spawn_daemon(config_path, host, port);
+        }
+        Commands::Stop => {
+            stop_running_instance();
+        }
+        Commands::Restart {
+            config_path,
+            host,
+            port,
+        } => {
+            stop_running_instance();
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            spawn_daemon(config_path, host, port);
+        }
         Commands::Gateway { action } => match action {
             GatewayAction::Start {
                 config_path,
