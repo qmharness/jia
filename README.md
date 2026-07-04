@@ -3,7 +3,7 @@
 <h3>Just Intelligence Agent</h3>
 </div>
 
-**English** | [简体中文](./README.zh-CN.md)
+English | [简体中文](./README.zh-CN.md)
 
 > *The Way is hidden and nameless.*
 > ——Dao De Jing
