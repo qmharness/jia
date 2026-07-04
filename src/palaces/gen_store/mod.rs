@@ -299,6 +299,31 @@ impl Store {
         Ok(())
     }
 
+    /// Load ALL sub-agent sessions (crash recovery).
+    pub fn load_all_subagent_sessions(
+        &self,
+    ) -> Result<Vec<(String, String, String, i64, i64)>, StoreError> {
+        let conn = self.pool.get()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, messages_json, subagent_type, created_at, last_used
+             FROM subagent_sessions ORDER BY last_used DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, i64>(4)?,
+            ))
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
     /// Load a sub-agent session by ID.
     pub fn load_subagent_session(
         &self,

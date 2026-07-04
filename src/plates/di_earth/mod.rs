@@ -50,7 +50,7 @@ use crate::palaces::zhen_tool::builtin::cron::CronStore;
 use crate::palaces::zhen_tool::builtin::cron::CronTool;
 use crate::palaces::zhen_tool::builtin::cron_runner;
 #[cfg(feature = "agent-tool")]
-use crate::palaces::zhen_tool::builtin::delegate::DelegateTool;
+use crate::palaces::zhen_tool::builtin::delegate::{DelegateTool, SubagentSession, SubagentType};
 #[cfg(feature = "git")]
 use crate::palaces::zhen_tool::builtin::git::GitTool;
 use crate::palaces::zhen_tool::builtin::namarupa::NamaRupaTool;
@@ -101,7 +101,7 @@ pub struct EarthPlate {
     pub pending_questions: Arc<Mutex<HashMap<String, PendingQuestion>>>,
     /// P8 · persisted sub-agent sessions for continuation via send_message.
     pub subagent_sessions:
-        Arc<Mutex<HashMap<String, crate::palaces::zhen_tool::builtin::delegate::SubagentSession>>>,
+        Arc<Mutex<HashMap<String, SubagentSession>>>,
     /// P3 · per-session interaction mode (谋划态), set by user slash command
     /// (/plan) and read when the next agent run starts. Kept in sync with the
     /// agent's actual mode via InteractionModeChanged events.
@@ -197,7 +197,7 @@ impl EarthPlate {
 
         // P8 · sub-agent session table (created early — DelegateTool below needs it)
         let subagent_sessions: Arc<
-            Mutex<HashMap<String, crate::palaces::zhen_tool::builtin::delegate::SubagentSession>>,
+            Mutex<HashMap<String, SubagentSession>>,
         > = Arc::new(Mutex::new(HashMap::new()));
         // P3 · per-session interaction modes (for /plan slash entry)
         let session_modes: Arc<
@@ -291,6 +291,29 @@ impl EarthPlate {
         // Open Store before tool registration so tools can receive it
         let store = Arc::new(Store::open(&db_path.to_string_lossy()));
         let store_async = StoreAsync::new(store.clone());
+
+        // P8 · crash recovery: hydrate subagent sessions from SQLite
+        if let Ok(rows) = store.load_all_subagent_sessions() {
+            if !rows.is_empty() {
+                let mut guard = subagent_sessions.lock().unwrap();
+                for (id, messages_json, subagent_type, created_at, last_used) in rows {
+                    if let Ok(messages) =
+                        serde_json::from_str::<Vec<crate::types::Message>>(&messages_json)
+                    {
+                        let st = SubagentType::from_str(&subagent_type)
+                            .unwrap_or(SubagentType::Explore);
+                        guard.insert(
+                            id,
+                            SubagentSession { messages, subagent_type: st, created_at, last_used },
+                        );
+                    }
+                }
+                tracing::info!(
+                    count = guard.len(),
+                    "restored subagent sessions from crash recovery"
+                );
+            }
+        }
 
         // Register NamaRupaTool — agentic graph memory (nāma-rūpa)
         tool_registry.register(Arc::new(NamaRupaTool::new(store.clone())));

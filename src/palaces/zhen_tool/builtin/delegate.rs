@@ -58,7 +58,7 @@ pub enum SubagentType {
 }
 
 impl SubagentType {
-    fn from_str(s: &str) -> Result<Self, String> {
+    pub(crate) fn from_str(s: &str) -> Result<Self, String> {
         match s.to_lowercase().as_str() {
             "explore" => Ok(Self::Explore),
             "plan" => Ok(Self::Plan),
