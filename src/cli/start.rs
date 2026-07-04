@@ -239,10 +239,16 @@ pub async fn run_start(
         }
     }
 
+    let web_dir_default = std::env::current_dir()
+        .unwrap_or_default()
+        .join("frontend")
+        .join("dist");
     let web_dir = web_dir
         .as_ref()
-        .map(|wd| wd.display().to_string())
-        .unwrap_or_default();
+        .map(|wd| wd.to_path_buf())
+        .unwrap_or(web_dir_default)
+        .display()
+        .to_string();
 
     // Fetch model lists for providers without explicit models configured
     for (name, p) in config.providers.iter_mut() {
