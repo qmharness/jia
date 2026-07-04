@@ -138,7 +138,7 @@
 
         <div class="entropy-grid">
           <section class="card" style="display:flex;align-items:center;justify-content:center;padding:8px">
-            <svg viewBox="-76 -76 152 152" class="radar-svg">
+            <svg viewBox="-80 -80 160 160" class="radar-svg">
               <circle cx="0" cy="0" r="15" fill="none" stroke="var(--bg-tertiary)" stroke-width="0.5"/>
               <circle cx="0" cy="0" r="30" fill="none" stroke="var(--bg-tertiary)" stroke-width="0.5"/>
               <circle cx="0" cy="0" r="45" fill="none" stroke="var(--error)" stroke-width="0.8" stroke-dasharray="2,2"/>
@@ -146,10 +146,10 @@
               <line x1="0" y1="-60" x2="0" y2="60" stroke="var(--bg-tertiary)" stroke-width="0.5"/>
               <line x1="-60" y1="0" x2="60" y2="0" stroke="var(--bg-tertiary)" stroke-width="0.5"/>
               <!-- Icons on invisible circle at r=70, centered properly -->
-              <text x="0" y="-71" text-anchor="middle" dominant-baseline="central" font-size="12" fill="var(--text-primary)">{dims[0].icon}</text>
-              <text x="72" y="0" text-anchor="middle" dominant-baseline="central" font-size="12" fill="var(--text-primary)">{dims[1].icon}</text>
-              <text x="0" y="72" text-anchor="middle" dominant-baseline="central" font-size="12" fill="var(--text-primary)">{dims[2].icon}</text>
-              <text x="-72" y="0" text-anchor="middle" dominant-baseline="central" font-size="12" fill="var(--text-primary)">{dims[3].icon}</text>
+              <text x="0" y="-75" text-anchor="middle" dominant-baseline="central" font-size="12" fill="var(--text-primary)">{dims[0].icon}</text>
+              <text x="75" y="0" text-anchor="middle" dominant-baseline="central" font-size="12" fill="var(--text-primary)">{dims[1].icon}</text>
+              <text x="0" y="75" text-anchor="middle" dominant-baseline="central" font-size="12" fill="var(--text-primary)">{dims[2].icon}</text>
+              <text x="-75" y="0" text-anchor="middle" dominant-baseline="central" font-size="12" fill="var(--text-primary)">{dims[3].icon}</text>
               <polygon points={radarRaw} fill={barColor(entropy.current.total)} fill-opacity="0.25" stroke={barColor(entropy.current.total)} stroke-width="1.2"/>
               <polygon points={radarWeighted} fill={barColor(entropy.current.total)} fill-opacity="0.12" stroke={barColor(entropy.current.total)} stroke-width="0.6" stroke-dasharray="2,1"/>
             </svg>
