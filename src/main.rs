@@ -140,6 +140,30 @@ async fn main() {
         },
         #[cfg(feature = "tui")]
         Commands::Tui => {
+            // If daemon is not running, start it first — the TUI needs the gateway.
+            if is_daemon_running().is_none() {
+                spawn_daemon(args.config_path.clone(), None, None);
+
+                // Wait up to 10 seconds for the server to become reachable
+                let addr = "127.0.0.1:3000";
+                let mut attempts = 0;
+                loop {
+                    if std::net::TcpStream::connect_timeout(
+                        &addr.parse().expect("invalid socket addr"),
+                        std::time::Duration::from_millis(500),
+                    )
+                    .is_ok()
+                    {
+                        break;
+                    }
+                    attempts += 1;
+                    if attempts >= 20 {
+                        eprintln!("jia gateway did not start within 10 seconds");
+                        std::process::exit(1);
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                }
+            }
             run_tui(args.config_path).await;
         }
         Commands::Doctor => {
