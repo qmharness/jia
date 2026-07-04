@@ -52,6 +52,12 @@ pub trait LlmProvider: Send + Sync {
         false
     }
 
+    /// If this provider is a ProviderRouter, return a reference to it.
+    /// Used by the agent loop for failover. Default: None.
+    fn as_router(&self) -> Option<&crate::palaces::zhong_core::router::ProviderRouter> {
+        None
+    }
+
     /// Streaming inference with a split system prompt (`stable` + `dynamic`).
     ///
     /// Caching providers (Anthropic) override this to place `cache_control` on
@@ -183,6 +189,10 @@ pub(crate) fn classify_http_error(status: u16, body: &str) -> crate::error::Prov
 }
 
 
+// ── Router + Circuit Breaker ──────────────────────────────────
+pub(crate) mod breaker;
+pub(crate) mod router;
+
 // ── Anthropic ──────────────────────────────────────────────
 mod anthropic;
 pub use anthropic::AnthropicProvider;
@@ -277,6 +287,18 @@ impl JiaCore {
     ) -> Pin<Box<dyn Stream<Item = Result<StreamChunk, ProviderError>> + Send>> {
         self.provider
             .infer_stream_with_system(messages, system, tools, cancel_token)
+    }
+
+    /// Record a successful LLM call (resets circuit breaker).
+    pub(crate) fn record_llm_success(&self) {
+        if let Some(router) = self.provider.as_router() {
+            router.record_success();
+        }
+    }
+
+    /// Try failover to next healthy provider. Returns true if switched.
+    pub(crate) fn try_llm_failover(&self) -> bool {
+        self.provider.as_router().map_or(false, |r| r.try_failover())
     }
 
     pub fn model(&self) -> &str {

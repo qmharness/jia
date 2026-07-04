@@ -45,6 +45,7 @@ pub struct Agent {
     pub principles: Vec<SystemPrinciple>,
     pub turn_count: u32,
     pub max_turns: u32,
+    pub retry_count: u32,
     /// Unified conversation history (messages + tool calls, persists across turns)
     pub history: Vec<HistoryEntry>,
     /// Working memory (ring buffer of turn snapshots, in-memory only)
@@ -112,7 +113,7 @@ impl Agent {
         };
         let principles = earth
             .store
-            .load_principles()
+            .load_active_principles()
             .unwrap_or_default()
             .iter()
             .filter_map(|j| serde_json::from_str::<SystemPrinciple>(j).ok())
@@ -124,6 +125,7 @@ impl Agent {
             principles,
             turn_count: 0,
             max_turns: 25,
+            retry_count: 0,
             history: Vec::new(),
             working_memory: WorkingMemory::new(20),
             manas: Manas::new(),
@@ -165,7 +167,7 @@ impl Agent {
         };
         let principles = earth
             .store
-            .load_principles()
+            .load_active_principles()
             .unwrap_or_default()
             .iter()
             .filter_map(|j| serde_json::from_str::<SystemPrinciple>(j).ok())
@@ -177,6 +179,7 @@ impl Agent {
             earth,
             turn_count: 0,
             max_turns: 25,
+            retry_count: 0,
             history,
             working_memory: WorkingMemory::new(20),
             manas,
@@ -524,6 +527,8 @@ mod tests {
             base_url: "http://localhost:1/v1".into(),
             max_tokens: Some(256),
             context_window: None,
+            priority: None,
+            cost_multiplier: None,
         };
         Arc::new(EarthPlate {
             io: Arc::new(ChannelManager::default()),

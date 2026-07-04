@@ -491,6 +491,8 @@ mod tests {
             base_url: "https://api.openai.com/v1".into(),
             max_tokens: Some(256),
             context_window: None,
+            priority: None,
+            cost_multiplier: None,
         };
         Arc::new(JiaCore::new(&profile, profile.default_main_model()))
     }

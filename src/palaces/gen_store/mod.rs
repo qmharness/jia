@@ -269,6 +269,12 @@ impl Store {
             );",
         );
 
+        // Migrate: principle archive support (0=active, 1=archived by user)
+        let _ = conn.execute(
+            "ALTER TABLE principles ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+
         Self {
             pool,
             dissolve_lock: std::sync::Mutex::new(()),

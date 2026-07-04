@@ -201,7 +201,7 @@ impl SystemPrinciple {
 /// Convenience wrapper that queries the store and runs tightening.
 pub fn apply_layer4(store: &Arc<Store>, geju_key: &str, result: &mut GeJuResult, atma_graha: f32) {
     // Load all principles (agent-wide — one file = one agent)
-    let all_principles = match store.load_principles() {
+    let all_principles = match store.load_active_principles() {
         Ok(p) => p,
         Err(e) => {
             tracing::warn!("Failed to load principles: {e}");

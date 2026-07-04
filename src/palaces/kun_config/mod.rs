@@ -178,6 +178,14 @@ pub struct ProviderProfile {
     /// Defaults to 8192 if unset.
     #[serde(default)]
     pub context_window: Option<usize>,
+    /// Failover priority (lower = higher priority). Providers with lower values
+    /// are tried first. None = lowest priority (tried last).
+    #[serde(default)]
+    pub priority: Option<u32>,
+    /// Cost multiplier relative to baseline (1.0 = standard). Used by cost-aware
+    /// routing (e.g. cheapest healthy provider for background tasks).
+    #[serde(default)]
+    pub cost_multiplier: Option<f32>,
 }
 
 impl ProviderProfile {

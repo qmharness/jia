@@ -359,6 +359,11 @@ impl super::Agent {
                         );
                     }
                     Some(Err(e)) => {
+                        if e.is_retryable() && ctx.core.try_llm_failover() {
+                            tracing::warn!(session = %self.id, error = %e, "LLM error, retrying with next provider");
+                            self.retry_count += 1;
+                            continue;
+                        }
                         tracing::error!(session = %self.id, error = %e, "LLM inference error");
                         let _ = ctx.tx.send(AgentEvent::Error(format!("{e}")));
                         return;
@@ -368,6 +373,8 @@ impl super::Agent {
             }
 
             JIA_LLM_DURATION_SECONDS.observe(llm_start.elapsed().as_secs_f64());
+            ctx.core.record_llm_success();
+            self.retry_count = 0;
 
             // Notify frontend that LLM stream ended (freeze bubble A)
             let _ = ctx.tx.send(AgentEvent::StreamEnd);

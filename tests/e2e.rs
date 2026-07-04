@@ -53,6 +53,8 @@ fn real_profile() -> Option<ProviderProfile> {
             base_url: base,
             max_tokens: Some(1024),
             context_window: Some(8192),
+            priority: None,
+            cost_multiplier: None,
         });
     }
 
@@ -142,6 +144,8 @@ fn temp_earth(store: Arc<Store>, temp_dir: &std::path::Path) -> Arc<EarthPlate> 
         base_url: "http://localhost:1/v1".into(),
         max_tokens: Some(256),
         context_window: None,
+        priority: None,
+        cost_multiplier: None,
     };
     let tmp = std::env::temp_dir().join("jia-e2e-test");
     Arc::new(EarthPlate {

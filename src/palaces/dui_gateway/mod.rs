@@ -16,6 +16,7 @@ use tower_http::limit::RequestBodyLimitLayer;
 
 use tower_http::services::ServeDir;
 
+pub mod principles;
 pub mod rin;
 
 use crate::config::{AppConfig, ProviderProfile};
@@ -142,6 +143,9 @@ pub fn build_router(state: Arc<AppState>, web_dir: String) -> Router {
         .route("/monitor", get(handle_monitor))
         .route("/vijnana/seeds", get(handle_vijnana_seeds))
         .route("/vijnana/state", get(handle_vijnana_state))
+        .route("/principles", get(principles::handle_list_principles))
+        .route("/principles/{id}/archive", post(principles::handle_archive_principle))
+        .route("/principles/{id}/unarchive", post(principles::handle_unarchive_principle))
         .route("/skills", get(handle_skills))
         .route("/skills/evolution", get(handle_skills_evolution))
         .route("/skills/reload", post(handle_skills_reload))
@@ -412,6 +416,8 @@ mod tests {
             base_url: "http://localhost:1234/v1".into(),
             max_tokens: Some(1024),
             context_window: Some(4096),
+            priority: None,
+            cost_multiplier: None,
         };
         let core = Arc::new(crate::palaces::zhong_core::JiaCore::new(&profile, "test"));
         let earth = EarthPlate {

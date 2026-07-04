@@ -803,6 +803,8 @@ async fn test_real_llm_evolution_pipeline() {
         base_url: "http://localhost:1234/v1".to_string(),
         max_tokens: Some(4096),
         context_window: Some(180000),
+            priority: None,
+            cost_multiplier: None,
     };
     let core = crate::palaces::zhong_core::JiaCore::new(&profile, "qwen3.6-35b-a3b-ud-mlx");
 
@@ -920,6 +922,8 @@ async fn test_real_llm_reflection_only() {
         base_url: "http://localhost:1234/v1".to_string(),
         max_tokens: Some(2048),
         context_window: Some(180000),
+            priority: None,
+            cost_multiplier: None,
     };
     let core = crate::palaces::zhong_core::JiaCore::new(&profile, "qwen3.6-35b-a3b-ud-mlx");
 

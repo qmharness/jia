@@ -46,6 +46,19 @@ pub enum ProviderError {
     Provider(String),
 }
 
+impl ProviderError {
+    /// Whether this error is retryable (transient — retry with next provider).
+    pub fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            ProviderError::RateLimited { .. }
+                | ProviderError::ServerError { .. }
+                | ProviderError::Network(_)
+                | ProviderError::StreamStalled
+        )
+    }
+}
+
 impl From<String> for ProviderError {
     fn from(s: String) -> Self {
         ProviderError::Provider(s)
