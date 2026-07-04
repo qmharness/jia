@@ -10,86 +10,44 @@
   <div class="header">
     <h2 class="title">{t('vijnana.title')}</h2>
   </div>
+  <nav class="tab-bar">
+    <button
+      class="tab-btn"
+      class:active={tab === 'status'}
+      onclick={() => tab = 'status'}
+    >{t('vijnana.tabStatus')}</button>
+    <button
+      class="tab-btn"
+      class:active={tab === 'seeds'}
+      onclick={() => tab = 'seeds'}
+    >{t('vijnana.tabContent')}</button>
+  </nav>
   <div class="body">
-    <nav class="tab-sidebar">
-      <button
-        class="tab-btn"
-        class:active={tab === 'status'}
-        onclick={() => tab = 'status'}
-      >{t('vijnana.tabStatus')}</button>
-      <button
-        class="tab-btn"
-        class:active={tab === 'seeds'}
-        onclick={() => tab = 'seeds'}
-      >{t('vijnana.tabContent')}</button>
-    </nav>
-    <div class="tab-content">
-      {#if tab === 'status'}
-        <VijnanaStatus />
-      {:else}
-        <VijnanaSeeds />
-      {/if}
-    </div>
+    {#if tab === 'status'}
+      <VijnanaStatus />
+    {:else}
+      <VijnanaSeeds />
+    {/if}
   </div>
 </div>
 
 <style>
-  .page {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-  }
+  .page { display: flex; flex-direction: column; height: 100%; }
+  .header { padding: 12px 20px; border-bottom: 1px solid var(--border); }
+  .title { font-size: 16px; font-weight: 600; }
 
-  .header {
-    padding: 12px 20px;
-    border-bottom: 1px solid var(--border);
+  .tab-bar {
+    display: flex; gap: 0;
+    padding: 0 20px; border-bottom: 1px solid var(--border);
   }
-
-  .title {
-    font-size: 16px;
-    font-weight: 600;
-  }
-
-  .body {
-    flex: 1;
-    display: flex;
-    overflow: hidden;
-  }
-
-  .tab-sidebar {
-    width: 160px;
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 12px 8px;
-    border-right: 1px solid var(--border);
-    overflow-y: auto;
-  }
-
   .tab-btn {
-    padding: 8px 12px;
-    font-size: 13px;
-    color: var(--text-secondary);
-    border-radius: var(--radius-sm);
-    text-align: left;
-    transition: background .15s, color .15s;
+    padding: 10px 16px; font-size: 13px; color: var(--text-secondary);
+    border-bottom: 2px solid transparent; transition: color .15s, border-color .15s;
   }
-
-  .tab-btn:hover {
-    color: var(--text-primary);
-    background: var(--bg-tertiary);
-  }
-
+  .tab-btn:hover { color: var(--text-primary); }
   .tab-btn.active {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    font-weight: 600;
+    color: var(--accent); border-bottom-color: var(--accent); font-weight: 600;
   }
 
-  .tab-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px 20px;
-  }
+  .body { flex: 1; overflow-y: auto; padding: 16px 20px; }
 </style>
