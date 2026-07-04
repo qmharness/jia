@@ -8,7 +8,7 @@ const DAEMON = 'http://127.0.0.1:3000'
 // also avoids sending duplicate Authorization headers when the frontend has a token.
 const proxyRoutes = [
   '/config', '/providers', '/sessions', '/agent', '/tools', '/skills', '/cron',
-  '/monitor', '/vijnana', '/files', '/events', '/confirm', '/projects',
+  '/monitor', '/vijnana', '/principles', '/files', '/events', '/confirm', '/projects',
   '/auth/session',
 ]
 
