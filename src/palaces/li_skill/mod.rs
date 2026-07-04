@@ -1,3 +1,5 @@
+//! li_skill — Skill Registry (离九)
+
 use std::sync::Arc;
 pub mod evolution;
 pub mod loader;

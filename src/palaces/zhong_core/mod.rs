@@ -1,3 +1,5 @@
+//! zhong_core — LLM Core / JiaCore (中五)
+
 use crate::error::ProviderError;
 use std::pin::Pin;
 

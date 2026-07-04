@@ -1,3 +1,5 @@
+//! tian_heaven — Heaven Plate / Agent Loop (天盘)
+
 use std::sync::Arc;
 pub mod r#loop;
 

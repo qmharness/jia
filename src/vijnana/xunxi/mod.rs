@@ -1,3 +1,5 @@
+//! xunxi — Consolidation / Habituation (熏习)
+
 use std::sync::Arc;
 pub mod distillation;
 pub mod signal;

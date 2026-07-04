@@ -10,7 +10,6 @@ pub fn spawn_daemon(
     config_path: Option<PathBuf>,
     host: Option<String>,
     port: Option<u16>,
-    web_dir: Option<PathBuf>,
 ) {
     let exe = std::env::current_exe().unwrap_or_else(|_| {
         eprintln!("Cannot determine binary path");
@@ -41,9 +40,6 @@ pub fn spawn_daemon(
     }
     if let Some(p) = port {
         cmd.arg("--port").arg(p.to_string());
-    }
-    if let Some(ref wd) = web_dir {
-        cmd.arg("--web-dir").arg(wd);
     }
 
     cmd.stdin(std::process::Stdio::null());

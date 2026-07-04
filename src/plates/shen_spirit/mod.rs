@@ -1,3 +1,5 @@
+//! shen_spirit — Spirit Plate / Event Bus (神盘)
+
 use tokio::sync::broadcast;
 
 use crate::telemetry::metrics::JIA_EVENTBUS_DROPS_TOTAL;

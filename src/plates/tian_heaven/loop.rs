@@ -24,21 +24,23 @@ pub use super::loop_events::AgentEvent;
 pub use super::loop_hooks::{CompiledHook, UserHookEvent, run_pre_tool_hooks};
 pub use super::loop_parse::parse_tool_calls;
 
+// ── RunContext ──────────────────────────────────────────────────
+
+/// Bundled execution context for [`Agent::run`].
+pub struct RunContext<'a> {
+    pub core: &'a JiaCore,
+    pub human_plate: &'a HumanPlate,
+    pub event_bus: &'a EventBus,
+    pub hook_registry: &'a HookRegistry,
+    pub tx: mpsc::UnboundedSender<AgentEvent>,
+    pub cancel_token: &'a CancellationToken,
+}
+
 // ── Agent::run ─────────────────────────────────────────────────
 
 impl super::Agent {
-    #[tracing::instrument(skip(self, messages, core, human_plate, event_bus, hook_registry, tx, cancel_token), fields(session = %self.id))]
-    #[allow(clippy::too_many_arguments)]
-    pub async fn run(
-        &mut self,
-        messages: Vec<Message>,
-        core: &JiaCore,
-        human_plate: &HumanPlate,
-        event_bus: &EventBus,
-        hook_registry: &HookRegistry,
-        tx: mpsc::UnboundedSender<AgentEvent>,
-        cancel_token: &CancellationToken,
-    ) {
+    #[tracing::instrument(skip(self, messages, ctx), fields(session = %self.id))]
+    pub async fn run(&mut self, messages: Vec<Message>, ctx: &RunContext<'_>) {
         let _ = tx.send(AgentEvent::Session {
             session_id: self.id.clone(),
         });

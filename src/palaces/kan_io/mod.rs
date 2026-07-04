@@ -1,3 +1,5 @@
+//! kan_io — Channel I/O (坎一)
+
 use std::path::PathBuf;
 
 use tokio::sync::mpsc;

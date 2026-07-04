@@ -1,3 +1,5 @@
+//! di_earth — Earth Plate (地盘)
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;

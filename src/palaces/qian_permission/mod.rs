@@ -1,3 +1,5 @@
+//! qian_permission — Permission & Sandbox (乾六)
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 

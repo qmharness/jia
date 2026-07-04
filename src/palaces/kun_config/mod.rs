@@ -1,3 +1,5 @@
+//! kun_config — Configuration (坤二)
+
 use std::{collections::HashMap, path::PathBuf};
 
 use clap::{Parser, Subcommand};
@@ -60,7 +62,7 @@ pub enum Commands {
 
 #[derive(Subcommand, Debug)]
 pub enum GatewayAction {
-    /// Start the HTTP server
+    /// Start the API gateway server (background daemon). Use `jia web` for the dashboard.
     Start {
         /// Config file path (default: config.toml in current directory)
         #[arg(long = "config", env = "JIA_CONFIG")]
@@ -73,10 +75,6 @@ pub enum GatewayAction {
         /// HTTP server listen port (overrides config file)
         #[arg(long, env = "JIA_PORT")]
         port: Option<u16>,
-
-        /// Frontend directory (default: none; use `jia web` for the dashboard with default path)
-        #[arg(long = "web-dir", env = "JIA_WEB_DIR")]
-        web_dir: Option<PathBuf>,
     },
     /// Stop the running HTTP server
     Stop,
@@ -95,10 +93,6 @@ pub enum GatewayAction {
         /// HTTP server listen port (overrides config file)
         #[arg(long, env = "JIA_PORT")]
         port: Option<u16>,
-
-        /// Frontend directory override
-        #[arg(long = "web-dir", env = "JIA_WEB_DIR")]
-        web_dir: Option<PathBuf>,
     },
     /// Internal: daemon process spawned by start/restart
     #[command(hide = true)]
@@ -114,10 +108,6 @@ pub enum GatewayAction {
         /// HTTP server listen port
         #[arg(long, env = "JIA_PORT")]
         port: Option<u16>,
-
-        /// Frontend directory override
-        #[arg(long = "web-dir", env = "JIA_WEB_DIR")]
-        web_dir: Option<PathBuf>,
     },
 }
 

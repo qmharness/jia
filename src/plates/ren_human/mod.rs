@@ -1,3 +1,5 @@
+//! ren_human — Human Plate / Permission Boundary (人盘)
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;

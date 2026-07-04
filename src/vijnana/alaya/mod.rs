@@ -1,3 +1,5 @@
+//! alaya — Seed Store / Store-Consciousness (阿赖耶识)
+
 use crate::error::JiaError;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

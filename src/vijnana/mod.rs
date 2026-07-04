@@ -1,3 +1,5 @@
+//! vijnana — Memory System (唯识)
+
 pub mod alaya;
 pub mod manas;
 pub mod mano;

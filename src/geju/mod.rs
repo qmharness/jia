@@ -1,3 +1,5 @@
+//! geju — Pattern Evaluation / Policy Engine (格局)
+
 pub mod evaluate;
 pub mod patterns;
 

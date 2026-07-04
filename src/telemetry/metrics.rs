@@ -10,7 +10,7 @@ use crate::plates::shen_spirit::RuntimeEvent;
 // ── Counters ────────────────────────────────────────────────────
 
 pub static JIA_TURNS_TOTAL: LazyLock<Counter> =
-    LazyLock::new(|| register_counter!("jia_turns_total", "Total agent turns executed").unwrap());
+    LazyLock::new(|| register_counter!("jia_turns_total", "Total agent turns executed").expect("metric registration failed"));
 
 pub static JIA_TOOL_CALLS_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
     register_counter_vec!(
@@ -18,11 +18,11 @@ pub static JIA_TOOL_CALLS_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
         "Total tool calls executed",
         &["tool", "geju"]
     )
-    .unwrap()
+    .expect("metric registration failed")
 });
 
 pub static JIA_ERRORS_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
-    register_counter_vec!("jia_errors_total", "Total errors by source", &["source"]).unwrap()
+    register_counter_vec!("jia_errors_total", "Total errors by source", &["source"]).expect("metric registration failed")
 });
 
 pub static JIA_GEJU_EVALS: LazyLock<CounterVec> = LazyLock::new(|| {
@@ -31,20 +31,20 @@ pub static JIA_GEJU_EVALS: LazyLock<CounterVec> = LazyLock::new(|| {
         "GeJu evaluations by execution mode",
         &["mode"]
     )
-    .unwrap()
+    .expect("metric registration failed")
 });
 
 // ── Gauges ──────────────────────────────────────────────────────
 
 pub static JIA_ACTIVE_SESSIONS: LazyLock<Gauge> = LazyLock::new(|| {
-    register_gauge!("jia_active_sessions", "Number of active agent sessions").unwrap()
+    register_gauge!("jia_active_sessions", "Number of active agent sessions").expect("metric registration failed")
 });
 
 pub static JIA_SEEDS_TOTAL: LazyLock<Gauge> =
-    LazyLock::new(|| register_gauge!("jia_seeds_total", "Total seeds in the store").unwrap());
+    LazyLock::new(|| register_gauge!("jia_seeds_total", "Total seeds in the store").expect("metric registration failed"));
 
 pub static JIA_ATMA_GRAHA: LazyLock<Gauge> =
-    LazyLock::new(|| register_gauge!("jia_atma_graha", "Current ātma-grāha value (0-1)").unwrap());
+    LazyLock::new(|| register_gauge!("jia_atma_graha", "Current ātma-grāha value (0-1)").expect("metric registration failed"));
 
 pub static JIA_REQUESTS_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
     register_counter_vec!(
@@ -52,7 +52,7 @@ pub static JIA_REQUESTS_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
         "Total agent requests by provider and model",
         &["provider", "model"]
     )
-    .unwrap()
+    .expect("metric registration failed")
 });
 
 // ── EventBus drops ──────────────────────────────────────────────
@@ -62,7 +62,7 @@ pub static JIA_EVENTBUS_DROPS_TOTAL: LazyLock<Counter> = LazyLock::new(|| {
         "jia_eventbus_drops_total",
         "Total events dropped due to full EventBus channel"
     )
-    .unwrap()
+    .expect("metric registration failed")
 });
 
 pub static JIA_LLM_INPUT_TOKENS_TOTAL: LazyLock<Counter> = LazyLock::new(|| {
@@ -70,7 +70,7 @@ pub static JIA_LLM_INPUT_TOKENS_TOTAL: LazyLock<Counter> = LazyLock::new(|| {
         "jia_llm_input_tokens_total",
         "Total LLM input (prompt) tokens"
     )
-    .unwrap()
+    .expect("metric registration failed")
 });
 
 pub static JIA_LLM_OUTPUT_TOKENS_TOTAL: LazyLock<Counter> = LazyLock::new(|| {
@@ -78,7 +78,7 @@ pub static JIA_LLM_OUTPUT_TOKENS_TOTAL: LazyLock<Counter> = LazyLock::new(|| {
         "jia_llm_output_tokens_total",
         "Total LLM output (completion) tokens"
     )
-    .unwrap()
+    .expect("metric registration failed")
 });
 
 pub static JIA_SESSIONS_COMPLETED_TOTAL: LazyLock<Counter> = LazyLock::new(|| {
@@ -86,7 +86,7 @@ pub static JIA_SESSIONS_COMPLETED_TOTAL: LazyLock<Counter> = LazyLock::new(|| {
         "jia_sessions_completed_total",
         "Total agent sessions completed"
     )
-    .unwrap()
+    .expect("metric registration failed")
 });
 
 // ── Compaction ───────────────────────────────────────────────────
@@ -96,7 +96,7 @@ pub static JIA_TOKENS_COMPACTED_TOTAL: LazyLock<Counter> = LazyLock::new(|| {
         "jia_tokens_compacted_total",
         "Total tokens removed by context compaction"
     )
-    .unwrap()
+    .expect("metric registration failed")
 });
 
 // ── Histograms ──────────────────────────────────────────────────
@@ -108,7 +108,7 @@ pub static JIA_TOOL_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| 
         &["tool"],
         vec![0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0]
     )
-    .unwrap()
+    .expect("metric registration failed")
 });
 
 pub static JIA_LLM_DURATION_SECONDS: LazyLock<Histogram> = LazyLock::new(|| {
@@ -117,7 +117,7 @@ pub static JIA_LLM_DURATION_SECONDS: LazyLock<Histogram> = LazyLock::new(|| {
         "LLM inference duration in seconds",
         vec![0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0]
     )
-    .unwrap()
+    .expect("metric registration failed")
 });
 
 pub static JIA_REQUEST_DURATION_SECONDS: LazyLock<Histogram> = LazyLock::new(|| {
@@ -126,7 +126,7 @@ pub static JIA_REQUEST_DURATION_SECONDS: LazyLock<Histogram> = LazyLock::new(|| 
         "Total agent request duration in seconds",
         vec![0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0]
     )
-    .unwrap()
+    .expect("metric registration failed")
 });
 
 /// Force all LazyLock metrics to register with the default Prometheus registry.
@@ -271,10 +271,10 @@ mod tests {
         let seeds = families.iter().find(|f| f.get_name() == "jia_seeds_total");
         assert!(seeds.is_some(), "jia_seeds_total should be registered");
         let sv = seeds
-            .unwrap()
+            .expect("metric registration failed")
             .get_metric()
             .first()
-            .unwrap()
+            .expect("metric registration failed")
             .get_gauge()
             .get_value();
         assert!(
@@ -285,10 +285,10 @@ mod tests {
         let ag = families.iter().find(|f| f.get_name() == "jia_atma_graha");
         assert!(ag.is_some(), "jia_atma_graha should be registered");
         let av = ag
-            .unwrap()
+            .expect("metric registration failed")
             .get_metric()
             .first()
-            .unwrap()
+            .expect("metric registration failed")
             .get_gauge()
             .get_value();
         assert!(

@@ -1,3 +1,5 @@
+//! gen_store — SQLite Store (艮八)
+
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 

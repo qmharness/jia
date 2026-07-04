@@ -1,3 +1,5 @@
+//! mano — Working Memory (意识)
+
 use serde::{Deserialize, Serialize};
 
 use crate::palaces::Palace;

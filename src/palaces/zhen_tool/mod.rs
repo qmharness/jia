@@ -1,3 +1,5 @@
+//! zhen_tool — Tool Registry (震三)
+
 pub mod base;
 pub mod browser_cdp;
 pub mod builtin;

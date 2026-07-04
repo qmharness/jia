@@ -20,9 +20,13 @@ pub mod zuowang;
 #[cfg(feature = "tui")]
 pub mod tui;
 
-// Re-export for backward-compatible paths
+// Compatibility re-exports (deprecated after Phase 9).
+// Use canonical paths: jia::palaces::dui_gateway, etc.
+#[deprecated(note = "use jia::palaces::dui_gateway")]
 pub use palaces::dui_gateway as gateway;
+#[deprecated(note = "use jia::palaces::kun_config")]
 pub use palaces::kun_config as config;
+#[deprecated(note = "use jia::palaces::zhong_core")]
 pub use palaces::zhong_core as provider;
 
 // ── 起局 (qi ju) — Constellation entry point ──────────────────

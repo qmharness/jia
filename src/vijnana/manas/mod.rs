@@ -1,3 +1,5 @@
+//! manas — Self-Model / Ego (末那识)
+
 use serde::{Deserialize, Serialize};
 
 use crate::zuowang::trigger::AlayaEntropy;

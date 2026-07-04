@@ -1,3 +1,5 @@
+//! dui_gateway — HTTP API Gateway (兑七)
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -63,13 +65,13 @@ impl SessionTokens {
                 .unwrap_or_default()
                 .as_secs() as i64,
         };
-        let mut tokens = self.tokens.lock().unwrap();
+        let mut tokens = self.tokens.lock().expect("SessionTokens lock poisoned");
         tokens.insert(session_id, (token, info));
         JIA_ACTIVE_SESSIONS.set(tokens.len() as f64);
     }
 
     fn cancel(&self, session_id: &str) {
-        let mut tokens = self.tokens.lock().unwrap();
+        let mut tokens = self.tokens.lock().expect("SessionTokens lock poisoned");
         if let Some((token, _)) = tokens.remove(session_id) {
             token.cancel();
         }
@@ -77,13 +79,13 @@ impl SessionTokens {
     }
 
     fn remove(&self, session_id: &str) {
-        let mut tokens = self.tokens.lock().unwrap();
+        let mut tokens = self.tokens.lock().expect("SessionTokens lock poisoned");
         tokens.remove(session_id);
         JIA_ACTIVE_SESSIONS.set(tokens.len() as f64);
     }
 
     pub fn active_count(&self) -> usize {
-        self.tokens.lock().unwrap().len()
+        self.tokens.lock().expect("SessionTokens lock poisoned").len()
     }
 
     pub fn list_active(&self) -> Vec<SessionInfo> {
@@ -189,12 +191,12 @@ pub fn build_router(state: Arc<AppState>, web_dir: String) -> Router {
         .layer(
             CorsLayer::new()
                 .allow_origin([
-                    "http://localhost:3000".parse().unwrap(),
-                    "http://127.0.0.1:3000".parse().unwrap(),
-                    "http://[::1]:3000".parse().unwrap(),
+                    "http://localhost:3000".parse().expect("valid CORS origin"),
+                    "http://127.0.0.1:3000".parse().expect("valid CORS origin"),
+                    "http://[::1]:3000".parse().expect("valid CORS origin"),
                     // Tauri 桌面壳的 WebView origin(macOS 默认 tauri://localhost,Win/Linux 默认 http://tauri.localhost)
-                    "tauri://localhost".parse().unwrap(),
-                    "http://tauri.localhost".parse().unwrap(),
+                    "tauri://localhost".parse().expect("valid CORS origin"),
+                    "http://tauri.localhost".parse().expect("valid CORS origin"),
                 ])
                 .allow_methods(tower_http::cors::Any)
                 .allow_headers(tower_http::cors::Any),

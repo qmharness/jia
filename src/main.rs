@@ -90,9 +90,8 @@ async fn main() {
                 config_path,
                 host,
                 port,
-                web_dir,
             } => {
-                spawn_daemon(config_path, host, port, web_dir);
+                spawn_daemon(config_path, host, port);
             }
             GatewayAction::Stop => {
                 stop_running_instance();
@@ -104,20 +103,18 @@ async fn main() {
                 config_path,
                 host,
                 port,
-                web_dir,
             } => {
                 stop_running_instance();
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                spawn_daemon(config_path, host, port, web_dir);
+                spawn_daemon(config_path, host, port);
             }
             GatewayAction::Daemon {
                 config_path,
                 host,
                 port,
-                web_dir,
             } => {
                 daemonize();
-                run_start(config_path, host, port, web_dir).await;
+                run_start(config_path, host, port, None).await;
             }
         },
         Commands::WechatSetup => match jia::palaces::kan_io::bots::wechat::qr_login().await {
