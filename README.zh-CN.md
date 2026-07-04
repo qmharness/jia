@@ -3,7 +3,7 @@
 <h3>Just Intelligence Agent<br>正是智能体</h3>
 </div>
 
-<div align="center">[English](./README.md) | 简体中文</div>
+<div align="center">[English](./README.md) | <b>简体中文</b></div>
 
 > *道隐无名。*
 > ——《道德经》
