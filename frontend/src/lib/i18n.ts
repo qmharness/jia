@@ -23,6 +23,7 @@ const T: Record<string, Record<Locale, string>> = {
   'nav.settings': { zh: '设置', en: 'Settings' },
   'nav.theme': { zh: '主题', en: 'Theme' },
   'nav.vijnana': { zh: '唯识', en: 'Vijnana' },
+  'nav.principles': { zh: '原则', en: 'Principles' },
   'nav.monitor': { zh: '监控', en: 'Monitor' },
 
   // ── Chat ──
@@ -284,6 +285,20 @@ const T: Record<string, Record<Locale, string>> = {
   'vijnana.configWeaken': { zh: '削弱 0.1 ~ 0.2', en: 'Weaken 0.1 ~ 0.2' },
   'vijnana.configKeep': { zh: '保留 ≥ 0.2', en: 'Keep ≥ 0.2' },
   'vijnana.configNever': { zh: 'UserStatement / Preference 永不处理', en: 'UserStatement / Preference never processed' },
+
+  // ── Principles ──
+  'principles.title': { zh: '原则管理', en: 'Principles' },
+  'principles.subtitle': { zh: '系统自动学习的安全约束。归档仅用户手动操作，系统不会自动松绑。', en: 'Auto-learned safety constraints. Archiving is manual-only — the system never auto-relaxes.' },
+  'principles.empty': { zh: '暂无原则。系统在工具调用错误中学习原则。', en: 'No principles yet. The system learns principles from tool call errors.' },
+  'principles.active': { zh: '生效中', en: 'Active' },
+  'principles.noActive': { zh: '没有生效中的原则。', en: 'No active principles.' },
+  'principles.archived': { zh: '已归档', en: 'Archived' },
+  'principles.gejuKey': { zh: '格局', en: 'GeJu' },
+  'principles.constraint': { zh: '约束', en: 'Constraint' },
+  'principles.confidence': { zh: '置信度', en: 'Confidence' },
+  'principles.seeds': { zh: '种子', en: 'Seeds' },
+  'principles.archive': { zh: '归档', en: 'Archive' },
+  'principles.restore': { zh: '恢复', en: 'Restore' },
 
   // ── Vijnana Seeds ──
   'seeds.loadError': { zh: '种子加载失败', en: 'Failed to load seeds' },

@@ -257,6 +257,7 @@
 
     <button class="foot-item" class:on={currentPage === 'monitor'} onclick={() => navigateTo('monitor')}>📊 {tl('nav.monitor')}</button>
     <button class="foot-item" class:on={currentPage === 'vijnana'} onclick={() => navigateTo('vijnana')}>🧠 {tl('nav.vijnana')}</button>
+    <button class="foot-item" class:on={currentPage === 'principles'} onclick={() => navigateTo('principles')}>⚖ {tl('nav.principles')}</button>
     <button class="foot-item" class:on={currentPage === 'settings'} onclick={() => navigateTo('settings')}>🎛 {tl('nav.settings')}</button>
     <span class="version">v0.1.0</span>
   </div>

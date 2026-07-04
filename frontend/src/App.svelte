@@ -120,6 +120,7 @@
       case 'monitor':  mod = await import('./pages/Monitor.svelte'); break;
       case 'settings': mod = await import('./pages/Settings.svelte'); break;
       case 'vijnana':  mod = await import('./pages/Vijnana.svelte'); break;
+      case 'principles': mod = await import('./pages/Principles.svelte'); break;
       default: return null;
     }
     pageCache[name] = mod.default;
@@ -153,7 +154,7 @@
       uiStore.activeSessionId = id;
       return 'session';
     }
-    const valid = ['chat', 'session', 'sessions', 'projects', 'project', 'tools', 'skills', 'cron', 'monitor', 'settings', 'vijnana'];
+    const valid = ['chat', 'session', 'sessions', 'projects', 'project', 'tools', 'skills', 'cron', 'monitor', 'settings', 'vijnana', 'principles'];
     return valid.includes(p) ? p : 'chat';
   }
 
