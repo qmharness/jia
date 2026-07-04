@@ -40,6 +40,22 @@
     return 'var(--error)';
   }
 
+  function agFace(v: number): string {
+    if (v < 0.15) return '😴';
+    if (v < 0.3) return '🙂';
+    if (v < 0.5) return '🤔';
+    if (v < 0.7) return '😟';
+    return '😰';
+  }
+
+  function agLabel(v: number): string {
+    if (v < 0.15) return 'Deep trust';
+    if (v < 0.3) return 'Comfortable';
+    if (v < 0.5) return 'Questioning';
+    if (v < 0.7) return 'Skeptical';
+    return 'Paranoid';
+  }
+
   function entropyDelta(before: number, after: number): string {
     return `${(before * 100).toFixed(0)} → ${(after * 100).toFixed(0)}`;
   }
@@ -70,40 +86,37 @@
     <!-- ── Self Model ────────────────────────────── -->
     <section class="card">
       <h3 class="section-title">{t('vijnana.selfModel')}</h3>
-      <div class="stats-row">
-        <div class="stat-block ag-block">
-          <div class="stat-label">ātma-grāha</div>
+      <div class="self-model">
+        <div class="ag-ring-wrap">
+          <div class="ag-face" style="transform:scale({1 + manas.atma_graha * 0.3})">{agFace(manas.atma_graha)}</div>
           <div class="ag-value" style="color:{agGaugeColor(manas.atma_graha)}">
             {manas.atma_graha.toFixed(2)}
           </div>
+          <div class="ag-mood" style="color:{agGaugeColor(manas.atma_graha)}">{agLabel(manas.atma_graha)}</div>
           <div class="gauge-track">
-            <div
-              class="gauge-fill"
-              style="width:{pct(manas.atma_graha)}%;background:{agGaugeColor(manas.atma_graha)}"
-            ></div>
-          </div>
-          <div class="gauge-scale">
-            <span>0</span><span>0.25</span><span>0.5</span><span>0.75</span><span>1</span>
+            <div class="gauge-fill" style="width:{pct(manas.atma_graha)}%;background:{agGaugeColor(manas.atma_graha)}"></div>
           </div>
         </div>
-
-        <div class="stat-block">
-          <div class="stat-label">{t('vijnana.stability')}</div>
-          <div class="stat-value">
-            <span class="badge" class:stable={manas.is_stable} class:unstable={!manas.is_stable}>
-              {manas.is_stable ? t('vijnana.stable') : t('vijnana.learning')}
-            </span>
+        <div class="model-metrics">
+          <div class="model-metric">
+            <span class="metric-icon">{manas.is_stable ? '✅' : '🔄'}</span>
+            <span class="metric-num">{manas.stable_epochs}</span>
+            <span class="metric-desc">{t('vijnana.stability')}</span>
           </div>
-          <div class="stat-sub">{t('vijnana.epochs', { n: manas.stable_epochs })}</div>
-        </div>
-
-        <div class="stat-block">
-          <div class="stat-label">{t('vijnana.memorySize')}</div>
-          <div class="stat-metrics">
-            <div class="metric">{t('vijnana.turns', { n: manas.total_turns })}</div>
-            <div class="metric">{t('vijnana.seedsCount', { n: manas.total_seeds })}</div>
-            <div class="metric">{t('vijnana.consolidations', { n: manas.consolidation_count })}</div>
-            <div class="metric">{t('vijnana.patterns', { n: manas.stable_pattern_count })}</div>
+          <div class="model-metric">
+            <span class="metric-icon">🔄</span>
+            <span class="metric-num">{manas.total_turns}</span>
+            <span class="metric-desc">Turns</span>
+          </div>
+          <div class="model-metric">
+            <span class="metric-icon">🌱</span>
+            <span class="metric-num">{manas.total_seeds}</span>
+            <span class="metric-desc">{t('vijnana.tabSeeds')}</span>
+          </div>
+          <div class="model-metric">
+            <span class="metric-icon">📊</span>
+            <span class="metric-num">{manas.stable_pattern_count}</span>
+            <span class="metric-desc">Patterns</span>
           </div>
         </div>
       </div>
@@ -112,32 +125,29 @@
     <!-- ── Memory Entropy ───────────────────────────────── -->
     {#if entropy}
       <section class="card">
-        <h3 class="section-title">{t('vijnana.memEntropy')}</h3>
-        <div class="entropy-bars">
-          {#each dims as dim}
-            {@const v = entropy.current[dim.key]}
-            <div class="entropy-row">
-              <span class="entropy-label">{t(dim.labelKey)}</span>
-              <div class="entropy-track">
-                <div
-                  class="entropy-fill"
-                  style="width:{barWidth(v)}%;background:{barColor(v)}"
-                ></div>
-              </div>
-              <span class="entropy-val" style="color:{barColor(v)}">{v.toFixed(2)}</span>
-            </div>
-          {/each}
-          <div class="entropy-row total-row">
-            <span class="entropy-label">{t('vijnana.total')}</span>
-            <div class="entropy-track">
-              <div
-                class="entropy-fill"
-                style="width:{barWidth(entropy.current.total)}%;background:{barColor(entropy.current.total)}"
-              ></div>
-            </div>
-            <span class="entropy-val" style="color:{barColor(entropy.current.total)}">{entropy.current.total.toFixed(2)}</span>
-            <span class="threshold-mark">{t('vijnana.threshold')}</span>
+        <h3 class="section-title">{t('vijnana.memEntropy')} <span style="font-weight:400;font-size:12px;color:var(--text-tertiary)">{entropy.current.total.toFixed(2)}</span></h3>
+        <div class="entropy-stack">
+          <div class="stack-bar">
+            {#each dims as dim}
+              {@const v = entropy.current[dim.key]}
+              <div class="stack-seg" style="flex:{v};background:{barColor(v)}" title="{t(dim.labelKey)}: {v.toFixed(2)}"></div>
+            {/each}
           </div>
+          <div class="stack-legend">
+            {#each dims as dim}
+              {@const v = entropy.current[dim.key]}
+              <div class="legend-item">
+                <span class="legend-dot" style="background:{barColor(v)}"></span>
+                <span class="legend-label">{t(dim.labelKey)}</span>
+                <span class="legend-val">{v.toFixed(2)}</span>
+              </div>
+            {/each}
+          </div>
+        </div>
+        <div class="threshold-line">
+          <span class="threshold-label">{t('vijnana.threshold')} (0.75)</span>
+          {@const tpos = Math.min(95, (0.75 / Math.max(entropy.current.total, 0.01)) * 100)}
+          <div class="threshold-marker" style="left:{tpos}%"></div>
         </div>
       </section>
     {/if}
@@ -267,369 +277,74 @@
 </div>
 
 <style>
-  .status-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
+  .status-panel { display: flex; flex-direction: column; gap: 16px; }
+  .msg { text-align: center; color: var(--text-secondary); padding: 40px; }
+  .card { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px 18px; }
+  .section-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin: 0 0 10px 0; }
 
-  .msg {
-    text-align: center;
-    color: var(--text-secondary);
-    padding: 40px;
-  }
+  /* Self Model */
+  .self-model { display: flex; gap: 24px; align-items: center; }
+  .ag-ring-wrap { flex: 1; text-align: center; }
+  .ag-face { font-size: 32px; transition: transform 0.4s; margin-bottom: 4px; }
+  .ag-value { font-size: 28px; font-weight: 700; }
+  .ag-mood { font-size: 11px; margin-top: 2px; }
+  .gauge-track { height: 6px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+  .gauge-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
 
-  .card {
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 16px 18px;
-  }
+  .model-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex: 1; }
+  .model-metric { text-align: center; padding: 8px; border-radius: var(--radius-sm); background: var(--bg-secondary); }
+  .metric-icon { font-size: 18px; display: block; margin-bottom: 2px; }
+  .metric-num { font-size: 20px; font-weight: 700; display: block; }
+  .metric-desc { font-size: 11px; color: var(--text-tertiary); }
 
-  .section-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 14px;
-  }
+  /* Entropy Stack */
+  .entropy-stack { margin-bottom: 16px; }
+  .stack-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; gap: 1px; }
+  .stack-seg { min-width: 4px; transition: flex 0.4s; }
+  .stack-legend { display: flex; gap: 16px; margin-top: 8px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .legend-label { color: var(--text-secondary); }
+  .legend-val { color: var(--text-tertiary); font-size: 11px; }
 
-  .section-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin: 0;
-  }
+  /* Threshold */
+  .threshold-line { position: relative; height: 20px; margin-top: 4px; }
+  .threshold-label { position: absolute; left: 0; font-size: 11px; color: var(--text-tertiary); }
+  .threshold-marker { position: absolute; top: 12px; width: 2px; height: 14px; background: var(--error); border-radius: 1px; }
 
-  .section-title:not(.section-header .section-title) {
-    margin-bottom: 14px;
-  }
-
-  .help-btn {
-    font-size: 11px;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    border: 1px solid var(--border);
-    color: var(--text-tertiary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all .15s;
-  }
-  .help-btn:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
-
-  /* ── Config ─────────────────────────── */
-  .config-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 10px 14px;
-    margin-bottom: 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .config-line {
-    font-size: 12px;
-    color: var(--text-secondary);
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-
-  .config-tag {
-    font-size: 10px;
-    padding: 1px 6px;
-    border-radius: 3px;
-    font-weight: 600;
-  }
-  .config-tag.del { background: var(--error-light); color: var(--error); }
-  .config-tag.weak { background: var(--warning-light); color: var(--warning); }
-  .config-tag.keep { background: var(--success-light); color: var(--success); }
-
-  /* ── Stats Row ─────────────────────── */
-  .stats-row {
-    display: flex;
-    gap: 24px;
-  }
-
-  .stat-block {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .stat-label {
-    font-size: 12px;
-    color: var(--text-tertiary);
-    margin-bottom: 4px;
-  }
-
-  .stat-value {
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-
-  .stat-sub {
-    font-size: 12px;
-    color: var(--text-tertiary);
-    margin-top: 2px;
-  }
-
-  .stat-metrics {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-
-  .metric {
-    font-size: 13px;
-    color: var(--text-secondary);
-  }
-
-  /* ── Gauge ──────────────────────────── */
-  .ag-value {
-    font-size: 28px;
-    font-weight: 700;
-    margin-bottom: 4px;
-  }
-
-  .gauge-track {
-    height: 8px;
-    background: var(--bg-tertiary);
-    border-radius: 4px;
-    overflow: hidden;
-  }
-
-  .gauge-fill {
-    height: 100%;
-    border-radius: 4px;
-    transition: width 0.4s ease;
-  }
-
-  .gauge-scale {
-    display: flex;
-    justify-content: space-between;
-    font-size: 10px;
-    color: var(--text-tertiary);
-    margin-top: 3px;
-  }
-
-  /* ── Badge ──────────────────────────── */
-  .badge {
-    display: inline-block;
-    padding: 2px 10px;
-    border-radius: 12px;
-    font-size: 13px;
-    font-weight: 600;
-  }
-  .badge.stable {
-    background: var(--success-light);
-    color: var(--success);
-  }
-  .badge.unstable {
-    background: var(--warning-light);
-    color: var(--warning);
-  }
-
-  /* ── Entropy Bars ───────────────────── */
-  .entropy-bars {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .entropy-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .entropy-label {
-    width: 50px;
-    font-size: 12px;
-    color: var(--text-secondary);
-    flex-shrink: 0;
-  }
-
-  .entropy-track {
-    flex: 1;
-    height: 10px;
-    background: var(--bg-tertiary);
-    border-radius: 5px;
-    overflow: hidden;
-  }
-
-  .entropy-fill {
-    height: 100%;
-    border-radius: 5px;
-    transition: width 0.4s ease;
-  }
-
-  .entropy-val {
-    width: 36px;
-    font-size: 12px;
-    font-weight: 600;
-    text-align: right;
-    flex-shrink: 0;
-  }
-
-  .total-row {
-    border-top: 1px dashed var(--border);
-    padding-top: 8px;
-    margin-top: 4px;
-  }
-
-  .threshold-mark {
-    font-size: 10px;
-    color: var(--text-tertiary);
-    margin-left: 4px;
-    flex-shrink: 0;
-  }
-
-  /* ── History Table ──────────────────── */
-  .history-table-wrap {
-    max-height: 400px;
-    overflow-y: auto;
-  }
-
-  .history-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-  }
-
-  .history-table th {
-    text-align: left;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-tertiary);
-    padding: 6px 8px;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .history-table td {
-    padding: 7px 8px;
-    border-bottom: 1px solid var(--border);
-    color: var(--text-secondary);
-  }
-
-  .history-table .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .history-table th.num { text-align: right; }
-
-  .time-cell { color: var(--text-tertiary); font-size: 12px; }
-
+  /* History Table */
+  .history-table-wrap { max-height: 400px; overflow-y: auto; }
+  .history-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .history-table th { text-align: left; font-size: 11px; font-weight: 600; color: var(--text-tertiary); padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  .history-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+  .num { text-align: right; }
+  .mono { font-family: var(--font-mono, monospace); font-size: 11px; }
   .dissolved { color: var(--error); font-weight: 600; }
   .weakened { color: var(--warning); }
-
-  .delta-cell { font-variant-numeric: tabular-nums; }
-  .delta { font-size: 12px; }
-  .big-drop { font-weight: 700; color: var(--success); }
-
-  .toggle-cell { text-align: right; }
-  .toggle-btn {
-    font-size: 11px;
-    color: var(--text-tertiary);
-    padding: 2px 6px;
-    border-radius: 3px;
-  }
-  .toggle-btn:hover { color: var(--accent); background: var(--accent-light); }
-
-  /* ── Expanded Row ──────────────────── */
-  .expanded-row td {
-    padding: 0;
-    border-bottom: 2px solid var(--border);
-  }
-
-  .expanded-body {
-    padding: 10px 18px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    background: var(--bg-secondary);
-  }
-
-  .expanded-section {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .expanded-label {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-tertiary);
-  }
-
-  /* ── Buckets ───────────────────────── */
-  .bucket-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .bucket-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .bucket-label {
-    width: 100px;
-    font-size: 11px;
-    color: var(--text-secondary);
-    flex-shrink: 0;
-    text-align: right;
-  }
-
-  .bucket-track {
-    flex: 1;
-    height: 8px;
-    background: var(--bg-tertiary);
-    border-radius: 4px;
-    overflow: hidden;
-  }
-
-  .bucket-fill {
-    height: 100%;
-    border-radius: 4px;
-    transition: width 0.3s ease;
-  }
-  .del-fill { background: var(--error); }
-  .weak-fill { background: var(--warning); }
-  .keep-fill { background: var(--success); }
-  .prot-fill { background: var(--text-tertiary); }
-
-  .bucket-count {
-    width: 28px;
-    font-size: 12px;
-    font-weight: 600;
-    text-align: right;
-    flex-shrink: 0;
-    color: var(--text-primary);
-  }
-
-  /* ── Samples ────────────────────────── */
-  .sample-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .sample-item {
-    font-size: 11px;
-    color: var(--text-secondary);
-    background: var(--bg-primary);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 3px 8px;
-  }
-
+  .entropy-down { color: var(--success); }
+  .entropy-up { color: var(--error); }
+  .expand-row { cursor: pointer; }
+  .expand-row:hover td { background: var(--bg-secondary); }
+  .buckets { display: flex; gap: 1px; height: 18px; border-radius: 4px; overflow: hidden; margin: 4px 0; }
+  .bucket { height: 100%; }
+  .bucket.dissolved { background: var(--error); }
+  .bucket.weakened { background: var(--warning); }
+  .bucket.kept { background: var(--success); }
+  .bucket.protected { background: var(--accent); }
+  .detail-row td { padding: 10px 8px 14px; }
+  .sample-list { display: flex; flex-wrap: wrap; gap: 4px; }
+  .sample-chip { font-size: 11px; border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; }
   .sample-nature { font-weight: 600; }
   .sample-sep { color: var(--text-tertiary); margin: 0 2px; }
   .sample-source { color: var(--text-secondary); }
   .sample-dim { color: var(--text-tertiary); }
+  .section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .help-btn { font-size: 11px; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--border); color: var(--text-tertiary); display: flex; align-items: center; justify-content: center; transition: all .15s; }
+  .help-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .config-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 6px; }
+  .config-line { font-size: 12px; color: var(--text-secondary); display: flex; gap: 8px; align-items: center; }
+  .config-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 600; }
+  .config-tag.del { background: var(--error-light); color: var(--error); }
+  .config-tag.weak { background: var(--warning-light); color: var(--warning); }
+  .config-tag.keep { background: var(--success-light); color: var(--success); }
 </style>
