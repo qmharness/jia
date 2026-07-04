@@ -566,6 +566,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "channels"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "futures",
+ "hex",
+ "kernel",
+ "qrcode",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "time",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "ciborium"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2161,59 +2179,32 @@ dependencies = [
 name = "jia"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "axum",
- "base64 0.22.1",
+ "channels",
  "clap",
- "criterion",
- "crossterm",
  "dotenvy",
- "ed25519-dalek",
  "futures",
- "glob",
- "hex",
- "image",
- "imageproc",
+ "kernel",
  "libc",
- "notify",
- "objc2-app-kit",
- "objc2-application-services",
- "objc2-core-foundation",
- "objc2-core-graphics",
- "percent-encoding",
- "prometheus",
- "pulldown-cmark",
- "qrcode",
  "r2d2",
  "r2d2_sqlite",
- "ratatui",
- "regex",
  "reqwest",
  "rusqlite",
  "serde",
  "serde_json",
- "serde_yaml",
- "shell-words",
  "tempfile",
- "thiserror 2.0.18",
- "tiktoken",
  "time",
  "tokio",
  "tokio-stream",
- "tokio-tungstenite",
  "tokio-util",
  "toml",
  "tower-http",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
- "tui-scrollview",
- "unicode-width 0.2.0",
+ "tui",
  "url",
  "uuid",
- "walkdir",
- "wasmtime",
- "wasmtime-wasi",
 ]
 
 [[package]]
@@ -2236,6 +2227,60 @@ dependencies = [
  "futures-util",
  "once_cell",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "kernel"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "base64 0.22.1",
+ "clap",
+ "criterion",
+ "dotenvy",
+ "ed25519-dalek",
+ "futures",
+ "glob",
+ "hex",
+ "image",
+ "imageproc",
+ "libc",
+ "notify",
+ "objc2-app-kit",
+ "objc2-application-services",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
+ "percent-encoding",
+ "prometheus",
+ "qrcode",
+ "r2d2",
+ "r2d2_sqlite",
+ "regex",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "shell-words",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tiktoken",
+ "time",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite",
+ "tokio-util",
+ "toml",
+ "tower-http",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+ "walkdir",
+ "wasmtime",
+ "wasmtime-wasi",
 ]
 
 [[package]]
@@ -4668,6 +4713,25 @@ name = "ttf-parser"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
+
+[[package]]
+name = "tui"
+version = "0.1.0"
+dependencies = [
+ "crossterm",
+ "kernel",
+ "pulldown-cmark",
+ "ratatui",
+ "serde",
+ "serde_json",
+ "time",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tui-scrollview",
+ "unicode-width 0.2.0",
+ "uuid",
+]
 
 [[package]]
 name = "tui-scrollview"

@@ -48,7 +48,7 @@ pub enum SocketEvent {
     ProjectResolved { project_id: String, approved: bool },
 }
 
-/// Parsed StreamEvent — mirrors `crate::types::StreamEvent` but implements
+/// Parsed StreamEvent — mirrors `kernel::types::StreamEvent` but implements
 /// manual parsing from JSON Value since the original type is Serialize-only.
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
@@ -163,7 +163,7 @@ pub enum ClientMsg {
     Hello { cwd: String },
     #[serde(rename = "agent")]
     Agent {
-        messages: Vec<crate::types::Message>,
+        messages: Vec<kernel::types::Message>,
         #[serde(skip_serializing_if = "Option::is_none")]
         session_id: Option<String>,
         /// Current working directory for project detection.

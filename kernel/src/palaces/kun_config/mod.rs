@@ -29,7 +29,6 @@ pub enum Commands {
     /// WeChat QR login setup — scan with WeChat to obtain bot credentials
     WechatSetup,
     /// Launch the terminal UI (explicit, same as bare `jia`)
-    #[cfg(feature = "tui")]
     Tui,
     /// Diagnose installation health: config, LLM, data dir, SQLite, disk
     Doctor,

@@ -4,10 +4,11 @@ use std::path::PathBuf;
 
 use tokio::sync::mpsc;
 
+pub mod discord;
+
 use crate::types::Message;
 use crate::types::Role;
 
-pub mod bots;
 
 /// Input from any channel, carrying messages and source metadata.
 #[derive(Debug, Clone)]

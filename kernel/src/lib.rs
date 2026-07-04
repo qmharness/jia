@@ -17,16 +17,14 @@ pub mod vijnana;
 pub mod zuowang;
 
 // Terminal UI
-#[cfg(feature = "tui")]
-pub mod tui;
 
 // Compatibility re-exports (deprecated after Phase 9).
-// Use canonical paths: jia::palaces::dui_gateway, etc.
-#[deprecated(note = "use jia::palaces::dui_gateway")]
+// Use canonical paths: kernel::palaces::dui_gateway, etc.
+#[deprecated(note = "use kernel::palaces::dui_gateway")]
 pub use palaces::dui_gateway as gateway;
-#[deprecated(note = "use jia::palaces::kun_config")]
+#[deprecated(note = "use kernel::palaces::kun_config")]
 pub use palaces::kun_config as config;
-#[deprecated(note = "use jia::palaces::zhong_core")]
+#[deprecated(note = "use kernel::palaces::zhong_core")]
 pub use palaces::zhong_core as provider;
 
 // ── 起局 (qi ju) — Constellation entry point ──────────────────
@@ -40,10 +38,10 @@ use plates::di_earth::EarthPlate;
 /// It assembles the Earth Plate with all infrastructure components,
 /// registers built-in tools, and returns an `Arc<EarthPlate>` for shared use.
 pub fn init(config: AppConfig) -> Arc<EarthPlate> {
-    tracing::info!("jia::init — assembling Earth Plate");
+    tracing::info!("kernel::init — assembling Earth Plate");
     let earth = EarthPlate::assemble(config);
     tracing::info!(
-        "jia::init — Earth Plate assembled ({} tools registered)",
+        "kernel::init — Earth Plate assembled ({} tools registered)",
         earth.tools.list_names().len()
     );
     earth

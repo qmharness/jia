@@ -10,22 +10,22 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use jia::palaces::gen_store::Store;
-use jia::palaces::kun_config::{AppConfig, ProviderProfile, SecuritySection};
-use jia::palaces::li_skill::SkillRegistry;
-use jia::palaces::qian_permission::PermissionMatrix;
-use jia::palaces::zhen_tool::ToolRegistry;
-use jia::palaces::zhen_tool::builtin::{
+use kernel::palaces::gen_store::Store;
+use kernel::palaces::kun_config::{AppConfig, ProviderProfile, SecuritySection};
+use kernel::palaces::li_skill::SkillRegistry;
+use kernel::palaces::qian_permission::PermissionMatrix;
+use kernel::palaces::zhen_tool::ToolRegistry;
+use kernel::palaces::zhen_tool::builtin::{
     read_file::ReadFileTool, shell::ShellTool, write_file::WriteFileTool,
 };
-use jia::palaces::zhong_core::JiaCore;
-use jia::plates::di_earth::EarthPlate;
-use jia::plates::ren_human::HumanPlate;
-use jia::plates::shen_spirit::{EventBus, SpiritPlate};
-use jia::plates::tian_heaven::Agent;
-use jia::plates::tian_heaven::r#loop::AgentEvent;
-use jia::types::{Message, Role};
-use jia::vijnana::alaya::SeedStore;
+use kernel::palaces::zhong_core::JiaCore;
+use kernel::plates::di_earth::EarthPlate;
+use kernel::plates::ren_human::HumanPlate;
+use kernel::plates::shen_spirit::{EventBus, SpiritPlate};
+use kernel::plates::tian_heaven::Agent;
+use kernel::plates::tian_heaven::r#loop::AgentEvent;
+use kernel::types::{Message, Role};
+use kernel::vijnana::alaya::SeedStore;
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 
@@ -122,7 +122,7 @@ fn temp_earth(store: Arc<Store>, temp_dir: &std::path::Path) -> Arc<EarthPlate> 
         bots: Default::default(),
         hooks: vec![],
     };
-    let config_loader = Arc::new(jia::palaces::kun_config::ConfigLoader::from_app_config(
+    let config_loader = Arc::new(kernel::palaces::kun_config::ConfigLoader::from_app_config(
         config,
     ));
     let permissions = Arc::new(PermissionMatrix::from_config(
@@ -149,16 +149,16 @@ fn temp_earth(store: Arc<Store>, temp_dir: &std::path::Path) -> Arc<EarthPlate> 
     };
     let tmp = std::env::temp_dir().join("jia-e2e-test");
     Arc::new(EarthPlate {
-        io: Arc::new(jia::palaces::kan_io::ChannelManager::default()),
+        io: Arc::new(kernel::palaces::kan_io::ChannelManager::default()),
         config: config_loader,
         tools: Arc::new(toollist),
         main_core: Arc::new(JiaCore::new(&dummy_profile, "dummy")),
         aux_core: None,
         permissions: permissions.clone(),
         skills: Arc::new(std::sync::RwLock::new(SkillRegistry::new())),
-        cron: jia::palaces::zhen_tool::builtin::cron::CronStore::new(tmp.join("cron")),
-        task_store: jia::palaces::zhen_tool::builtin::task::TaskStore::new(),
-        store_async: jia::palaces::gen_store::async_store::StoreAsync::new(store.clone()),
+        cron: kernel::palaces::zhen_tool::builtin::cron::CronStore::new(tmp.join("cron")),
+        task_store: kernel::palaces::zhen_tool::builtin::task::TaskStore::new(),
+        store_async: kernel::palaces::gen_store::async_store::StoreAsync::new(store.clone()),
         store,
         spirit: Arc::new(SpiritPlate::new()),
         user_hooks: Arc::new(Vec::new()),
@@ -179,7 +179,7 @@ async fn run_agent(
     core: &JiaCore,
     human: &HumanPlate,
     eb: &EventBus,
-    hooks: &jia::plates::shen_spirit::hook::HookRegistry,
+    hooks: &kernel::plates::shen_spirit::hook::HookRegistry,
     messages: Vec<Message>,
     cancel: CancellationToken,
 ) -> Vec<AgentEvent> {
@@ -199,7 +199,7 @@ async fn run_agent(
         evs
     });
 
-    let ctx = jia::plates::tian_heaven::r#loop::RunContext {
+    let ctx = kernel::plates::tian_heaven::r#loop::RunContext {
         core,
         human_plate: human,
         event_bus: eb,
@@ -435,15 +435,15 @@ async fn e2e_post_loop_memory() {
 
     let mut agent = Agent::new("e2e-mem".into(), earth.clone());
     // Set a small working memory buffer and populate snapshots so L2 consolidation triggers
-    agent.working_memory = jia::vijnana::mano::WorkingMemory::new(3);
+    agent.working_memory = kernel::vijnana::mano::WorkingMemory::new(3);
     // Manually create a few snapshots to trigger consolidation
     for i in 0..3 {
         agent
             .working_memory
-            .record(jia::vijnana::mano::TurnSnapshot {
+            .record(kernel::vijnana::mano::TurnSnapshot {
                 turn_number: i,
-                intent_stem: jia::stems::Stem::Wu,
-                target_palace: jia::palaces::Palace::Zhen,
+                intent_stem: kernel::stems::Stem::Wu,
+                target_palace: kernel::palaces::Palace::Zhen,
                 geju_name: "test".into(),
                 execution_mode: "Guarded".into(),
                 tool_name: "read_file".into(),

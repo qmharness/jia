@@ -4,9 +4,9 @@ use std::sync::Arc;
 use futures::FutureExt;
 use serde::Deserialize;
 
-use crate::config::TelegramBotConfig;
-use crate::palaces::kan_io::{ChannelInput, ChannelSource};
-use crate::types::{Message, Role};
+use kernel::config::TelegramBotConfig;
+use kernel::palaces::kan_io::{ChannelInput, ChannelSource};
+use kernel::types::{Message, Role};
 
 /// Raw Telegram API types (minimal, only what we need)
 #[derive(Debug, Deserialize)]
@@ -42,7 +42,7 @@ struct TgChat {
 /// the bot gives up permanently.
 pub fn spawn_telegram_bot(
     config: TelegramBotConfig,
-    cm: Arc<crate::palaces::kan_io::ChannelManager>,
+    cm: Arc<kernel::palaces::kan_io::ChannelManager>,
 ) -> tokio::task::JoinHandle<()> {
     let client = reqwest::Client::new();
     let token = config.token.clone();
@@ -108,7 +108,7 @@ async fn run_telegram_loop(
     client: reqwest::Client,
     token: String,
     base: String,
-    cm: Arc<crate::palaces::kan_io::ChannelManager>,
+    cm: Arc<kernel::palaces::kan_io::ChannelManager>,
 ) {
     let mut last_update_id: u64 = 0;
     let mut consecutive_errors: u32 = 0;
@@ -164,7 +164,7 @@ async fn run_telegram_loop(
 
                 // Create reply channel so Agent responses flow back to Telegram
                 let (reply_tx, mut reply_rx) =
-                    tokio::sync::mpsc::unbounded_channel::<crate::palaces::kan_io::OutboundReply>();
+                    tokio::sync::mpsc::unbounded_channel::<kernel::palaces::kan_io::OutboundReply>();
                 let reply_client = client.clone();
                 let reply_token = token.clone();
                 let reply_base = base.clone();

@@ -5,7 +5,7 @@ pub async fn run_tui(config_path: Option<PathBuf>) {
     use std::net::TcpStream;
     use std::time::Duration;
 
-    use jia::palaces::kun_config::{default_data_dir, pid_file_path};
+    use kernel::palaces::kun_config::{default_data_dir, pid_file_path};
 
     // Detect daemon — if not running, auto-launch
     let pid_path = pid_file_path();
@@ -54,7 +54,7 @@ pub async fn run_tui(config_path: Option<PathBuf>) {
         tracing::info!("Daemon spawned (PID: {})", child.id());
 
         // Wait for daemon to be ready (poll TCP)
-        let config = jia::config::AppConfig::load(config_path.clone(), None, None)
+        let config = kernel::config::AppConfig::load(config_path.clone(), None, None)
             .expect("Failed to load configuration");
         let addr = format!("{}:{}", config.host, config.port);
         let sock_addr: std::net::SocketAddr = addr.parse().expect("invalid socket addr");
@@ -67,9 +67,9 @@ pub async fn run_tui(config_path: Option<PathBuf>) {
     }
 
     // Load config for TUI launch
-    let config = jia::config::AppConfig::load(config_path, None, None)
+    let config = kernel::config::AppConfig::load(config_path, None, None)
         .expect("Failed to load configuration");
 
-    jia::tui::run(config).await;
+    tui::run(config).await;
 }
 

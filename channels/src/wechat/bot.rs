@@ -6,9 +6,9 @@ use std::sync::Arc;
 use futures::FutureExt;
 use serde_json::json;
 
-use crate::config::WeChatBotConfig;
-use crate::palaces::kan_io::{ChannelInput, ChannelSource};
-use crate::types::{Message, Role};
+use kernel::config::WeChatBotConfig;
+use kernel::palaces::kan_io::{ChannelInput, ChannelSource};
+use kernel::types::{Message, Role};
 
 use super::types::{
     ERRCODE_RATE_LIMIT, ERRCODE_SESSION_EXPIRED, ITEM_TEXT, LONG_POLL_TIMEOUT_SECS,
@@ -23,13 +23,13 @@ struct WeChatAdapter {
     client: reqwest::Client,
     sync_buf: String,
     context_tokens: HashMap<String, String>,
-    cm: Arc<crate::palaces::kan_io::ChannelManager>,
+    cm: Arc<kernel::palaces::kan_io::ChannelManager>,
     consecutive_errors: u32,
     seen_msg_ids: HashMap<String, std::time::Instant>,
 }
 
 impl WeChatAdapter {
-    fn new(config: WeChatBotConfig, cm: Arc<crate::palaces::kan_io::ChannelManager>) -> Self {
+    fn new(config: WeChatBotConfig, cm: Arc<kernel::palaces::kan_io::ChannelManager>) -> Self {
         Self {
             config,
             client: reqwest::Client::new(),
@@ -236,7 +236,7 @@ impl WeChatAdapter {
         // Create reply channel — the IO consumer will send the Agent's
         // response back through this, and the dispatcher posts it to iLink.
         let (reply_tx, mut reply_rx) =
-            tokio::sync::mpsc::unbounded_channel::<crate::palaces::kan_io::OutboundReply>();
+            tokio::sync::mpsc::unbounded_channel::<kernel::palaces::kan_io::OutboundReply>();
         let client = self.client.clone();
         let base_url = self.config.base_url.clone();
         let token = self.config.token.clone();
@@ -323,7 +323,7 @@ impl WeChatAdapter {
 /// the bot gives up permanently.
 pub fn spawn_wechat_bot(
     config: WeChatBotConfig,
-    cm: Arc<crate::palaces::kan_io::ChannelManager>,
+    cm: Arc<kernel::palaces::kan_io::ChannelManager>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut restart_count = 0u32;

@@ -149,14 +149,14 @@ pub async fn handle_discord_webhook(
         }
         2 => {
             // APPLICATION_COMMAND → push to agent with reply channel
-            let text = crate::palaces::kan_io::bots::discord::extract_command_text(&interaction);
+            let text = crate::palaces::kan_io::discord::extract_command_text(&interaction);
             if text.is_empty() {
                 tracing::debug!("Discord interaction with empty command text, skipping");
             } else if let Some(meta) =
-                crate::palaces::kan_io::bots::discord::extract_meta(&interaction)
+                crate::palaces::kan_io::discord::extract_meta(&interaction)
             {
                 if let Some(earth) = &state.earth {
-                    crate::palaces::kan_io::bots::discord::enqueue_agent_task(
+                    crate::palaces::kan_io::discord::enqueue_agent_task(
                         meta,
                         text,
                         earth.io.clone(),

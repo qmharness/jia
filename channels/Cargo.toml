@@ -1,0 +1,19 @@
+[package]
+name = "channels"
+version = "0.1.0"
+edition = "2024"
+description = "Jia Channels — IM bot implementations (WeChat, Telegram, Discord)"
+
+[dependencies]
+kernel = { path = "../kernel" }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["sync", "time"] }
+uuid = { version = "1", features = ["v4"] }
+futures = "0.3"
+tracing = "0.1"
+ed25519-dalek = "2"
+hex = "0.4"
+time = { version = "0.3.47", features = ["local-offset"] }
+qrcode = "0.14"

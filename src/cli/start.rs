@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 
-use crate::AppConfig;
-use jia;
+use kernel::config::AppConfig;
+// jia crate removed
 
 pub fn spawn_daemon(
     config_path: Option<PathBuf>,
@@ -28,7 +28,7 @@ pub fn spawn_daemon(
         if cwd_cfg.exists() {
             return cwd_cfg;
         }
-        jia::palaces::kun_config::default_data_dir().join("config.toml")
+        kernel::palaces::kun_config::default_data_dir().join("config.toml")
     });
 
     let mut cmd = Command::new(&exe);
@@ -87,7 +87,7 @@ pub fn daemonize() {
 
 /// Print the running server status.
 pub fn gateway_status() {
-    let pid_path = jia::palaces::kun_config::pid_file_path();
+    let pid_path = kernel::palaces::kun_config::pid_file_path();
     let pid_str = match std::fs::read_to_string(&pid_path) {
         Ok(s) => s,
         Err(_) => {
@@ -174,7 +174,7 @@ pub fn gateway_status() {
 
 /// Send SIGTERM to a running gateway instance (if any) via its PID file.
 pub fn stop_running_instance() {
-    let pid_path = jia::palaces::kun_config::pid_file_path();
+    let pid_path = kernel::palaces::kun_config::pid_file_path();
     let pid_str = match std::fs::read_to_string(&pid_path) {
         Ok(s) => s,
         Err(_) => return,
@@ -247,7 +247,7 @@ pub async fn run_start(
     // Fetch model lists for providers without explicit models configured
     for (name, p) in config.providers.iter_mut() {
         if p.models.is_empty() && p.kind != "gemini" && p.kind != "anthropic" {
-            let models = jia::palaces::zhong_core::fetch_models(p).await;
+            let models = kernel::palaces::zhong_core::fetch_models(p).await;
             if !models.is_empty() {
                 tracing::info!("Fetched {} models for provider '{}'", models.len(), name);
                 p.models = models;
@@ -272,7 +272,7 @@ pub async fn run_start(
 
     let addr = format!("{}:{}", config.host, config.port);
 
-    let earth = jia::init(config);
+    let earth = kernel::init(config);
 
     // Spawn background subscriber that logs all runtime events
     let event_rx = earth.spirit.event_bus.subscribe();
@@ -280,23 +280,23 @@ pub async fn run_start(
         let mut rx = event_rx;
         while let Ok(event) = rx.recv().await {
             match &event {
-                jia::plates::shen_spirit::RuntimeEvent::TurnStart { turn } => {
+                kernel::plates::shen_spirit::RuntimeEvent::TurnStart { turn } => {
                     tracing::info!(turn = turn, "runtime_event: TurnStart");
                 }
-                jia::plates::shen_spirit::RuntimeEvent::TurnEnd { turn } => {
+                kernel::plates::shen_spirit::RuntimeEvent::TurnEnd { turn } => {
                     tracing::info!(turn = turn, "runtime_event: TurnEnd");
                 }
-                jia::plates::shen_spirit::RuntimeEvent::ToolCall { tool, input: _ } => {
+                kernel::plates::shen_spirit::RuntimeEvent::ToolCall { tool, input: _ } => {
                     tracing::info!(tool = tool.as_str(), "runtime_event: ToolCall");
                 }
-                jia::plates::shen_spirit::RuntimeEvent::ToolResult { tool, output } => {
+                kernel::plates::shen_spirit::RuntimeEvent::ToolResult { tool, output } => {
                     tracing::info!(
                         tool = tool.as_str(),
                         output_len = output.len(),
                         "runtime_event: ToolResult"
                     );
                 }
-                jia::plates::shen_spirit::RuntimeEvent::GeJuResult {
+                kernel::plates::shen_spirit::RuntimeEvent::GeJuResult {
                     tool,
                     pattern,
                     mode,
@@ -308,14 +308,14 @@ pub async fn run_start(
                         "runtime_event: GeJuResult"
                     );
                 }
-                jia::plates::shen_spirit::RuntimeEvent::Error { source, message } => {
+                kernel::plates::shen_spirit::RuntimeEvent::Error { source, message } => {
                     tracing::warn!(
                         source = source.as_str(),
                         message = message.as_str(),
                         "runtime_event: Error"
                     );
                 }
-                jia::plates::shen_spirit::RuntimeEvent::ConfirmationRequested {
+                kernel::plates::shen_spirit::RuntimeEvent::ConfirmationRequested {
                     id,
                     tool,
                     reason,
@@ -327,27 +327,27 @@ pub async fn run_start(
                         "runtime_event: ConfirmationRequested"
                     );
                 }
-                jia::plates::shen_spirit::RuntimeEvent::ConfirmationResolved { id, approved } => {
+                kernel::plates::shen_spirit::RuntimeEvent::ConfirmationResolved { id, approved } => {
                     tracing::info!(
                         id = id.as_str(),
                         approved = approved,
                         "runtime_event: ConfirmationResolved"
                     );
                 }
-                jia::plates::shen_spirit::RuntimeEvent::LlmUsage {
+                kernel::plates::shen_spirit::RuntimeEvent::LlmUsage {
                     input_tokens,
                     output_tokens,
                 } => {
                     tracing::debug!(input_tokens, output_tokens, "runtime_event: LlmUsage");
                 }
-                jia::plates::shen_spirit::RuntimeEvent::SessionEnd { session_id, turns } => {
+                kernel::plates::shen_spirit::RuntimeEvent::SessionEnd { session_id, turns } => {
                     tracing::info!(
                         session_id = session_id.as_str(),
                         turns = turns,
                         "runtime_event: SessionEnd"
                     );
                 }
-                jia::plates::shen_spirit::RuntimeEvent::CronCompleted {
+                kernel::plates::shen_spirit::RuntimeEvent::CronCompleted {
                     job_name,
                     prompt,
                     response,
@@ -361,25 +361,25 @@ pub async fn run_start(
     });
 
     // Ensure all LazyLock metrics are registered before first scrape
-    jia::telemetry::metrics::ensure_registered();
+    kernel::telemetry::metrics::ensure_registered();
 
     // Spawn Prometheus metrics collector
     let metrics_rx = earth.spirit.event_bus.subscribe();
-    tokio::spawn(jia::telemetry::metrics::run_collector(metrics_rx));
+    tokio::spawn(kernel::telemetry::metrics::run_collector(metrics_rx));
 
     // Spawn bots if configured.
     // JIA_SKIP_BOTS: presence check (any value, including "0"/"false", disables bots).
     // To enable bots the variable must be completely absent from the environment.
     if std::env::var("JIA_SKIP_BOTS").is_err() {
         if let Some(tg_config) = &earth.config.app_config.bots.telegram {
-            jia::palaces::kan_io::bots::telegram::spawn_telegram_bot(
+            channels::telegram::spawn_telegram_bot(
                 tg_config.clone(),
                 earth.io.clone(),
             );
             tracing::info!("Telegram bot started");
         }
         if let Some(wx_config) = &earth.config.app_config.bots.wechat {
-            jia::palaces::kan_io::bots::wechat::spawn_wechat_bot(
+            channels::wechat::spawn_wechat_bot(
                 wx_config.clone(),
                 earth.io.clone(),
             );
@@ -419,10 +419,10 @@ pub async fn run_start(
 
     // Spawn Unix Socket listener for jia-rin before building the router
     let rin_sock = earth.data_dir.join("rin.sock");
-    let rin_tokens = Arc::new(jia::palaces::dui_gateway::SessionTokens::new());
-    jia::palaces::dui_gateway::rin::spawn_rin_listener(earth.clone(), rin_tokens, rin_sock);
+    let rin_tokens = Arc::new(kernel::palaces::dui_gateway::SessionTokens::new());
+    kernel::palaces::dui_gateway::rin::spawn_rin_listener(earth.clone(), rin_tokens, rin_sock);
 
-    let app = jia::gateway::create_app_with_earth(web_dir, earth);
+    let app = kernel::palaces::dui_gateway::create_app_with_earth(web_dir, earth);
 
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
@@ -451,7 +451,7 @@ pub async fn run_start(
 /// Check if a jia daemon is currently running.
 /// Returns `Some((host, port))` if alive, `None` otherwise.
 pub fn is_daemon_running() -> Option<(String, u16)> {
-    let pid_path = jia::palaces::kun_config::pid_file_path();
+    let pid_path = kernel::palaces::kun_config::pid_file_path();
     let pid_str = std::fs::read_to_string(&pid_path).ok()?;
     let pid: u32 = pid_str.trim().parse().ok()?;
 

@@ -1,11 +1,11 @@
 //! Doctor diagnostic subcommand handler.
 
-use jia;
+use kernel;
 
 pub fn run_doctor(config_path: Option<std::path::PathBuf>) {
     println!("🔍 jia doctor — diagnosing installation health\n");
 
-    let data_dir = jia::palaces::kun_config::default_data_dir();
+    let data_dir = kernel::palaces::kun_config::default_data_dir();
     let mut ok = 0;
     let mut warn = 0;
     let mut err = 0;
@@ -23,7 +23,7 @@ pub fn run_doctor(config_path: Option<std::path::PathBuf>) {
     });
     print!("{:>24}: ", "Config");
     match std::fs::read_to_string(&config_path) {
-        Ok(content) => match toml::from_str::<jia::config::JiaToml>(&content) {
+        Ok(content) => match toml::from_str::<kernel::config::JiaToml>(&content) {
             Ok(cfg) => {
                 let n = cfg.providers.len();
                 let dp = cfg
@@ -137,7 +137,7 @@ pub fn run_doctor(config_path: Option<std::path::PathBuf>) {
 
     // 6. Daemon status
     print!("{:>24}: ", "Daemon");
-    let pid_path = jia::palaces::kun_config::pid_file_path();
+    let pid_path = kernel::palaces::kun_config::pid_file_path();
     match std::fs::read_to_string(&pid_path) {
         Ok(pid_str) => {
             if let Ok(pid) = pid_str.trim().parse::<u32>() {
@@ -204,7 +204,7 @@ pub fn run_doctor(config_path: Option<std::path::PathBuf>) {
 
     // 9. LLM connectivity (non-blocking, short timeout)
     if let Ok(content) = std::fs::read_to_string(&config_path)
-        && let Ok(cfg) = toml::from_str::<jia::config::JiaToml>(&content)
+        && let Ok(cfg) = toml::from_str::<kernel::config::JiaToml>(&content)
     {
         for (name, profile) in &cfg.providers {
             print!("{:>24}: ", format!("LLM {}", name));

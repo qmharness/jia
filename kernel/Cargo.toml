@@ -1,0 +1,70 @@
+[package]
+name = "kernel"
+version = "0.1.0"
+edition = "2024"
+description = "甲 (Jia) — AI Agent runtime kernel (plates, palaces, memory, evaluation)"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.24" }
+libc = "0.2"
+axum = { version = "0.8", features = ["json", "macros"] }
+tower-http = { version = "0.6", features = ["cors", "fs", "limit"] }
+reqwest = { version = "0.12", features = ["json", "stream", "blocking"] }
+url = "2"
+percent-encoding = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive", "env"] }
+regex = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+dotenvy = "0.15"
+toml = "0.8"
+shell-words = "1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4", "v5", "serde"] }
+tokio-stream = "0.1"
+futures = "0.3"
+serde_yaml = "0.9"
+glob = "0.3"
+tokio-util = "0.7"
+async-trait = "0.1"
+tiktoken = "3"
+rusqlite = { version = "0.39", features = ["bundled"] }
+r2d2 = "0.8"
+r2d2_sqlite = "0.33"
+prometheus = { version = "0.13", features = ["process"] }
+walkdir = "2"
+notify = { version = "7", default-features = false, features = ["macos_kqueue"] }
+ed25519-dalek = "2"
+hex = "0.4"
+time = { version = "0.3.47", features = ["local-offset"] }
+qrcode = "0.14"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-graphics = { version = "0.3", features = ["CGEvent", "CGEventTypes", "CGImage", "CGWindow", "CGDataProvider", "libc"] }
+objc2-app-kit = { version = "0.3", features = ["NSWorkspace", "NSRunningApplication"] }
+objc2-application-services = { version = "0.3", features = ["HIServices", "libc"] }
+objc2-core-foundation = { version = "0.3" }
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png"] }
+imageproc = "0.25"
+wasmtime = { version = "28", optional = true }
+wasmtime-wasi = { version = "28", optional = true }
+
+[features]
+default = ["web-search", "git", "cron", "mcp", "agent-tool"]
+web-search = []
+git = []
+cron = []
+mcp = []
+agent-tool = []
+sandbox-docker = []
+wasm-plugin = ["wasmtime", "wasmtime-wasi"]
+test-utils = []
+
+[dev-dependencies]
+tempfile = "3"
+criterion = { version = "0.5", features = ["html_reports"] }

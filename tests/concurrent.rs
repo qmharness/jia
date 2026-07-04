@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use jia::palaces::li_skill::SkillRegistry;
-use jia::plates::shen_spirit::EventBus;
+use kernel::palaces::li_skill::SkillRegistry;
+use kernel::plates::shen_spirit::EventBus;
 
 #[test]
 fn eventbus_many_emits_no_panic() {
@@ -12,7 +12,7 @@ fn eventbus_many_emits_no_panic() {
 
     // Emit 1000 events — should not panic or deadlock
     for i in 0..1000 {
-        bus.emit(jia::plates::shen_spirit::RuntimeEvent::TurnStart { turn: i });
+        bus.emit(kernel::plates::shen_spirit::RuntimeEvent::TurnStart { turn: i });
     }
 
     // Drain all events (best-effort; broadcast may drop some)
@@ -27,7 +27,7 @@ fn eventbus_many_emits_no_panic() {
 #[test]
 fn skill_registry_concurrent_reads() {
     let mut reg = SkillRegistry::new();
-    reg.register(jia::palaces::li_skill::Skill {
+    reg.register(kernel::palaces::li_skill::Skill {
         name: "test-skill".into(),
         description: "A test skill".into(),
         prompt: "Do test things.".into(),
@@ -70,7 +70,7 @@ fn skill_registry_concurrent_read_write() {
             for i in 0..10 {
                 std::thread::sleep(Duration::from_micros(100));
                 let mut guard = reg_w.write().unwrap();
-                guard.register(jia::palaces::li_skill::Skill {
+                guard.register(kernel::palaces::li_skill::Skill {
                     name: format!("skill-{i}"),
                     description: "test".into(),
                     prompt: "Do things.".into(),
@@ -111,8 +111,8 @@ fn eventbus_multiple_subscribers_receive_events() {
     let mut rx1 = bus.subscribe();
     let mut rx2 = bus.subscribe();
 
-    bus.emit(jia::plates::shen_spirit::RuntimeEvent::TurnStart { turn: 1 });
-    bus.emit(jia::plates::shen_spirit::RuntimeEvent::TurnEnd { turn: 1 });
+    bus.emit(kernel::plates::shen_spirit::RuntimeEvent::TurnStart { turn: 1 });
+    bus.emit(kernel::plates::shen_spirit::RuntimeEvent::TurnEnd { turn: 1 });
 
     let c1 = (rx1.try_recv().is_ok() as u8) + (rx1.try_recv().is_ok() as u8);
     let c2 = (rx2.try_recv().is_ok() as u8) + (rx2.try_recv().is_ok() as u8);

@@ -9,7 +9,7 @@ use ratatui::style::{Color, Style};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use crate::plates::tian_heaven::AgentPhase;
+use kernel::plates::tian_heaven::AgentPhase;
 use super::composer::Composer;
 use super::connection::{ClientMsg, Connection};
 use super::render::{self, ChatLine, StatusIcon};

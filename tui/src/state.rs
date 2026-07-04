@@ -9,7 +9,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::{Color, Style};
 use time::OffsetDateTime;
 
-use crate::plates::tian_heaven::AgentPhase;
+use kernel::plates::tian_heaven::AgentPhase;
 
 use super::composer::Composer;
 use super::connection::{ClientMsg, Connection, SocketEvent, StreamEvent};
@@ -689,7 +689,7 @@ impl App {
 
     fn send_agent_message(&mut self, text: &str) {
         let Some(conn) = &self.connection else { return };
-        let msg = crate::types::Message::text(crate::types::Role::User, text.to_string());
+        let msg = kernel::types::Message::text(kernel::types::Role::User, text.to_string());
         let cwd = std::env::current_dir()
             .ok()
             .and_then(|p| p.to_str().map(String::from));

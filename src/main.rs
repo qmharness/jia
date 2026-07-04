@@ -1,6 +1,6 @@
 
 use clap::Parser;
-use jia::config::{AppConfig, CliArgs, Commands, GatewayAction};
+use kernel::config::{AppConfig, CliArgs, Commands, GatewayAction};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -10,7 +10,7 @@ async fn main() {
 
     // Set up file logging so cron output is traceable even in daemon mode
     // (where stderr is redirected to /dev/null). Logs rotate daily.
-    let data_dir = jia::palaces::kun_config::default_data_dir();
+    let data_dir = kernel::palaces::kun_config::default_data_dir();
     let log_dir = data_dir.join("logs");
     std::fs::create_dir_all(&log_dir).ok();
 
@@ -117,7 +117,7 @@ async fn main() {
                 run_start(config_path, host, port, None).await;
             }
         },
-        Commands::WechatSetup => match jia::palaces::kan_io::bots::wechat::qr_login().await {
+        Commands::WechatSetup => match channels::wechat::qr_login().await {
             Ok((account_id, token, base_url)) => {
                 println!();
                 println!("===== 凭证获取成功 =====");
@@ -210,10 +210,10 @@ async fn main() {
                 std::process::exit(1);
             });
             // Register in SQLite so `GET /projects` sees it immediately
-            let data_dir = jia::palaces::kun_config::default_data_dir();
+            let data_dir = kernel::palaces::kun_config::default_data_dir();
             let db_path = data_dir.join("store.db");
             let store =
-                jia::palaces::gen_store::Store::open(db_path.to_str().unwrap_or(":memory:"));
+                kernel::palaces::gen_store::Store::open(db_path.to_str().unwrap_or(":memory:"));
             let cwd_str = abs_path.to_string_lossy().to_string();
             if let Err(e) = store.ensure_project(&project_id, &cwd_str, &dir_name, "", "[]") {
                 eprintln!(

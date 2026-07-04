@@ -5,13 +5,13 @@
 
 use std::sync::Arc;
 
-use jia::palaces::Palace;
-use jia::palaces::gen_store::Store;
-use jia::palaces::xun_context::ContextWindow;
-use jia::stems::Stem;
-use jia::types::{Message, Role};
-use jia::vijnana::alaya::{Seed, SeedContent, SeedNature, SeedSource, SeedStore, SeedTier};
-use jia::vijnana::mano::{TurnSnapshot, WorkingMemory};
+use kernel::palaces::Palace;
+use kernel::palaces::gen_store::Store;
+use kernel::palaces::xun_context::ContextWindow;
+use kernel::stems::Stem;
+use kernel::types::{Message, Role};
+use kernel::vijnana::alaya::{Seed, SeedContent, SeedNature, SeedSource, SeedStore, SeedTier};
+use kernel::vijnana::mano::{TurnSnapshot, WorkingMemory};
 
 fn now() -> i64 {
     std::time::SystemTime::now()
@@ -470,7 +470,7 @@ fn context_window_would_exceed_with_large_messages() {
 
 #[test]
 fn self_model_many_turns_decay() {
-    use jia::vijnana::manas::Manas;
+    use kernel::vijnana::manas::Manas;
     let mut model = Manas::new();
     assert!(model.atma_graha > 0.7, "starts with high ego");
 
