@@ -69,10 +69,10 @@
   }
 
   const dims = [
-    { key: 'staleness' as const,     labelKey: 'vijnana.staleness' as const,     weight: 0.30 },
-    { key: 'contradiction' as const, labelKey: 'vijnana.contradiction' as const, weight: 0.20 },
-    { key: 'redundancy' as const,    labelKey: 'vijnana.redundancy' as const,    weight: 0.25 },
-    { key: 'access_decay' as const,  labelKey: 'vijnana.accessDecay' as const,   weight: 0.25 },
+    { key: 'staleness' as const,     labelKey: 'vijnana.staleness' as const,     weight: 0.30, icon: '🕐' },
+    { key: 'contradiction' as const, labelKey: 'vijnana.contradiction' as const, weight: 0.20, icon: '⚡' },
+    { key: 'redundancy' as const,    labelKey: 'vijnana.redundancy' as const,    weight: 0.25, icon: '📋' },
+    { key: 'access_decay' as const,  labelKey: 'vijnana.accessDecay' as const,   weight: 0.25, icon: '💤' },
   ];
 </script>
 
@@ -125,42 +125,44 @@
     <!-- ── Memory Entropy ───────────────────────────────── -->
     {#if entropy}
       <section class="card">
-        <h3 class="section-title">{t('vijnana.memEntropy')}</h3>
-        <div class="entropy-gauge-row">
-          <div class="entropy-big-num" style="color:{barColor(entropy.current.total)}" class:over={entropy.current.total >= 0.75}>
-            {(entropy.current.total * 100).toFixed(0)}<span class="entropy-unit">%</span>
-          </div>
-          <div class="entropy-ring">
-            <svg viewBox="0 0 80 80" class="entropy-svg">
-              <circle cx="40" cy="40" r="34" fill="none" stroke="var(--bg-tertiary)" stroke-width="6"/>
-              <circle cx="40" cy="40" r="34" fill="none" stroke={barColor(entropy.current.total)} stroke-width="6"
-                stroke-dasharray="{2 * Math.PI * 34}" stroke-dashoffset="{2 * Math.PI * 34 * (1 - Math.min(entropy.current.total, 1))}"
-                stroke-linecap="round" transform="rotate(-90 40 40)" style="transition:stroke-dashoffset .5s"/>
-            </svg>
-            <div class="threshold-tick" style="transform:rotate({-90 + 270 * 0.75}deg) translateX(34px)"></div>
-          </div>
-        </div>
+        <h3 class="section-title">{t('vijnana.memEntropy')}
+          <span style="float:right;font-size:24px;font-weight:700;color:{barColor(entropy.current.total)}">
+            {(entropy.current.total * 100).toFixed(0)}%
+          </span>
+        </h3>
 
-        <div class="weighted-bars">
+        <div class="dim-cards">
           {#each dims as dim}
             {@const raw = entropy.current[dim.key]}
             {@const contrib = raw * dim.weight}
-            <div class="wbar-row">
-              <span class="wbar-label">{t(dim.labelKey)}</span>
-              <span class="wbar-raw">{raw.toFixed(2)}</span>
-              <span class="wbar-times">×{dim.weight.toFixed(2)}</span>
-              <div class="wbar-track">
-                <div class="wbar-fill" style="width:{Math.min(100, contrib * 100)}%;background:{barColor(raw)}"></div>
+            <div class="dim-card" class:dim-alert={raw > 0.6}>
+              <div class="dim-head">
+                <span class="dim-icon">{dim.icon}</span>
+                <span class="dim-name">{t(dim.labelKey)}</span>
+                <span class="dim-weight">×{dim.weight.toFixed(2)}</span>
               </div>
-              <span class="wbar-contrib" style="color:{barColor(raw)}">={contrib.toFixed(2)}</span>
+              <div class="dim-body">
+                <span class="dim-raw" style="color:{barColor(raw)}">{raw.toFixed(2)}</span>
+                <span class="dim-arrow">→</span>
+                <span class="dim-contrib" style="color:{barColor(raw)}">{contrib.toFixed(2)}</span>
+              </div>
+              <div class="dim-bar-track">
+                <div class="dim-bar-fill" style="width:{Math.min(100, raw * 100)}%;background:{barColor(raw)}"></div>
+              </div>
             </div>
           {/each}
         </div>
 
-        <div class="threshold-line">
-          <span class="threshold-label">→ {t('vijnana.threshold')} 0.75</span>
+        <div class="entropy-summary">
+          <span class="sum-label">{t('vijnana.total')} = </span>
+          {#each dims as dim, i}
+            {@const raw = entropy.current[dim.key]}
+            <span style="color:{barColor(raw)}">{raw.toFixed(2)}×{dim.weight.toFixed(2)}</span>
+            {#if i < dims.length - 1}<span style="color:var(--text-tertiary)"> + </span>{/if}
+          {/each}
+          <span> = <b style="color:{barColor(entropy.current.total)}">{entropy.current.total.toFixed(2)}</b></span>
           {#if entropy.current.total >= 0.75}
-            <span class="threshold-over">⚠ {t('vijnana.threshold')} exceeded</span>
+            <span style="color:var(--error);margin-left:8px;font-size:12px">≥ 0.75 ⚠</span>
           {/if}
         </div>
       </section>
@@ -313,27 +315,24 @@
 
   /* Entropy Stack */
   .entropy-stack { margin-bottom: 16px; }
-  /* Entropy gauge */
-  .entropy-gauge-row { display: flex; align-items: center; gap: 20px; margin-bottom: 16px; }
-  .entropy-big-num { font-size: 36px; font-weight: 700; }
-  .entropy-unit { font-size: 18px; font-weight: 400; }
-  .entropy-ring { position: relative; width: 64px; height: 64px; }
-  .entropy-svg { width: 100%; height: 100%; display: block; }
-  .threshold-tick { position: absolute; top: 50%; left: 50%; width: 2px; height: 8px; background: var(--error); border-radius: 1px; transform-origin: 0 0; }
+  /* Entropy dim cards */
+  .dim-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .dim-card { background: var(--bg-secondary); border-radius: var(--radius-sm); padding: 12px; border: 1px solid transparent; transition: border-color .3s; }
+  .dim-card.dim-alert { border-color: var(--error); background: color-mix(in srgb, var(--error) 5%, var(--bg-secondary)); }
+  .dim-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .dim-icon { font-size: 14px; }
+  .dim-name { font-size: 12px; color: var(--text-secondary); flex: 1; }
+  .dim-weight { font-size: 10px; color: var(--text-tertiary); background: var(--bg-tertiary); padding: 1px 6px; border-radius: 3px; }
+  .dim-body { display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px; }
+  .dim-raw { font-size: 22px; font-weight: 700; }
+  .dim-arrow { font-size: 12px; color: var(--text-tertiary); }
+  .dim-contrib { font-size: 14px; font-weight: 600; }
+  .dim-bar-track { height: 5px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; }
+  .dim-bar-fill { height: 100%; border-radius: 3px; transition: width .5s; }
 
-  /* Weighted bars */
-  .weighted-bars { display: flex; flex-direction: column; gap: 6px; }
-  .wbar-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-  .wbar-label { width: 70px; color: var(--text-secondary); flex-shrink: 0; }
-  .wbar-raw { width: 32px; text-align: right; font-weight: 600; flex-shrink: 0; }
-  .wbar-times { width: 32px; color: var(--text-tertiary); text-align: center; flex-shrink: 0; }
-  .wbar-track { flex: 1; height: 8px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden; }
-  .wbar-fill { height: 100%; border-radius: 4px; transition: width .5s; }
-  .wbar-contrib { width: 42px; font-weight: 600; text-align: right; flex-shrink: 0; }
-
-  /* Threshold */
-  .threshold-line { font-size: 12px; color: var(--text-tertiary); margin-top: 12px; display: flex; gap: 12px; align-items: center; }
-  .threshold-over { color: var(--error); font-weight: 600; }
+  /* Entropy summary */
+  .entropy-summary { font-size: 12px; color: var(--text-secondary); padding-top: 10px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px; }
+  .sum-label { color: var(--text-primary); font-weight: 600; margin-right: 4px; }
 
   /* History Table */
   .history-table-wrap { max-height: 400px; overflow-y: auto; }
