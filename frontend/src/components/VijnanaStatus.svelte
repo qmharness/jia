@@ -160,13 +160,11 @@
               {@const raw = entropy.current[dim.key]}
               {@const contrib = raw * dim.weight}
               <div class="rleg-item">
-                <div class="rleg-icon">{dim.icon}</div>
-                <div class="rleg-name">{t(dim.labelKey)}</div>
-                <div class="rleg-vals">
-                  <span class="rleg-raw" style="color:{dim.color}">{raw.toFixed(2)}</span>
-                  <span class="rleg-w">×{dim.weight.toFixed(2)}</span>
-                  <span class="rleg-c" style="color:{dim.color}">={contrib.toFixed(2)}</span>
-                </div>
+                <span class="rleg-icon">{dim.icon}</span>
+                <span class="rleg-name">{t(dim.labelKey)}</span>
+                <span class="rleg-raw" style="color:{dim.color}">{raw.toFixed(2)}</span>
+                <span class="rleg-w">×{dim.weight.toFixed(2)}</span>
+                <span class="rleg-c" style="color:{dim.color}">={contrib.toFixed(2)}</span>
                 <div class="rleg-track">
                   <div class="rleg-fill" style="width:{Math.min(100, raw * 100)}%;background:{dim.color}"></div>
                   <div class="dim-threshold" style="left:75%"></div>
@@ -342,10 +340,9 @@
   /* Radar chart */
   .entropy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
   .radar-svg { width: 180px; height: 180px; }
-  .rleg-item { display: flex; flex-direction: column; gap: 2px; }
-  .rleg-icon { font-size: 13px; }
-  .rleg-name { font-size: 11px; color: var(--text-secondary); }
-  .rleg-vals { display: flex; align-items: baseline; gap: 4px; font-size: 12px; }
+  .rleg-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .rleg-icon { font-size: 13px; flex-shrink: 0; }
+  .rleg-name { color: var(--text-secondary); min-width: 48px; flex-shrink: 0; }
   .rleg-raw { font-weight: 700; }
   .rleg-w { color: var(--text-tertiary); font-size: 10px; }
   .rleg-c { font-weight: 600; font-size: 11px; }
