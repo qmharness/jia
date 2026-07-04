@@ -1,43 +1,43 @@
-# 甲 · 快速开始
+# JIA · Quick Start
 
-## 环境要求
+## Prerequisites
 
-- Rust 工具链 1.85+（edition 2024）
+- Rust toolchain 1.85+ (edition 2024)
 - SQLite 3
 
-## 构建
+## Build
 
 ```bash
 cargo build --release
 ```
 
-编译产物位于 `target/release/jia`。
+Binary at `target/release/jia`.
 
-## 配置
+## Configuration
 
-二选一：
+Choose one:
 
 ```bash
-# 方式一：配置文件
+# Option 1: config file
 cp config.example.toml config.toml
 ```
 
 ```bash
-# 方式二：环境变量指定配置文件路径
+# Option 2: env var for config path
 export JIA_CONFIG="/path/to/config.toml"
 ```
 
-API key 等敏感信息在 `config.toml` 中配置。
+API keys and other secrets go in `config.toml`.
 
-## 运行
+## Run
 
 ```bash
-jia                  # 启动 TUI（终端界面）
-jia gateway start    # 后台启动 HTTP/SSE 网关
-jia gateway stop     # 停止网关
-jia gateway status   # 查看网关状态
-jia doctor           # 诊断安装健康
-jia tui              # 显式启动 TUI（同 bare jia）
+jia                  # Launch TUI (terminal interface)
+jia gateway start    # Start HTTP/SSE gateway (background)
+jia gateway stop     # Stop gateway
+jia gateway status   # Show gateway status
+jia doctor           # Diagnostic health check
+jia tui              # Launch TUI explicitly (same as bare `jia`)
 ```
 
 ## Docker
@@ -47,9 +47,9 @@ docker build -t jia .
 docker run -p 3000:3000 -v ./config.toml:/data/config.toml jia
 ```
 
-## IM 机器人
+## IM Bots
 
-甲支持通过 IM 通道交互，需在 `config.toml` 中配置：
+Configure in `config.toml`:
 
 ```toml
 [bots.wechat]
@@ -58,15 +58,11 @@ enabled = true
 [bots.telegram]
 enabled = true
 token = "your-bot-token"
-
-[bots.discord]
-enabled = true
-public_key = "your-ed25519-public-key"
 ```
 
-## MCP 工具扩展
+## MCP Tool Extension
 
-在 `config.toml` 中声明 MCP server，启动时自动发现并注册工具：
+Declare MCP servers in `config.toml`. Tools are auto-discovered on startup:
 
 ```toml
 [[mcp_server]]
