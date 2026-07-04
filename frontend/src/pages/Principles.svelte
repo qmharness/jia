@@ -50,8 +50,8 @@
   function constraintLabel(c: Principle['constraint']): string {
     switch (c.type) {
       case 'EscalateTo': return `⬆ ${c.mode ?? '?'}`;
-      case 'AddGuard': return `🛡 ${c.gate ?? c.reason ?? '?'}`;
-      case 'RequireAudit': return `📋 ${c.reason ?? 'audit'}`;
+      case 'AddGuard':       return `🛡 ${c.gate ?? c.reason ?? '?'}`;
+      case 'RequireAudit':   return `📋 ${c.reason ?? 'audit'}`;
       default: return c.type;
     }
   }
@@ -65,36 +65,37 @@
     <h2 class="title">{t('principles.title')}</h2>
     <p class="subtitle">{t('principles.subtitle')}</p>
   </div>
+
   <div class="body">
     {#if loading}
-      <p class="muted">{t('common.loading')}</p>
+      <p class="empty">{t('common.loading')}</p>
     {:else if error}
-      <p class="error">{error}</p>
+      <p class="empty" style="color:var(--danger,#e74c3c)">{error}</p>
     {:else if principles.length === 0}
-      <p class="muted">{t('principles.empty')}</p>
+      <p class="empty">{t('principles.empty')}</p>
     {:else}
-      <section>
-        <h3>{t('principles.active')} ({active.length})</h3>
+      <div class="section">
+        <h3 class="section-title">{t('principles.active')} ({active.length})</h3>
         {#if active.length === 0}
-          <p class="muted">{t('principles.noActive')}</p>
+          <p class="empty">{t('principles.noActive')}</p>
         {:else}
           <table class="table">
             <thead>
               <tr>
                 <th>{t('principles.gejuKey')}</th>
                 <th>{t('principles.constraint')}</th>
-                <th>{t('principles.confidence')}</th>
-                <th>{t('principles.seeds')}</th>
+                <th class="num">{t('principles.confidence')}</th>
+                <th class="num">{t('principles.seeds')}</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {#each active as p (p.id)}
                 <tr>
-                  <td><code>{p.geju_key}</code></td>
+                  <td class="mono">{p.geju_key}</td>
                   <td>{constraintLabel(p.constraint)}</td>
-                  <td>{(p.confidence * 100).toFixed(0)}%</td>
-                  <td>{p.source_seed_count}</td>
+                  <td class="num">{(p.confidence * 100).toFixed(0)}%</td>
+                  <td class="num">{p.source_seed_count}</td>
                   <td>
                     <button class="btn-sm" onclick={() => toggleArchive(p)}>
                       {t('principles.archive')}
@@ -105,26 +106,26 @@
             </tbody>
           </table>
         {/if}
-      </section>
+      </div>
 
       {#if archived.length > 0}
-        <section style="margin-top: 2rem;">
-          <h3>{t('principles.archived')} ({archived.length})</h3>
+        <div class="section">
+          <h3 class="section-title">{t('principles.archived')} ({archived.length})</h3>
           <table class="table">
             <thead>
               <tr>
                 <th>{t('principles.gejuKey')}</th>
                 <th>{t('principles.constraint')}</th>
-                <th>{t('principles.confidence')}</th>
+                <th class="num">{t('principles.confidence')}</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {#each archived as p (p.id)}
                 <tr class="archived-row">
-                  <td><code>{p.geju_key}</code></td>
+                  <td class="mono">{p.geju_key}</td>
                   <td>{constraintLabel(p.constraint)}</td>
-                  <td>{(p.confidence * 100).toFixed(0)}%</td>
+                  <td class="num">{(p.confidence * 100).toFixed(0)}%</td>
                   <td>
                     <button class="btn-sm" onclick={() => toggleArchive(p)}>
                       {t('principles.restore')}
@@ -134,48 +135,18 @@
               {/each}
             </tbody>
           </table>
-        </section>
+        </div>
       {/if}
     {/if}
   </div>
 </div>
 
 <style>
-  .table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-  }
-  .table th, .table td {
-    text-align: left;
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--border);
-  }
-  .table th {
-    color: var(--text-tertiary);
-    font-weight: 500;
-  }
-  .archived-row {
-    opacity: 0.55;
-  }
+  .archived-row { opacity: 0.5; }
   .btn-sm {
-    font-size: 12px;
-    padding: 2px 10px;
-    border-radius: 4px;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
+    font-size: 12px; padding: 2px 10px; border-radius: 4px;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--text-secondary); cursor: pointer;
   }
-  .btn-sm:hover {
-    background: var(--bg-tertiary);
-  }
-  .muted {
-    color: var(--text-tertiary);
-    font-size: 13px;
-  }
-  .error {
-    color: #e74c3c;
-    font-size: 13px;
-  }
+  .btn-sm:hover { background: var(--bg-tertiary); }
 </style>
