@@ -260,7 +260,7 @@ impl JiaCore {
             provider: create_provider(profile, model),
             provider_kind: profile.kind.clone(),
             model: model.to_string(),
-            context_window: profile.context_window.unwrap_or(8192),
+            context_window: profile.context_window.unwrap_or(128000),
         }
     }
 

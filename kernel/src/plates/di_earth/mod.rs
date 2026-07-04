@@ -143,7 +143,7 @@ impl EarthPlate {
             .expect("no default provider configured");
         let default_model = default_profile.default_main_model().to_string();
         let default_kind = default_profile.kind.clone();
-        let context_window = default_profile.context_window.unwrap_or(8192);
+        let context_window = default_profile.context_window.unwrap_or(128000);
 
         // Build ProviderRouter from all configured providers for failover.
         // Providers without priority default to lowest — they are tried last.
