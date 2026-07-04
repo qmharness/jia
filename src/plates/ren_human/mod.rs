@@ -694,4 +694,33 @@ mod tests {
             .await;
         assert!(result.is_err());
     }
+
+    // ── Scenario tests: GeJu evaluation through dispatch path ──
+
+    #[tokio::test]
+    async fn scenario_sandbox_executes_echo_tool() {
+        // EchoTool (Wu/Read, non-destructive) in Sandbox mode should execute
+        let (plate, eb, tx) = make_plate();
+        let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
+        let geju = make_geju(ExecutionMode::Sandbox);
+        let result = plate
+            .dispatch(&geju, &tool, serde_json::json!({"msg": "hello"}), &eb, &tx, &make_ctx())
+            .await;
+        assert!(result.is_ok(), "Sandbox should execute: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn scenario_denied_mode_rejects_all_tools() {
+        // Denied execution mode blocks even read-only tools
+        let (mut plate, eb, tx) = make_plate();
+        plate.confirmation_override = Some(false);
+        // Close ShangMen so Denied stays Denied (no escalation)
+        plate.gates[HumanGate::ShangMen as usize] = GateState::Closed;
+        let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
+        let geju = make_geju(ExecutionMode::Denied);
+        let result = plate
+            .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx, &make_ctx())
+            .await;
+        assert!(result.is_err(), "Denied mode should reject all tools");
+    }
 }
