@@ -78,10 +78,10 @@
   const radarWeighted = $derived(dims.map((d, i) => entropyPoint((entropy?.current[d.key] ?? 0) * d.weight * 4, i)).join(' '));
 
   const dims = [
-    { key: 'staleness' as const,     labelKey: 'vijnana.staleness' as const,     weight: 0.30, icon: '🕐' },
-    { key: 'contradiction' as const, labelKey: 'vijnana.contradiction' as const, weight: 0.20, icon: '⚡' },
-    { key: 'redundancy' as const,    labelKey: 'vijnana.redundancy' as const,    weight: 0.25, icon: '📋' },
-    { key: 'access_decay' as const,  labelKey: 'vijnana.accessDecay' as const,   weight: 0.25, icon: '💤' },
+    { key: 'staleness' as const,     labelKey: 'vijnana.staleness' as const,     weight: 0.30, icon: '🕐', color: '#f59e0b' },
+    { key: 'contradiction' as const, labelKey: 'vijnana.contradiction' as const, weight: 0.20, icon: '⚡', color: '#ef4444' },
+    { key: 'redundancy' as const,    labelKey: 'vijnana.redundancy' as const,    weight: 0.25, icon: '📋', color: '#8b5cf6' },
+    { key: 'access_decay' as const,  labelKey: 'vijnana.accessDecay' as const,   weight: 0.25, icon: '💤', color: '#3b82f6' },
   ];
 </script>
 
@@ -163,12 +163,12 @@
                 <div class="rleg-icon">{dim.icon}</div>
                 <div class="rleg-name">{t(dim.labelKey)}</div>
                 <div class="rleg-vals">
-                  <span class="rleg-raw" style="color:{barColor(raw)}">{raw.toFixed(2)}</span>
+                  <span class="rleg-raw" style="color:{dim.color}">{raw.toFixed(2)}</span>
                   <span class="rleg-w">×{dim.weight.toFixed(2)}</span>
-                  <span class="rleg-c" style="color:{barColor(raw)}">={contrib.toFixed(2)}</span>
+                  <span class="rleg-c" style="color:{dim.color}">={contrib.toFixed(2)}</span>
                 </div>
                 <div class="rleg-track">
-                  <div class="rleg-fill" style="width:{Math.min(100, raw * 100)}%;background:{barColor(raw)}"></div>
+                  <div class="rleg-fill" style="width:{Math.min(100, raw * 100)}%;background:{dim.color}"></div>
                   <div class="dim-threshold" style="left:75%"></div>
                 </div>
               </div>
@@ -180,7 +180,7 @@
           <span class="sum-label">{t('vijnana.total')} = </span>
           {#each dims as dim, i}
             {@const raw = entropy.current[dim.key]}
-            <span style="color:{barColor(raw)}">{raw.toFixed(2)}×{dim.weight.toFixed(2)}</span>
+            <span style="color:{dim.color}">{raw.toFixed(2)}×{dim.weight.toFixed(2)}</span>
             {#if i < dims.length - 1}<span style="color:var(--text-tertiary)"> + </span>{/if}
           {/each}
           <span> = <b style="color:{barColor(entropy.current.total)}">{entropy.current.total.toFixed(2)}</b></span>
