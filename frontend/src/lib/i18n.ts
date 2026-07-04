@@ -11,7 +11,7 @@ const T: Record<string, Record<Locale, string>> = {
   'common.noData': { zh: '无数据', en: 'No data' },
 
   // ── Navigation ──
-  'nav.chat': { zh: '奇门驭甲', en: 'Chat' },
+  'nav.chat': { zh: '甲', en: 'Chat' },
   'nav.pinned': { zh: '已置顶', en: 'Pinned' },
   'nav.recents': { zh: '最近', en: 'Recents' },
   'chat.viewAll': { zh: '查看全部', en: 'View All' },
