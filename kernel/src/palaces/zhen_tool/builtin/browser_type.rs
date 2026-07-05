@@ -3,8 +3,8 @@
 // Resolves the element by ref ID, focuses it, sets value, and dispatches
 // input/change events so JS frameworks (React, Vue) detect the change.
 
-use std::time::Duration;
 use crate::error::ToolError;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::Value;

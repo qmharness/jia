@@ -7,9 +7,9 @@ use serde_json::Value;
 
 use crate::error::ToolError;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::stems::CeremoniesIntent;
 use crate::stems::action::ExecContext;
 use crate::stems::intent::ExecAction;
-use crate::stems::CeremoniesIntent;
 
 use super::{CronStore, TriggerMode};
 
@@ -146,7 +146,8 @@ impl BaseTool for CronTool {
             }
             _ => Err(format!(
                 "Unknown action: {action}. Valid: add, list, remove, enable, disable"
-            ).into()),
+            )
+            .into()),
         }
     }
 }

@@ -1,6 +1,7 @@
 /// 巽四宫 — Context Window
 ///
 /// Token-budget management, LLM-driven history compression, and sliding-window truncation.
+pub mod reset;
 /// Uses tiktoken's cl100k_base encoder for accurate token counting across all languages.
 /// At `compaction_threshold` of max_tokens, first tries LLM summarization;
 /// falls back to dropping oldest non-system messages.

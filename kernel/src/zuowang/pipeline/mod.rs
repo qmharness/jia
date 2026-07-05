@@ -166,15 +166,29 @@ impl ZuowangPipeline {
         );
 
         // ── Layer 2: COMPUTE ───────────────────────────────
-        // Score each seed: higher = more worth keeping
-        let scored: Vec<(&Seed, f32)> = seeds.iter().map(|s| (s, s.relevance_score(now))).collect();
+        // Score each seed: higher = more worth keeping.
+        // Apply nature_weight to make Fact more resistant and Inference more dissolvable.
+        let scored: Vec<(&Seed, f32)> = seeds
+            .iter()
+            .map(|s| {
+                let raw = s.relevance_score(now);
+                let weight = match s.nature {
+                    crate::vijnana::alaya::SeedNature::Fact => 1.25,
+                    crate::vijnana::alaya::SeedNature::Inference => 0.80,
+                    _ => 1.0,
+                };
+                (s, (raw * weight).min(1.0))
+            })
+            .collect();
 
         // Count original protected seeds for VERIFY layer
         let original_protected = seeds
             .iter()
             .filter(|s| {
-                matches!(s.source, SeedSource::UserStatement | SeedSource::RenSoul)
-                    || matches!(s.nature, SeedNature::Preference)
+                matches!(
+                    s.source,
+                    SeedSource::UserStatement | SeedSource::RenSoul | SeedSource::Handoff
+                ) || matches!(s.nature, SeedNature::Preference)
             })
             .count();
 
@@ -185,8 +199,10 @@ impl ZuowangPipeline {
 
         // Helper: check if seed is protected (never deleted/downgraded/weakened)
         fn is_prot(seed: &&Seed) -> bool {
-            matches!(seed.source, SeedSource::UserStatement | SeedSource::RenSoul)
-                || matches!(seed.nature, SeedNature::Preference)
+            matches!(
+                seed.source,
+                SeedSource::UserStatement | SeedSource::RenSoul | SeedSource::Handoff
+            ) || matches!(seed.nature, SeedNature::Preference)
         }
 
         // Archive seeds with score < 0.1 → delete
@@ -214,9 +230,7 @@ impl ZuowangPipeline {
             .collect();
 
         if !to_downgrade.is_empty() {
-            store
-                .set_tier_batch(&to_downgrade, "Archive")
-                ?;
+            store.set_tier_batch(&to_downgrade, "Archive")?;
             downgraded = to_downgrade.len();
         }
 
@@ -234,9 +248,7 @@ impl ZuowangPipeline {
             .collect();
 
         if !to_weaken.is_empty() {
-            store
-                .weaken_seeds(&to_weaken, 0.5)
-                ?;
+            store.weaken_seeds(&to_weaken, 0.5)?;
             weakened = to_weaken.len();
         }
 
@@ -253,9 +265,7 @@ impl ZuowangPipeline {
             .collect();
 
         if !always_to_downgrade.is_empty() {
-            store
-                .set_tier_batch(&always_to_downgrade, "OnDemand")
-                ?;
+            store.set_tier_batch(&always_to_downgrade, "OnDemand")?;
         }
 
         // ── Score distribution for dashboard ──
@@ -268,8 +278,10 @@ impl ZuowangPipeline {
                     SeedTier::OnDemand => *score < 0.2,
                 };
                 actionable
-                    && (matches!(seed.source, SeedSource::UserStatement | SeedSource::RenSoul)
-                        || matches!(seed.nature, SeedNature::Preference))
+                    && (matches!(
+                        seed.source,
+                        SeedSource::UserStatement | SeedSource::RenSoul | SeedSource::Handoff
+                    ) || matches!(seed.nature, SeedNature::Preference))
             })
             .count();
         let score_kept =
@@ -280,7 +292,10 @@ impl ZuowangPipeline {
             .iter()
             .filter(|(seed, score)| {
                 *score < 0.1
-                    && !matches!(seed.source, SeedSource::UserStatement | SeedSource::RenSoul)
+                    && !matches!(
+                        seed.source,
+                        SeedSource::UserStatement | SeedSource::RenSoul | SeedSource::Handoff
+                    )
                     && !matches!(seed.nature, SeedNature::Preference)
             })
             .map(|(seed, _score)| {
@@ -317,8 +332,10 @@ impl ZuowangPipeline {
         let protected_remaining = remaining
             .iter()
             .filter(|s| {
-                matches!(s.source, SeedSource::UserStatement | SeedSource::RenSoul)
-                    || matches!(s.nature, SeedNature::Preference)
+                matches!(
+                    s.source,
+                    SeedSource::UserStatement | SeedSource::RenSoul | SeedSource::Handoff
+                ) || matches!(s.nature, SeedNature::Preference)
             })
             .count();
 

@@ -1,7 +1,7 @@
 // ── browser_navigate — Navigate browser to a URL via CDP Page.navigate ──
 
-use std::time::Duration;
 use crate::error::ToolError;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::Value;

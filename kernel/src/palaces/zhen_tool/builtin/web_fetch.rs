@@ -1,5 +1,5 @@
-use std::time::Duration;
 use crate::error::ToolError;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -79,7 +79,8 @@ impl BaseTool for WebFetchTool {
             return Err(format!(
                 "Unsupported URL scheme '{}': only http/https allowed",
                 parsed.scheme()
-            ).into());
+            )
+            .into());
         }
 
         // SSRF protection: resolve hostname and block private/reserved IPs
@@ -102,7 +103,8 @@ impl BaseTool for WebFetchTool {
                     return Err(format!(
                         "SSRF blocked: URL resolves to private/reserved IP {}",
                         addr.ip()
-                    ).into());
+                    )
+                    .into());
                 }
             }
         }
@@ -119,7 +121,9 @@ impl BaseTool for WebFetchTool {
             .headers()
             .get("content-type")
             .and_then(|v| v.to_str().ok())
-            .is_some_and(|ct| ct.to_string().contains("text/html") || ct.to_string().contains("application/xhtml"));
+            .is_some_and(|ct| {
+                ct.to_string().contains("text/html") || ct.to_string().contains("application/xhtml")
+            });
 
         let body = response
             .text()

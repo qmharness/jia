@@ -9,11 +9,11 @@ use ratatui::style::{Color, Style};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use kernel::plates::tian_heaven::AgentPhase;
 use super::composer::Composer;
 use super::connection::{ClientMsg, Connection};
 use super::render::{self, ChatLine, StatusIcon};
 use super::state::{App, Event, LlmInfo, Mode};
+use kernel::plates::tian_heaven::AgentPhase;
 
 pub async fn run_app(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stderr>>,
@@ -325,7 +325,6 @@ pub(crate) fn reflow_on_resize(
 
 // ── Event Dispatch ─────────────────────────────────────────
 
-
 pub(crate) fn render_frame_with_cursor(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stderr>>,
     app: &App,
@@ -392,4 +391,3 @@ pub(crate) fn render_frame_with_cursor(
 
     Ok(cursor)
 }
-

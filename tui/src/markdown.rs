@@ -3,7 +3,6 @@
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
-
 // ── Markdown Rendering ─────────────────────────────────────
 //
 // Parses assistant messages (style == Style::default()) through
@@ -254,4 +253,3 @@ pub(crate) fn merge_style(base: Style, overlay: Style) -> Style {
     s = s.add_modifier(overlay.add_modifier);
     s
 }
-

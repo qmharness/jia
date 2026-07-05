@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use crate::error::ToolError;
+use std::sync::Arc;
 // ── McpTool — BaseTool wrapper for a single MCP tool ─────────
 
 use async_trait::async_trait;

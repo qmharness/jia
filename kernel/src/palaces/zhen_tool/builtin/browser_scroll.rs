@@ -1,7 +1,7 @@
 // ── browser_scroll — Scroll the page without heavy DOM snapshots ──
 
-use std::time::Duration;
 use crate::error::ToolError;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::Value;

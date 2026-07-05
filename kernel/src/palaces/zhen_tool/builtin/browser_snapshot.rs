@@ -1,7 +1,7 @@
 // ── browser_snapshot — Get structured page content via Accessibility.getFullAXTree ──
 
-use std::collections::HashMap;
 use crate::error::ToolError;
+use std::collections::HashMap;
 use std::time::Duration;
 
 use async_trait::async_trait;

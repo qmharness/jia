@@ -64,7 +64,9 @@ pub async fn handle_chat(
                     Ok(crate::palaces::zhong_core::StreamChunk::Usage { .. }) => None,
                     Ok(crate::palaces::zhong_core::StreamChunk::CacheHit { .. }) => None,
                     Ok(crate::palaces::zhong_core::StreamChunk::NativeToolCall { .. }) => None,
-                    Err(e) => Some(StreamEvent::Error { message: e.to_string() }),
+                    Err(e) => Some(StreamEvent::Error {
+                        message: e.to_string(),
+                    }),
                 };
                 let json = serde_json::to_string(&event?).ok()?;
                 Some(Ok(Event::default().data(json)))
@@ -401,6 +403,8 @@ mod tests {
                 mcp_servers: vec![],
                 bots: BotsSection::default(),
                 hooks: vec![],
+                cognition: CognitionSection::default(),
+                cognition: CognitionSection::default(),
             })),
             tools: Arc::new(ToolRegistry::new()),
             main_core: mock_core,

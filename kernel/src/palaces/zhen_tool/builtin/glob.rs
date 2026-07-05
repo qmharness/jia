@@ -1,5 +1,5 @@
-use std::time::SystemTime;
 use crate::error::ToolError;
+use std::time::SystemTime;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -94,10 +94,7 @@ impl BaseTool for GlobTool {
         let search_root = if search_root.is_dir() {
             search_root
         } else {
-            return Err(format!(
-                "path is not a directory: {}",
-                search_root.display()
-            ).into());
+            return Err(format!("path is not a directory: {}", search_root.display()).into());
         };
 
         // Compose full glob pattern: <root>/<pattern>

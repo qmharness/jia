@@ -33,9 +33,7 @@ impl ProviderRouter {
         let n = providers.len();
         Self {
             providers,
-            breakers: Mutex::new(
-                (0..n).map(|_| CircuitBreaker::new(3, 30)).collect(),
-            ),
+            breakers: Mutex::new((0..n).map(|_| CircuitBreaker::new(3, 30)).collect()),
             active: Mutex::new(0),
         }
     }

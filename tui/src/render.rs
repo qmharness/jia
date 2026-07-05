@@ -56,7 +56,6 @@ impl StatusIcon {
 
 // ── Messages ───────────────────────────────────────────────
 
-
 use super::markdown::*;
 
 use super::wrapping::*;

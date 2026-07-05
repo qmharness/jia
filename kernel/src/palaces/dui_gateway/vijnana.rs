@@ -126,10 +126,7 @@ pub async fn handle_vijnana_state(State(state): State<Arc<AppState>>) -> Json<se
         })
         .collect();
 
-    let manas_history = earth
-        .store
-        .load_manas_history(100)
-        .unwrap_or_default();
+    let manas_history = earth.store.load_manas_history(100).unwrap_or_default();
 
     Json(serde_json::json!({
         "manas": manas,
@@ -151,8 +148,7 @@ mod tests {
 
     #[test]
     fn vijnana_query_project_id() {
-        let q: VijnanaQuery =
-            serde_json::from_str(r#"{"project_id": "proj-7"}"#).unwrap();
+        let q: VijnanaQuery = serde_json::from_str(r#"{"project_id": "proj-7"}"#).unwrap();
         assert_eq!(q.project_id, Some("proj-7".into()));
         assert!(q.session_id.is_none());
     }

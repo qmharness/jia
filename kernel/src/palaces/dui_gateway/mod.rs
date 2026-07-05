@@ -89,7 +89,10 @@ impl SessionTokens {
     }
 
     pub fn active_count(&self) -> usize {
-        self.tokens.lock().expect("SessionTokens lock poisoned").len()
+        self.tokens
+            .lock()
+            .expect("SessionTokens lock poisoned")
+            .len()
     }
 
     pub fn list_active(&self) -> Vec<SessionInfo> {
@@ -142,8 +145,14 @@ pub fn build_router(state: Arc<AppState>, web_dir: String) -> Router {
         .route("/vijnana/seeds", get(handle_vijnana_seeds))
         .route("/vijnana/state", get(handle_vijnana_state))
         .route("/principles", get(principles::handle_list_principles))
-        .route("/principles/{id}/archive", post(principles::handle_archive_principle))
-        .route("/principles/{id}/unarchive", post(principles::handle_unarchive_principle))
+        .route(
+            "/principles/{id}/archive",
+            post(principles::handle_archive_principle),
+        )
+        .route(
+            "/principles/{id}/unarchive",
+            post(principles::handle_unarchive_principle),
+        )
         .route("/skills", get(handle_skills))
         .route("/skills/evolution", get(handle_skills_evolution))
         .route("/skills/reload", post(handle_skills_reload))
@@ -167,28 +176,33 @@ pub fn build_router(state: Arc<AppState>, web_dir: String) -> Router {
         .route("/cron", get(handle_cron_list))
         .route("/cron", post(handle_cron_manage))
         .route("/events", get(handle_events))
-        .route("/", get({
-            let web = web_dir.clone();
-            move || {
-                let web = web.clone();
-                async move {
-                    let path = format!("{web}/index.html");
-                    match tokio::fs::read_to_string(&path).await {
-                        Ok(html) => {
-                            // Inject only API_BASE (empty = let frontend fall back to
-                            // its default); token is obtained via POST /auth/session
-                            // (localhost-gated) so it never appears in page source.
-                            let injected = html.replace(
-                                "<head>",
-                                "<head>\n<script>window.__JIA_API_BASE__ = \"\";</script>",
-                            );
-                            Html(injected)
+        .route(
+            "/",
+            get({
+                let web = web_dir.clone();
+                move || {
+                    let web = web.clone();
+                    async move {
+                        let path = format!("{web}/index.html");
+                        match tokio::fs::read_to_string(&path).await {
+                            Ok(html) => {
+                                // Inject only API_BASE (empty = let frontend fall back to
+                                // its default); token is obtained via POST /auth/session
+                                // (localhost-gated) so it never appears in page source.
+                                let injected = html.replace(
+                                    "<head>",
+                                    "<head>\n<script>window.__JIA_API_BASE__ = \"\";</script>",
+                                );
+                                Html(injected)
+                            }
+                            Err(_) => {
+                                Html("<h1>jia is running. web/index.html not found.</h1>".into())
+                            }
                         }
-                        Err(_) => Html("<h1>jia is running. web/index.html not found.</h1>".into()),
                     }
                 }
-            }
-        }))
+            }),
+        )
         .layer(RequestBodyLimitLayer::new(1_048_576)) // 1MB body limit
         .layer(auth_layer)
         .layer(
@@ -395,6 +409,8 @@ mod tests {
             mcp_servers: vec![],
             bots: BotsSection::default(),
             hooks: vec![],
+            cognition: CognitionSection::default(),
+            cognition: CognitionSection::default(),
         };
         let profile = ProviderProfile {
             kind: "openai".into(),

@@ -163,8 +163,9 @@ async fn run_telegram_loop(
                 );
 
                 // Create reply channel so Agent responses flow back to Telegram
-                let (reply_tx, mut reply_rx) =
-                    tokio::sync::mpsc::unbounded_channel::<kernel::palaces::kan_io::OutboundReply>();
+                let (reply_tx, mut reply_rx) = tokio::sync::mpsc::unbounded_channel::<
+                    kernel::palaces::kan_io::OutboundReply,
+                >();
                 let reply_client = client.clone();
                 let reply_token = token.clone();
                 let reply_base = base.clone();

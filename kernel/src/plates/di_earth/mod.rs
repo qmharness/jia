@@ -7,7 +7,7 @@ use std::sync::Mutex;
 
 use tokio_util::sync::CancellationToken;
 
-use crate::palaces::gen_store::{async_store::StoreAsync, Store};
+use crate::palaces::gen_store::{Store, async_store::StoreAsync};
 use crate::palaces::kan_io::ChannelManager;
 use crate::palaces::kun_config::{AppConfig, ConfigLoader};
 use crate::palaces::li_skill::SkillRegistry;
@@ -63,7 +63,12 @@ use crate::palaces::zhen_tool::plugin_manager::PluginManager;
 use crate::plates::ren_human::{HumanPlate, PendingConfirmation};
 use crate::plates::shen_spirit::RuntimeEvent;
 use crate::plates::shen_spirit::SpiritPlate;
+use crate::plates::shen_spirit::bai_hu::{BaiHuConfig, BaiHuHook};
+use crate::plates::shen_spirit::completion_check::{CompletionCheckHook, CompletionChecklist};
 use crate::plates::shen_spirit::hook::{Hook, HookEvent, HookResult, SpiritType};
+use crate::plates::shen_spirit::jiu_tian::JiuTianHook;
+use crate::plates::shen_spirit::tai_yin::TaiYinHook;
+use crate::plates::shen_spirit::xuan_wu::XuanWuHook;
 use crate::plates::tian_heaven::Agent;
 use crate::plates::tian_heaven::r#loop::{AgentEvent, RunContext};
 use crate::types::{HistoryEntry, Message, Role};
@@ -94,14 +99,15 @@ pub struct EarthPlate {
     pub store: Arc<Store>,              // 艮八
     pub store_async: StoreAsync,        // 艮八 · async facade
     pub spirit: Arc<SpiritPlate>,       // 神盘
+    /// CompletionChecklist — shared between hook (observation) and Agent (assessment).
+    pub completion_checklist: Arc<CompletionChecklist>,
     /// P4 · compiled user-configurable hooks (人盘门规 / 神盘观测). Empty by
     /// default; regexes pre-compiled at assemble to avoid hot-path cost (O4).
     pub user_hooks: Arc<Vec<crate::plates::tian_heaven::r#loop::CompiledHook>>,
     pub pending_confirmations: Arc<Mutex<HashMap<String, PendingConfirmation>>>,
     pub pending_questions: Arc<Mutex<HashMap<String, PendingQuestion>>>,
     /// P8 · persisted sub-agent sessions for continuation via send_message.
-    pub subagent_sessions:
-        Arc<Mutex<HashMap<String, SubagentSession>>>,
+    pub subagent_sessions: Arc<Mutex<HashMap<String, SubagentSession>>>,
     /// P3 · per-session interaction mode (谋划态), set by user slash command
     /// (/plan) and read when the next agent run starts. Kept in sync with the
     /// agent's actual mode via InteractionModeChanged events.
@@ -222,9 +228,8 @@ impl EarthPlate {
         let _subtools = Arc::new(subtool_registry);
 
         // P8 · sub-agent session table (created early — DelegateTool below needs it)
-        let subagent_sessions: Arc<
-            Mutex<HashMap<String, SubagentSession>>,
-        > = Arc::new(Mutex::new(HashMap::new()));
+        let subagent_sessions: Arc<Mutex<HashMap<String, SubagentSession>>> =
+            Arc::new(Mutex::new(HashMap::new()));
         // P3 · per-session interaction modes (for /plan slash entry)
         let session_modes: Arc<
             Mutex<HashMap<String, crate::plates::tian_heaven::InteractionMode>>,
@@ -341,11 +346,16 @@ impl EarthPlate {
                     if let Ok(messages) =
                         serde_json::from_str::<Vec<crate::types::Message>>(&messages_json)
                     {
-                        let st = SubagentType::from_str(&subagent_type)
-                            .unwrap_or(SubagentType::Explore);
+                        let st =
+                            SubagentType::from_str(&subagent_type).unwrap_or(SubagentType::Explore);
                         guard.insert(
                             id,
-                            SubagentSession { messages, subagent_type: st, created_at, last_used },
+                            SubagentSession {
+                                messages,
+                                subagent_type: st,
+                                created_at,
+                                last_used,
+                            },
                         );
                     }
                 }
@@ -416,7 +426,29 @@ impl EarthPlate {
         let user_hooks = Arc::new(user_hooks);
 
         let mut spirit = SpiritPlate::new();
+        // Register built-in and new spirit hooks
         spirit.hook_registry.register(Box::new(TracingHook));
+        let event_bus = spirit.event_bus.clone();
+        spirit
+            .hook_registry
+            .register(Box::new(TaiYinHook::new(event_bus.clone())));
+        spirit.hook_registry.register(Box::new(BaiHuHook::new(
+            BaiHuConfig::default(),
+            event_bus.clone(),
+        )));
+        spirit
+            .hook_registry
+            .register(Box::new(XuanWuHook::new(event_bus.clone())));
+        spirit
+            .hook_registry
+            .register(Box::new(JiuTianHook::new(event_bus.clone(), false)));
+        // CompletionChecklist — shared between hook and Agent
+        let completion_checklist = Arc::new(CompletionChecklist::new());
+        spirit
+            .hook_registry
+            .register(Box::new(CompletionCheckHook::new(
+                completion_checklist.clone(),
+            )));
 
         let earth = Arc::new(Self {
             io,
@@ -431,6 +463,7 @@ impl EarthPlate {
             store_async,
             store,
             spirit: Arc::new(spirit),
+            completion_checklist,
             user_hooks,
             pending_confirmations,
             pending_questions,
@@ -802,7 +835,12 @@ impl Hook for TracingHook {
     }
 
     fn spirit_types(&self) -> Vec<SpiritType> {
-        vec![SpiritType::ZhiFu, SpiritType::TengShe, SpiritType::JiuDi]
+        vec![
+            SpiritType::ZhiFu,
+            SpiritType::TengShe,
+            SpiritType::JiuDi,
+            SpiritType::LiuHe,
+        ]
     }
 
     async fn on_event(&self, event: HookEvent) -> HookResult {
@@ -825,14 +863,18 @@ impl Hook for TracingHook {
             HookEvent::LlmResponse {
                 response_len,
                 tool_call_count,
+                certainty,
             } => {
                 tracing::info!(
                     response_len = response_len,
                     tool_call_count = tool_call_count,
+                    certainty = certainty,
                     "hook: LLM response"
                 );
             }
-            HookEvent::BatchEnded { tool_count, turn } => {
+            HookEvent::BatchEnded {
+                tool_count, turn, ..
+            } => {
                 tracing::info!(tool_count = tool_count, turn = turn, "hook: batch ended");
             }
             HookEvent::CompactionTriggered {

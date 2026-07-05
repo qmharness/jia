@@ -3,8 +3,8 @@
 // Sends keyDown + keyUp events for the given key. Useful for Enter (submit forms),
 // Escape (close dialogs), Tab (navigate fields), arrow keys, and shortcuts.
 
-use std::time::Duration;
 use crate::error::ToolError;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::Value;

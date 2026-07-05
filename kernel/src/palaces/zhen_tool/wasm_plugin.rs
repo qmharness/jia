@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use crate::error::ToolError;
+use std::sync::Arc;
 // ── WASM Plugin: dynamic .wasm tool loading via wasmtime ──
 
 use std::path::{Path, PathBuf};

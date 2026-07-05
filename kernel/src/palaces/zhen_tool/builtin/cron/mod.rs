@@ -6,7 +6,6 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-
 const MAX_JOBS: usize = 100;
 
 // ── TriggerMode ─────────────────────────────────────────────
@@ -561,7 +560,6 @@ impl CronStore {
         guard.iter().filter(|j| j.enabled).cloned().collect()
     }
 }
-
 
 mod cron_tool;
 pub use cron_tool::CronTool;

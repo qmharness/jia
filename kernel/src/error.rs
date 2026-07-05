@@ -89,20 +89,29 @@ pub enum ToolError {
 
 impl From<String> for ToolError {
     fn from(s: String) -> Self {
-        ToolError::Execution { tool: String::new(), message: s }
+        ToolError::Execution {
+            tool: String::new(),
+            message: s,
+        }
     }
 }
 
 impl From<&str> for ToolError {
     fn from(s: &str) -> Self {
-        ToolError::Execution { tool: String::new(), message: s.to_string() }
+        ToolError::Execution {
+            tool: String::new(),
+            message: s.to_string(),
+        }
     }
 }
 
 impl ToolError {
     /// Create an Execution error for a named tool.
     pub fn exec(tool: &str, message: impl Into<String>) -> Self {
-        ToolError::Execution { tool: tool.to_string(), message: message.into() }
+        ToolError::Execution {
+            tool: tool.to_string(),
+            message: message.into(),
+        }
     }
 }
 

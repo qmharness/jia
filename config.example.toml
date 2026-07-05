@@ -81,3 +81,16 @@ base_url = "https://open.bigmodel.cn/api/anthropic"
 # dm_policy = "open"
 # group_policy = "disabled"
 # allowed_users = "wxid_aaa,wxid_bbb"  # DM 白名单（dm_policy=allowlist 时生效）
+
+# ── 认知架构 ──────────────────────────────────────────────
+[cognition]
+# 确定度驱动自适应终止（TurnCertainty）
+certainty_enabled = true
+# 种子共现矩阵 + 同步检索增强
+coactivation_enabled = true
+# 八神全激活 + SSE 全量转发
+observation_enabled = true
+# 确定性完成检查清单
+checklist_enabled = true
+# 上下文重置（长会话续命）
+reset_enabled = true

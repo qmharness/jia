@@ -1,6 +1,7 @@
 //! tian_heaven — Heaven Plate / Agent Loop (天盘)
 
 use std::sync::Arc;
+pub mod certainty;
 pub mod r#loop;
 
 mod loop_dispatch;
@@ -85,6 +86,12 @@ pub struct Agent {
     /// nine-star AgentPhase (which is the loop's internal execution phase). In
     /// Planning mode the loop short-circuits destructive tools before GeJu.
     pub interaction_mode: InteractionMode,
+    /// Certainty history — composite scores from recent turns for trend analysis.
+    /// Used by Manas::adjust_from_certainty_trend and TaiYin observation.
+    pub certainty_history: Vec<f32>,
+    /// Seed co-activation matrix — tracks which seeds are retrieved together.
+    /// Per-project sparse matrix with exponential decay.
+    pub coactivation: crate::vijnana::xunxi::coactivation::SeedCoActivationMatrix,
 }
 
 /// P3 · Interaction mode — 谋划态 (planning) vs Normal.
@@ -144,6 +151,8 @@ impl Agent {
             skill_tool_calls: Vec::new(),
             worktree_root: None,
             interaction_mode: InteractionMode::Normal,
+            certainty_history: Vec::new(),
+            coactivation: Default::default(),
         };
         // Load ren_soul.md — auto-seed default if missing.
         s.load_ren_soul();
@@ -198,6 +207,8 @@ impl Agent {
             skill_tool_calls: Vec::new(),
             worktree_root: None,
             interaction_mode: InteractionMode::Normal,
+            certainty_history: Vec::new(),
+            coactivation: Default::default(),
         };
         // Load ren_soul.md — if it doesn't exist, auto-seed default.
         s.load_ren_soul();
@@ -300,7 +311,9 @@ Be attentive, truthful, and serve with sincerity.";
         if let Some(text) = content {
             use crate::palaces::Palace;
             use crate::stems::Stem;
-            use crate::vijnana::alaya::{Seed, SeedContent, SeedNature, SeedSource, SeedTier};
+            use crate::vijnana::alaya::{
+                Seed, SeedContent, SeedDisposition, SeedNature, SeedSource, SeedTier,
+            };
 
             let seed = Seed {
                 id: "ren_soul_root".to_string(),
@@ -317,6 +330,7 @@ Be attentive, truthful, and serve with sincerity.";
                 last_accessed_at: crate::utils::unix_now(),
                 strength: 1.0,
                 tier: SeedTier::Always,
+                disposition: SeedDisposition::default(),
             };
             if let Ok(json) = serde_json::to_string(&seed) {
                 let _ = self
@@ -489,7 +503,7 @@ mod tests {
     use crate::palaces::zhong_core::JiaCore;
     use crate::plates::di_earth::EarthPlate;
     use crate::plates::shen_spirit::SpiritPlate;
-    use crate::vijnana::alaya::{Seed, SeedNature, SeedSource, SeedTier};
+    use crate::vijnana::alaya::{Seed, SeedDisposition, SeedNature, SeedSource, SeedTier};
 
     fn temp_earth(tmp: &std::path::Path) -> Arc<EarthPlate> {
         let security = SecuritySection {
@@ -508,6 +522,8 @@ mod tests {
             mcp_servers: vec![],
             bots: Default::default(),
             hooks: vec![],
+            cognition: CognitionSection::default(),
+            cognition: CognitionSection::default(),
         };
         let config_loader = Arc::new(crate::palaces::kun_config::ConfigLoader::from_app_config(
             config,

@@ -4,10 +4,8 @@ use std::path::PathBuf;
 
 use tokio::sync::mpsc;
 
-
 use crate::types::Message;
 use crate::types::Role;
-
 
 /// Input from any channel, carrying messages and source metadata.
 #[derive(Debug, Clone)]

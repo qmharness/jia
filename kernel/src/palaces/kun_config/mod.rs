@@ -513,6 +513,28 @@ impl Default for ServerSection {
         }
     }
 }
+/// Cognitive architecture feature flags and tuning parameters.
+#[derive(Debug, Clone, Deserialize)]
+pub struct CognitionSection {
+    pub certainty_enabled: bool,
+    pub coactivation_enabled: bool,
+    pub observation_enabled: bool,
+    pub checklist_enabled: bool,
+    pub reset_enabled: bool,
+}
+
+impl Default for CognitionSection {
+    fn default() -> Self {
+        Self {
+            certainty_enabled: true,
+            coactivation_enabled: true,
+            observation_enabled: true,
+            checklist_enabled: true,
+            reset_enabled: true,
+        }
+    }
+}
+
 // ── AppConfig (resolved) ─────────────────────────────────────
 
 pub struct AppConfig {
@@ -526,6 +548,8 @@ pub struct AppConfig {
     pub bots: BotsSection,
     /// P4 · user-configurable hooks (人盘门规 / 神盘观测). Default empty.
     pub hooks: Vec<HookConfig>,
+    /// Cognitive architecture features (certainty, coactivation, observation, etc.)
+    pub cognition: CognitionSection,
 }
 
 impl AppConfig {
@@ -547,38 +571,44 @@ impl AppConfig {
             default_data_dir().join("config.toml")
         });
         let toml_str = std::fs::read_to_string(&toml_path).map_err(|e| {
-            JiaError::Config(format!(
-                "Cannot read config file {}: {e}",
-                toml_path.display()
-            ).into())
+            JiaError::Config(format!("Cannot read config file {}: {e}", toml_path.display()).into())
         })?;
         let mut toml: JiaToml = toml::from_str(&toml_str).map_err(|e| {
             JiaError::Config(format!("Invalid config file {}: {e}", toml_path.display()).into())
         })?;
 
         if toml.providers.is_empty() {
-            return Err(JiaError::Config(format!(
-                "Config file {} has no [providers] section",
-                toml_path.display()
-            ).into()));
+            return Err(JiaError::Config(
+                format!(
+                    "Config file {} has no [providers] section",
+                    toml_path.display()
+                )
+                .into(),
+            ));
         }
         for (name, p) in &toml.providers {
             if p.models.is_empty() {
-                return Err(JiaError::Config(format!(
-                    "Provider '{name}' in {} has empty models list",
-                    toml_path.display()
-                ).into()));
+                return Err(JiaError::Config(
+                    format!(
+                        "Provider '{name}' in {} has empty models list",
+                        toml_path.display()
+                    )
+                    .into(),
+                ));
             }
         }
 
         if let Some(ref dp) = toml.llm.default_main_model_provider
             && !toml.providers.contains_key(dp.as_str())
         {
-            return Err(JiaError::Config(format!(
-                "Config file {}: default_provider '{}' not found in [providers] section",
-                toml_path.display(),
-                dp,
-            ).into()));
+            return Err(JiaError::Config(
+                format!(
+                    "Config file {}: default_provider '{}' not found in [providers] section",
+                    toml_path.display(),
+                    dp,
+                )
+                .into(),
+            ));
         }
 
         // Env var takes priority over config file for api_key
@@ -613,6 +643,7 @@ impl AppConfig {
             mcp_servers: toml.mcp_servers,
             bots: toml.bots,
             hooks: toml.hooks,
+            cognition: CognitionSection::default(),
         })
     }
 
@@ -641,9 +672,9 @@ impl AppConfig {
             .or_else(|| self.providers.get(default_name))
             .cloned()
             .ok_or_else(|| {
-                JiaError::Config(format!(
-                    "no provider '{name}' or default provider '{default_name}'"
-                ).into())
+                JiaError::Config(
+                    format!("no provider '{name}' or default provider '{default_name}'").into(),
+                )
             })
     }
 

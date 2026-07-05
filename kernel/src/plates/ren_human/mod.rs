@@ -704,7 +704,14 @@ mod tests {
         let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
         let geju = make_geju(ExecutionMode::Sandbox);
         let result = plate
-            .dispatch(&geju, &tool, serde_json::json!({"msg": "hello"}), &eb, &tx, &make_ctx())
+            .dispatch(
+                &geju,
+                &tool,
+                serde_json::json!({"msg": "hello"}),
+                &eb,
+                &tx,
+                &make_ctx(),
+            )
             .await;
         assert!(result.is_ok(), "Sandbox should execute: {:?}", result.err());
     }

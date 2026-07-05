@@ -41,7 +41,12 @@ pub async fn handle_webhook(
 // See ROADMAP.md for planned channels (Slack Socket Mode, QQ WebSocket, Feishu).
 
 pub async fn handle_discord_webhook() -> impl IntoResponse {
-    (axum::http::StatusCode::GONE, axum::response::Json(serde_json::json!({"error": "Discord support removed. See ROADMAP.md for planned channels."})))
+    (
+        axum::http::StatusCode::GONE,
+        axum::response::Json(
+            serde_json::json!({"error": "Discord support removed. See ROADMAP.md for planned channels."}),
+        ),
+    )
 }
 #[cfg(test)]
 mod tests {

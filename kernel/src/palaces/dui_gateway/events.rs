@@ -89,7 +89,38 @@ pub async fn handle_events(
                             break; // client disconnected
                         }
                     }
-                    Ok(_) => {} // ignore other event types
+                    Ok(other) => {
+                        // Forward all RuntimeEvent variants as SSE (type-only, lightweight)
+                        let event_type = match &other {
+                            RuntimeEvent::TurnStart { .. } => "turn_start",
+                            RuntimeEvent::TurnEnd { .. } => "turn_end",
+                            RuntimeEvent::ToolCall { tool, .. } => {
+                                let _ = tool;
+                                "tool_call"
+                            }
+                            RuntimeEvent::ToolResult { tool, .. } => {
+                                let _ = tool;
+                                "tool_result"
+                            }
+                            RuntimeEvent::GeJuResult { .. } => "geju_result",
+                            RuntimeEvent::Error { .. } => "error",
+                            RuntimeEvent::ConfirmationRequested { .. } => "confirmation_requested",
+                            RuntimeEvent::ConfirmationResolved { .. } => "confirmation_resolved",
+                            RuntimeEvent::LlmUsage { .. } => "llm_usage",
+                            RuntimeEvent::SessionEnd { .. } => "session_end",
+                            RuntimeEvent::CronCompleted { .. } => "cron_notification",
+                            RuntimeEvent::SeedDynamicsSnapshot { .. } => "seed_dynamics",
+                            RuntimeEvent::BehavioralAlert { .. } => "behavioral_alert",
+                            RuntimeEvent::MemoryLossRecord { .. } => "memory_loss",
+                            RuntimeEvent::StrategyInsight { .. } => "strategy_insight",
+                            RuntimeEvent::CertaintyTrace { .. } => "certainty_trace",
+                            RuntimeEvent::StabilityTransition { .. } => "stability_transition",
+                        };
+                        let data = serde_json::json!({"type": event_type}).to_string();
+                        if tx.send(Ok(Event::default().data(data))).is_err() {
+                            break;
+                        }
+                    }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                         tracing::warn!(skipped = n, "GET /events listener lagged");
                     }

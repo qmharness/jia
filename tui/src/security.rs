@@ -5,7 +5,6 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Paragraph, Wrap};
 
-
 // ── Security Guide (Claude-style project trust check) ────────
 
 pub(crate) fn render_security_guide(f: &mut Frame, area: Rect, cwd: &str, selected: usize) {
@@ -65,4 +64,3 @@ pub(crate) fn render_security_guide(f: &mut Frame, area: Rect, cwd: &str, select
     let p = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
     f.render_widget(p, area);
 }
-

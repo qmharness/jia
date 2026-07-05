@@ -9,7 +9,6 @@ use ratatui::widgets::Paragraph;
 use super::composer::Composer;
 use super::render::ChatLine;
 
-
 // ── Welcome Box (scrolls with messages) ──────────────────────
 //
 // Built as box-drawing text lines so it lives in the normal scrollback
@@ -69,7 +68,6 @@ pub(crate) fn welcome_lines(spec: &WelcomeSpec) -> Vec<ChatLine> {
     ]
 }
 
-
 // ── Layout ─────────────────────────────────────────────────
 
 pub struct LayoutAreas {
@@ -98,7 +96,6 @@ pub(crate) fn layout(area: Rect, input_height: u16) -> LayoutAreas {
         info_bar,
     }
 }
-
 
 // ── Input Area ────────────────────────────────────────────
 // separator / ❯ prompt + composer / separator. Returns cursor position.
@@ -138,4 +135,3 @@ pub(crate) fn render_input(f: &mut Frame, area: Rect, composer: &Composer) -> Op
     // composer.render returns absolute cursor coords (already offset by text_area.x).
     composer.render(f, text_area)
 }
-

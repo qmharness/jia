@@ -47,6 +47,7 @@ pub enum HookEvent {
     LlmResponse {
         response_len: usize,
         tool_call_count: usize,
+        certainty: Option<f32>,
     },
     ToolPreExecute {
         tool_name: String,
@@ -61,6 +62,8 @@ pub enum HookEvent {
     BatchEnded {
         tool_count: usize,
         turn: u64,
+        /// Dominant GeJu pattern name this turn (for JiuTian trajectory).
+        geju_name: Option<String>,
     },
     CompactionTriggered {
         messages_before: usize,
@@ -339,6 +342,7 @@ mod tests {
             let event = HookEvent::LlmResponse {
                 response_len: 0,
                 tool_call_count: 0,
+                certainty: None,
             };
             let (_result, matching) =
                 geju_gate_and_collect(&registry, &eb, SpiritType::TengShe, stem, &event);
@@ -506,6 +510,7 @@ mod tests {
     fn test_matcher_always_matches_non_tool_events() {
         let hook = TestHook::new("reader", 0, vec![], Some("read_*"), false, HookResult::Ok);
         let event = HookEvent::BatchEnded {
+            geju_name: None,
             tool_count: 1,
             turn: 1,
         };
@@ -514,6 +519,7 @@ mod tests {
         let event2 = HookEvent::LlmResponse {
             response_len: 100,
             tool_call_count: 0,
+            certainty: None,
         };
         assert!(event_matches_matcher(&hook, &event2));
     }

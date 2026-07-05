@@ -178,16 +178,21 @@ async fn run_or_cancel(
 /// Categorize an HTTP status into a typed ProviderError.
 pub(crate) fn classify_http_error(status: u16, body: &str) -> crate::error::ProviderError {
     match status {
-        429 => crate::error::ProviderError::RateLimited { body: body.to_string() },
+        429 => crate::error::ProviderError::RateLimited {
+            body: body.to_string(),
+        },
         401 | 403 => crate::error::ProviderError::AuthFailed { status },
-        500..=599 => {
-            crate::error::ProviderError::ServerError { status, body: body.to_string() }
-        }
-        400..=499 => crate::error::ProviderError::ClientError { status, body: body.to_string() },
+        500..=599 => crate::error::ProviderError::ServerError {
+            status,
+            body: body.to_string(),
+        },
+        400..=499 => crate::error::ProviderError::ClientError {
+            status,
+            body: body.to_string(),
+        },
         _ => crate::error::ProviderError::Provider(format!("HTTP {status}: {body}")),
     }
 }
-
 
 // ── Router + Circuit Breaker ──────────────────────────────────
 pub(crate) mod breaker;
@@ -272,7 +277,12 @@ impl JiaCore {
         model: String,
         context_window: usize,
     ) -> Self {
-        Self { provider: Box::new(router), provider_kind: kind, model, context_window }
+        Self {
+            provider: Box::new(router),
+            provider_kind: kind,
+            model,
+            context_window,
+        }
     }
 
     /// LLM 推理 — 仅 crate 内部可调用
@@ -309,7 +319,9 @@ impl JiaCore {
 
     /// Try failover to next healthy provider. Returns true if switched.
     pub(crate) fn try_llm_failover(&self) -> bool {
-        self.provider.as_router().map_or(false, |r| r.try_failover())
+        self.provider
+            .as_router()
+            .map_or(false, |r| r.try_failover())
     }
 
     pub fn model(&self) -> &str {
@@ -438,8 +450,8 @@ pub async fn fetch_models(profile: &crate::config::ProviderProfile) -> Vec<Strin
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::anthropic::build_anthropic_system_body;
+    use super::*;
     use crate::types::{Message, Role};
 
     #[test]

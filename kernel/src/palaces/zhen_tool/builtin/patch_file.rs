@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use crate::error::ToolError;
+use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::palaces::qian_permission::PathOp;
@@ -88,10 +88,7 @@ impl BaseTool for EditTool {
         let matches: Vec<_> = content.match_indices(old_string).take(2).collect();
 
         if matches.is_empty() {
-            return Err(format!(
-                "old_string not found in file '{}'",
-                canonical.display()
-            ).into());
+            return Err(format!("old_string not found in file '{}'", canonical.display()).into());
         }
 
         if matches.len() > 1 {
@@ -110,7 +107,8 @@ impl BaseTool for EditTool {
                 canonical.display(),
                 line_num + 1,
                 &content[line_start..line_end].trim(),
-            ).into());
+            )
+            .into());
         }
 
         let pos = matches[0].0;
@@ -214,7 +212,12 @@ mod tests {
             )
             .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("matches multiple locations"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("matches multiple locations")
+        );
     }
 
     #[tokio::test]

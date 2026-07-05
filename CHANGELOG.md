@@ -169,3 +169,21 @@ First public release of the Jia AI Agent runtime.
 - ~31,000 lines of code
 - 336 total tests (0 failures)
 - 8 completed development phases
+
+## Cognitive Architecture — 2026-07-05
+
+### New Features
+- **TurnCertainty**: Behavior-based confidence signals drive adaptive termination (ConfidentStop / EscalateToHuman / HardLimitReached)
+- **SeedDisposition**: Per-seed mutable response tendencies (性决定 + 待众缘), distinct from fixed SeedNature
+- **CoActivationMatrix**: Sparse temporal seed co-occurrence tracking with exponential decay (俱有因)
+- **Eight Spirits full activation**: TaiYin (certainty trajectory), BaiHu (anomaly detection with 4-level gate), XuanWu (memory loss), JiuTian (strategy emergence)
+- **CompletionChecklist**: Deterministic completion signal detection (exit codes, file existence) — zero LLM cost
+- **ContextReset**: Session handoff for long-running conversations with anti-thrashing cooldown
+- **SSE forwarding**: All 16 RuntimeEvent variants now streamable via `/events`
+- **Frontend**: Spirit Observer panel on Vijnana page (real-time 八神 event stream)
+- **Config**: `[cognition]` section with feature flags for all new components
+
+### Philosophy
+- Two comprehensive philosophy architecture documents (zh-CN + en)
+- Architecture-Cognition Fusion axiom replacing dual-framework model
+- Position-Consciousness integration interface specification

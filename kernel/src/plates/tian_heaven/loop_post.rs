@@ -25,7 +25,8 @@ impl super::Agent {
 
         // Persist session history immediately so refreshes don't lose content.
         if let Ok(json) = serde_json::to_string(&self.history) {
-            let store_async = crate::palaces::gen_store::async_store::StoreAsync::new(store.clone());
+            let store_async =
+                crate::palaces::gen_store::async_store::StoreAsync::new(store.clone());
             if let Err(e) = store_async.save_session(&self.id, &json).await {
                 tracing::warn!(session = %self.id, error = %e, "Failed to save session");
             }

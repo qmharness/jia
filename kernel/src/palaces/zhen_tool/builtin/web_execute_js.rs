@@ -3,8 +3,8 @@
 // Connects to a Chromium-based browser running with --remote-debugging-port.
 // Each call: connect → snapshot optHTML → eval user script → snapshot optHTML → diff → return.
 
-use std::time::Duration;
 use crate::error::ToolError;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::Value;

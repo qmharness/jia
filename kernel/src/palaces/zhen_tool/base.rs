@@ -42,7 +42,11 @@ pub trait BaseTool: Send + Sync {
 
     /// Execute the tool with the given JSON input and execution context.
     /// Permissions are injected via `ctx` rather than held by the tool struct.
-    async fn execute(&self, input: serde_json::Value, ctx: &ExecContext) -> Result<String, ToolError>;
+    async fn execute(
+        &self,
+        input: serde_json::Value,
+        ctx: &ExecContext,
+    ) -> Result<String, ToolError>;
 
     /// Target palace for GeJu evaluation.
     ///

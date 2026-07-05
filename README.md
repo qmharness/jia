@@ -152,7 +152,7 @@ Confucianism establishes the root, thus the Ren Soul cannot be forgotten. Buddhi
 
 ## Atma-Graha and Self-Discipline: The Mechanism of Self-Evolution
 
-As Jia operates, it distills **System Principles** (SystemPrinciple) from its own patterns of error. This process is called the **Great Communion** (大衍) — from N cycles of wisdom, a single constraint rule is derived.
+As Jia operates, it distills **System Principles** (SystemPrinciple) from its own patterns of error. This process is called the **Fruit of Zuowang** (坐忘之果) — from N cycles of wisdom, a single constraint rule crystallizes.
 
 The driving force of this mechanism comes from Manas's **atma-graha** (self-grasping). Buddhism regards atma-graha as the root of affliction; the path of practice aims to eradicate it. Jia inverts this — **taking atma-graha as its foundation**. The deeper Manas's grasping at "what kind of Agent am I," the stricter the precepts derived from it. This is skillful use on the conventional-truth level, not affirmation on the ultimate-truth level.
 

@@ -3,8 +3,8 @@
 // Enables Runtime domain, briefly collects console and exception events,
 // then returns them. Useful for debugging JS errors after interactions.
 
-use std::time::Duration;
 use crate::error::ToolError;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use futures::StreamExt;

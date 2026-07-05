@@ -4,7 +4,10 @@ use super::*;
 // ── AX safe wrappers ──
 // All AX attribute access uses raw pointers; these helpers encapsulate the unsafety.
 
-pub(crate) fn ax_attr_cftype(element: &AXUIElement, attr: &'static str) -> Option<CFRetained<CFType>> {
+pub(crate) fn ax_attr_cftype(
+    element: &AXUIElement,
+    attr: &'static str,
+) -> Option<CFRetained<CFType>> {
     let cf_str = CFString::from_static_str(attr);
     let mut ptr: *const CFType = std::ptr::null();
     // SAFETY: copy_attribute_value writes a retained CFType pointer.
@@ -107,7 +110,10 @@ pub(crate) fn ax_app_for_pid(pid: i32) -> CFRetained<AXUIElement> {
     unsafe { AXUIElement::new_application(pid) }
 }
 
-pub(crate) fn ax_tree_for_pid(pid: i32, max_depth: u32) -> Result<(String, Vec<SomElement>), String> {
+pub(crate) fn ax_tree_for_pid(
+    pid: i32,
+    max_depth: u32,
+) -> Result<(String, Vec<SomElement>), String> {
     let app = ax_app_for_pid(pid);
     let mut text = String::new();
     let mut elements = Vec::new();
@@ -285,4 +291,3 @@ pub(crate) fn render_ax_node(
     // Recurse children
     render_ax_children(element, depth + 1, max_depth, text, elements, next_id);
 }
-

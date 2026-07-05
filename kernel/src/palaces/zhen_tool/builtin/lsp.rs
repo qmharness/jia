@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::error::ToolError;
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
@@ -606,7 +606,12 @@ mod tests {
             assert!(result.is_ok(), "hover failed: {:?}", result.err());
         } else {
             assert!(result.is_err(), "expected error when server missing");
-            assert!(result.unwrap_err().to_string().contains("no language server"));
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("no language server")
+            );
         }
     }
 }

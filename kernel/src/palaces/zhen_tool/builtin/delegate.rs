@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::error::ToolError;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -557,7 +557,12 @@ mod tests {
             )
             .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unknown subagent_type"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Unknown subagent_type")
+        );
     }
 
     /// P8 · delegate stores a session and returns a subagent_id (mock core, no
@@ -580,7 +585,10 @@ mod tests {
             .await;
         assert!(res.is_ok(), "delegate failed: {:?}", res.err());
         let out = res.unwrap();
-        assert!(out.to_string().contains("Sub-agent "), "expected id in output: {out}");
+        assert!(
+            out.to_string().contains("Sub-agent "),
+            "expected id in output: {out}"
+        );
         assert_eq!(
             sessions.lock().unwrap().len(),
             1,

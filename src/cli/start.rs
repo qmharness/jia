@@ -6,11 +6,7 @@ use std::sync::Arc;
 use kernel::config::AppConfig;
 // jia crate removed
 
-pub fn spawn_daemon(
-    config_path: Option<PathBuf>,
-    host: Option<String>,
-    port: Option<u16>,
-) {
+pub fn spawn_daemon(config_path: Option<PathBuf>, host: Option<String>, port: Option<u16>) {
     let exe = std::env::current_exe().unwrap_or_else(|_| {
         eprintln!("Cannot determine binary path");
         std::process::exit(1);
@@ -221,10 +217,7 @@ pub async fn run_start(
     // Warn if binding to non-loopback without an explicit API key
     if api_key_is_auto {
         let host_lower = config.host.to_lowercase();
-        let is_loopback = matches!(
-            host_lower.as_str(),
-            "127.0.0.1" | "localhost" | "::1"
-        );
+        let is_loopback = matches!(host_lower.as_str(), "127.0.0.1" | "localhost" | "::1");
         if !is_loopback {
             tracing::warn!(
                 "SECURITY: Binding to non-loopback {} without explicit JIA_API_KEY. \
@@ -332,7 +325,10 @@ pub async fn run_start(
                         "runtime_event: ConfirmationRequested"
                     );
                 }
-                kernel::plates::shen_spirit::RuntimeEvent::ConfirmationResolved { id, approved } => {
+                kernel::plates::shen_spirit::RuntimeEvent::ConfirmationResolved {
+                    id,
+                    approved,
+                } => {
                     tracing::info!(
                         id = id.as_str(),
                         approved = approved,
@@ -361,6 +357,7 @@ pub async fn run_start(
                     tracing::info!(job = %job_name, response_len = response.len(), "runtime_event: CronCompleted");
                     tracing::debug!(job = %job_name, prompt = %prompt, "runtime_event: CronCompleted (prompt)");
                 }
+                _ => {} // new event types (SeedDynamics, BehavioralAlert, etc.) — logged via SSE
             }
         }
     });
@@ -377,17 +374,11 @@ pub async fn run_start(
     // To enable bots the variable must be completely absent from the environment.
     if std::env::var("JIA_SKIP_BOTS").is_err() {
         if let Some(tg_config) = &earth.config.app_config.bots.telegram {
-            channels::telegram::spawn_telegram_bot(
-                tg_config.clone(),
-                earth.io.clone(),
-            );
+            channels::telegram::spawn_telegram_bot(tg_config.clone(), earth.io.clone());
             tracing::info!("Telegram bot started");
         }
         if let Some(wx_config) = &earth.config.app_config.bots.wechat {
-            channels::wechat::spawn_wechat_bot(
-                wx_config.clone(),
-                earth.io.clone(),
-            );
+            channels::wechat::spawn_wechat_bot(wx_config.clone(), earth.io.clone());
             tracing::info!("WeChat bot started");
         }
     }
@@ -524,4 +515,3 @@ pub fn open_browser(url: &str) {
 }
 
 // ── Doctor ─────────────────────────────────────────────────
-

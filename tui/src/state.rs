@@ -106,7 +106,6 @@ pub(crate) struct App {
 
 // ── Public API ─────────────────────────────────────────────
 
-
 /// Push the welcome block into the terminal scrollback once at startup.
 impl App {
     pub(crate) fn dispatch_event(&mut self, event: Event) {
@@ -791,4 +790,3 @@ impl App {
 }
 
 // ── Frame Render ───────────────────────────────────────────
-

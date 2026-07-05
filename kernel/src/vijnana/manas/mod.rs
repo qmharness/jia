@@ -118,6 +118,23 @@ impl Manas {
         self.stable_epochs >= STABILITY_EPOCHS_NEEDED
     }
 
+    /// Adjust atma_graha based on certainty trend across recent turns.
+    ///
+    /// Rising certainty (positive trend) → slightly reduce atma-graha (more open).
+    /// Falling certainty (negative trend) → slightly increase atma-graha (more defensive).
+    /// Requires at least 3 data points for a meaningful trend signal.
+    pub fn adjust_from_certainty_trend(&mut self, certainty_history: &[f32]) {
+        if certainty_history.len() < 3 {
+            return;
+        }
+        let trend: f32 = certainty_history.windows(2).map(|w| w[1] - w[0]).sum();
+        if trend > 0.3 {
+            self.atma_graha = (self.atma_graha - 0.05).max(ATMA_MIN);
+        } else if trend < -0.3 {
+            self.atma_graha = (self.atma_graha + 0.05).min(ATMA_MAX);
+        }
+    }
+
     /// How many consecutive epochs atma_graha has been low.
     pub fn stable_epochs(&self) -> u64 {
         self.stable_epochs

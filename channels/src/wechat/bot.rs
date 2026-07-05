@@ -11,9 +11,9 @@ use kernel::palaces::kan_io::{ChannelInput, ChannelSource};
 use kernel::types::{Message, Role};
 
 use super::types::{
-    ERRCODE_RATE_LIMIT, ERRCODE_SESSION_EXPIRED, ITEM_TEXT, LONG_POLL_TIMEOUT_SECS,
-    base_info, build_headers, GetUpdatesResponse, PollError,
-    WeChatMessage, load_credentials, save_sync_buf, send_wechat_message, send_wechat_typing,
+    ERRCODE_RATE_LIMIT, ERRCODE_SESSION_EXPIRED, GetUpdatesResponse, ITEM_TEXT,
+    LONG_POLL_TIMEOUT_SECS, PollError, WeChatMessage, base_info, build_headers, load_credentials,
+    save_sync_buf, send_wechat_message, send_wechat_typing,
 };
 
 // ── Adapter ───────────────────────────────────────────────────
@@ -310,7 +310,6 @@ impl WeChatAdapter {
     }
 }
 
-
 // ── Spawn ─────────────────────────────────────────────────────
 
 /// Spawn a WeChat bot that long-polls iLink `getupdates` and pushes
@@ -376,7 +375,6 @@ pub fn spawn_wechat_bot(
         }
     })
 }
-
 
 fn backoff_delay(consecutive_errors: u32) -> std::time::Duration {
     let secs = 1u64 << consecutive_errors.min(10); // max ~17 min, clamped below

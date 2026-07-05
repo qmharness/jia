@@ -1,6 +1,5 @@
-
 use clap::Parser;
-use kernel::config::{AppConfig, CliArgs, Commands, GatewayAction};
+use kernel::config::{CliArgs, Commands, GatewayAction};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -276,7 +275,10 @@ async fn main() {
 
 // ── CLI subcommand modules ──────────────────────────────
 mod cli;
-use cli::start::{spawn_daemon, daemonize, gateway_status, stop_running_instance, run_start, is_daemon_running, open_browser};
+use cli::doctor::run_doctor;
+use cli::start::{
+    daemonize, gateway_status, is_daemon_running, open_browser, run_start, spawn_daemon,
+    stop_running_instance,
+};
 #[cfg(feature = "tui")]
 use cli::tui::run_tui;
-use cli::doctor::run_doctor;

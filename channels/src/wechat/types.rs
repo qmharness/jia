@@ -6,10 +6,8 @@
 //
 // Phase 1: text messages only. Media (AES-128-ECB CDN) is Phase 2.
 
-
 use serde::Deserialize;
 use serde_json::json;
-
 
 // ── Constants ─────────────────────────────────────────────────
 
@@ -436,7 +434,6 @@ fn render_terminal_qr(data: &str) {
     println!();
 }
 
-
 // ── send_typing (free function) ──────────────────────────────────
 
 /// Fetch a typing ticket from iLink and fire a "typing" indicator to a user.
@@ -572,7 +569,6 @@ pub(crate) async fn send_wechat_message(
     Ok(())
 }
 
-
 // ── Poll errors ───────────────────────────────────────────────
 
 pub(crate) enum PollError {
@@ -594,5 +590,3 @@ impl std::fmt::Display for PollError {
         }
     }
 }
-
-

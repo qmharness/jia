@@ -13,11 +13,11 @@ mod app;
 mod composer;
 mod connection;
 pub mod markdown;
-pub mod wrapping;
-pub mod state;
-pub mod security;
-pub mod widgets;
 mod render;
+pub mod security;
+pub mod state;
+pub mod widgets;
+pub mod wrapping;
 
 use std::time::Duration;
 

@@ -9,8 +9,10 @@ use crate::plates::shen_spirit::RuntimeEvent;
 
 // ── Counters ────────────────────────────────────────────────────
 
-pub static JIA_TURNS_TOTAL: LazyLock<Counter> =
-    LazyLock::new(|| register_counter!("jia_turns_total", "Total agent turns executed").expect("metric registration failed"));
+pub static JIA_TURNS_TOTAL: LazyLock<Counter> = LazyLock::new(|| {
+    register_counter!("jia_turns_total", "Total agent turns executed")
+        .expect("metric registration failed")
+});
 
 pub static JIA_TOOL_CALLS_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
     register_counter_vec!(
@@ -22,7 +24,8 @@ pub static JIA_TOOL_CALLS_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
 });
 
 pub static JIA_ERRORS_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
-    register_counter_vec!("jia_errors_total", "Total errors by source", &["source"]).expect("metric registration failed")
+    register_counter_vec!("jia_errors_total", "Total errors by source", &["source"])
+        .expect("metric registration failed")
 });
 
 pub static JIA_GEJU_EVALS: LazyLock<CounterVec> = LazyLock::new(|| {
@@ -37,14 +40,19 @@ pub static JIA_GEJU_EVALS: LazyLock<CounterVec> = LazyLock::new(|| {
 // ── Gauges ──────────────────────────────────────────────────────
 
 pub static JIA_ACTIVE_SESSIONS: LazyLock<Gauge> = LazyLock::new(|| {
-    register_gauge!("jia_active_sessions", "Number of active agent sessions").expect("metric registration failed")
+    register_gauge!("jia_active_sessions", "Number of active agent sessions")
+        .expect("metric registration failed")
 });
 
-pub static JIA_SEEDS_TOTAL: LazyLock<Gauge> =
-    LazyLock::new(|| register_gauge!("jia_seeds_total", "Total seeds in the store").expect("metric registration failed"));
+pub static JIA_SEEDS_TOTAL: LazyLock<Gauge> = LazyLock::new(|| {
+    register_gauge!("jia_seeds_total", "Total seeds in the store")
+        .expect("metric registration failed")
+});
 
-pub static JIA_ATMA_GRAHA: LazyLock<Gauge> =
-    LazyLock::new(|| register_gauge!("jia_atma_graha", "Current ātma-grāha value (0-1)").expect("metric registration failed"));
+pub static JIA_ATMA_GRAHA: LazyLock<Gauge> = LazyLock::new(|| {
+    register_gauge!("jia_atma_graha", "Current ātma-grāha value (0-1)")
+        .expect("metric registration failed")
+});
 
 pub static JIA_REQUESTS_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
     register_counter_vec!(

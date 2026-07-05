@@ -121,6 +121,8 @@ fn temp_earth(store: Arc<Store>, temp_dir: &std::path::Path) -> Arc<EarthPlate> 
         mcp_servers: vec![],
         bots: Default::default(),
         hooks: vec![],
+        cognition: CognitionSection::default(),
+        cognition: CognitionSection::default(),
     };
     let config_loader = Arc::new(kernel::palaces::kun_config::ConfigLoader::from_app_config(
         config,

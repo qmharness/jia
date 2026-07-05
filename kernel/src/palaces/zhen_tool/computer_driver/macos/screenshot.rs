@@ -75,4 +75,3 @@ pub(crate) fn cgimage_to_png_bytes(image: &CGImage) -> Result<Vec<u8>, String> {
 pub(crate) fn base64_encode(data: &[u8]) -> String {
     base64::Engine::encode(&base64::engine::general_purpose::STANDARD, data)
 }
-

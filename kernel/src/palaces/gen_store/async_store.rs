@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use crate::error::JiaError;
 use super::Store;
+use crate::error::JiaError;
 
 /// Async facade over the synchronous Store.
 ///

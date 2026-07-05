@@ -10,10 +10,10 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::ProviderError;
-use crate::types::Message;
 use crate::stems::action::ToolSchema;
+use crate::types::Message;
 
-use super::{LlmProvider, StreamChunk, classify_http_error, run_or_cancel, build_openai_content};
+use super::{LlmProvider, StreamChunk, build_openai_content, classify_http_error, run_or_cancel};
 
 pub struct OpenAIProvider {
     client: Client,
@@ -122,8 +122,7 @@ impl LlmProvider for OpenAIProvider {
                         }
                         Ok(None) => break,
                         Err(_elapsed) => {
-                            let _ = tx
-                                .send(Err(ProviderError::StreamStalled));
+                            let _ = tx.send(Err(ProviderError::StreamStalled));
                             return;
                         }
                     };
@@ -215,4 +214,3 @@ impl LlmProvider for OpenAIProvider {
         Box::pin(UnboundedReceiverStream::new(rx))
     }
 }
-

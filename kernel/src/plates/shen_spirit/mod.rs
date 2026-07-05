@@ -2,6 +2,12 @@
 
 use tokio::sync::broadcast;
 
+pub mod bai_hu;
+pub mod completion_check;
+pub mod jiu_tian;
+pub mod tai_yin;
+pub mod xuan_wu;
+
 use crate::telemetry::metrics::JIA_EVENTBUS_DROPS_TOTAL;
 
 pub mod hook;
@@ -112,5 +118,42 @@ pub enum RuntimeEvent {
         response: String,
         session_id: String,
         timestamp: u64,
+    },
+    /// TaiYin: seed activation snapshot per turn.
+    SeedDynamicsSnapshot {
+        turn: u64,
+        activated_count: usize,
+        top_seeds: Vec<String>,
+    },
+    /// BaiHu: anomaly/cognitive pathology alert.
+    BehavioralAlert {
+        severity: f32,
+        anomaly_type: String,
+        turn: u64,
+    },
+    /// XuanWu: irretrievable memory loss record.
+    MemoryLossRecord {
+        compaction_tokens_lost: u64,
+        seeds_deleted: usize,
+        seeds_downgraded: usize,
+        distillation_dedup_pairs: usize,
+    },
+    /// JiuTian: strategy emergence insight (descriptive, non-LLM).
+    StrategyInsight {
+        turn: u64,
+        trajectory_summary: String,
+    },
+    /// TaiYin: per-turn certainty trace.
+    CertaintyTrace {
+        turn: u64,
+        c_task: f32,
+        c_open: f32,
+        composite: f32,
+    },
+    /// JiuDi: Manas stability transition (entered/exited stable epochs).
+    StabilityTransition {
+        stable: bool,
+        atma_graha: f32,
+        epochs: u64,
     },
 }

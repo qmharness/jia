@@ -29,6 +29,15 @@ pub struct TurnSnapshot {
     pub tool_output: String,
     pub tool_error: Option<String>,
     pub timestamp: i64,
+    /// TurnCertainty composite score (set when certainty evaluation runs).
+    #[serde(default)]
+    pub certainty: Option<f32>,
+    /// IDs of seeds touched during prompt construction this turn.
+    #[serde(default)]
+    pub active_seed_ids: Vec<String>,
+    /// Number of tool calls in this turn.
+    #[serde(default)]
+    pub tool_count: u32,
 }
 
 impl WorkingMemory {

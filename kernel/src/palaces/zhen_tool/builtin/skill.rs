@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use crate::error::ToolError;
+use std::sync::Arc;
 use std::sync::RwLock;
 
 use async_trait::async_trait;

@@ -4,6 +4,9 @@ use crate::error::JiaError;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+pub mod disposition;
+pub use disposition::SeedDisposition;
+
 use crate::palaces::Palace;
 use crate::palaces::gen_store::Store;
 use crate::stems::Stem;
@@ -47,6 +50,10 @@ pub struct Seed {
     pub strength: f32,
     #[serde(default)] // 现有种子 JSON 无 "tier" → 回退到 SeedTier::default() = OnDemand
     pub tier: SeedTier,
+    /// 可变响应习性（势力）——区别于固定的 SeedNature"性"。
+    /// 控制种子如何被熏习修改和检索激活。
+    #[serde(default)]
+    pub disposition: SeedDisposition,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -68,6 +75,9 @@ pub enum SeedSource {
     /// Planted from ren_soul.md — the agent's root character seed.
     /// Protected from Zuowang dissolution and tier budget eviction.
     RenSoul,
+    /// Context reset handoff artifact — session continuity across resets.
+    /// Protected from Zuowang dissolution; auto-degraded 5 turns after consumption.
+    Handoff,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,6 +109,7 @@ impl Seed {
         geju_key: String,
     ) -> Self {
         let now = crate::utils::unix_now();
+        let disposition = SeedDisposition::resolve(&nature, &source);
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             session_id,
@@ -114,6 +125,7 @@ impl Seed {
             last_accessed_at: now,
             strength: 1.0,
             tier: SeedTier::OnDemand,
+            disposition,
         }
     }
 
@@ -147,10 +159,7 @@ impl SeedStore {
     }
 
     pub fn load_by_session(&self, session_id: &str) -> Result<Vec<Seed>, JiaError> {
-        let jsons = self
-            .store
-            .load_seeds_by_session(session_id)
-            ?;
+        let jsons = self.store.load_seeds_by_session(session_id)?;
         jsons
             .into_iter()
             .map(|j| serde_json::from_str(&j).map_err(JiaError::from))
@@ -176,15 +185,8 @@ impl SeedStore {
     }
 
     /// Load top N seeds by strength, no palace/stem filter.
-    fn load_top(
-        &self,
-        limit: usize,
-        project_bias: Option<&str>,
-    ) -> Result<Vec<Seed>, JiaError> {
-        let jsons = self
-            .store
-            .load_top_seeds(limit, project_bias)
-            ?;
+    fn load_top(&self, limit: usize, project_bias: Option<&str>) -> Result<Vec<Seed>, JiaError> {
+        let jsons = self.store.load_top_seeds(limit, project_bias)?;
         jsons
             .into_iter()
             .map(|j| serde_json::from_str(&j).map_err(JiaError::from))
@@ -370,10 +372,7 @@ impl SeedStore {
     /// FTS5 search for seeds with text similar to `query`.
     /// Returns up to `limit` content texts of the most similar seeds found.
     pub fn search_similar_texts(&self, query: &str, limit: usize) -> Result<Vec<String>, JiaError> {
-        let results = self
-            .store
-            .search_seeds(query, limit)
-            ?;
+        let results = self.store.search_seeds(query, limit)?;
         Ok(results
             .into_iter()
             .filter_map(|(json, _rank)| {
@@ -802,7 +801,9 @@ mod tests {
             "projA".into(),
             SeedNature::Fact,
             SeedSource::ToolObservation,
-            SeedContent::FreeText { text: "in A".into() },
+            SeedContent::FreeText {
+                text: "in A".into(),
+            },
             Palace::Zhen,
             Stem::Geng,
             "g".into(),
@@ -815,7 +816,9 @@ mod tests {
             "projB".into(),
             SeedNature::Fact,
             SeedSource::ToolObservation,
-            SeedContent::FreeText { text: "in B".into() },
+            SeedContent::FreeText {
+                text: "in B".into(),
+            },
             Palace::Zhen,
             Stem::Geng,
             "g".into(),

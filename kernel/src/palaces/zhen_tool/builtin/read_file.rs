@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use crate::error::ToolError;
+use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::palaces::qian_permission::PathOp;
@@ -169,7 +169,10 @@ mod tests {
             "should have truncation marker, got: {content}"
         );
         // Must contain the first line of Cargo.toml
-        assert!(content.to_string().contains("[package]"), "should contain file content");
+        assert!(
+            content.to_string().contains("[package]"),
+            "should contain file content"
+        );
     }
 
     #[tokio::test]
@@ -179,6 +182,11 @@ mod tests {
             .execute(serde_json::json!({"path": "/etc/passwd"}), &test_ctx())
             .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("outside project root"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("outside project root")
+        );
     }
 }

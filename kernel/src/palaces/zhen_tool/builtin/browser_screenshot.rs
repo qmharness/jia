@@ -2,8 +2,8 @@
 //
 // Returns a base64-encoded PNG image. Useful for vision-based verification.
 
-use std::time::Duration;
 use crate::error::ToolError;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::Value;

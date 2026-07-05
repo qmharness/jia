@@ -10,10 +10,13 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::ProviderError;
-use crate::types::Message;
 use crate::stems::action::ToolSchema;
+use crate::types::Message;
 
-use super::{LlmProvider, StreamChunk, SystemPrompt, classify_http_error, run_or_cancel, build_anthropic_content};
+use super::{
+    LlmProvider, StreamChunk, SystemPrompt, build_anthropic_content, classify_http_error,
+    run_or_cancel,
+};
 
 // ── Anthropic ──────────────────────────────────────────────
 
@@ -121,8 +124,7 @@ impl LlmProvider for AnthropicProvider {
                         }
                         Ok(None) => break,
                         Err(_elapsed) => {
-                            let _ = tx
-                                .send(Err(ProviderError::StreamStalled));
+                            let _ = tx.send(Err(ProviderError::StreamStalled));
                             return;
                         }
                     };

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Json;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::AppState;
 
@@ -19,12 +19,10 @@ pub async fn handle_list_principles(
         .and_then(|e| Some(e.store.clone()))
         .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
 
-    let jsons = store
-        .load_all_principles()
-        .map_err(|e| {
-            tracing::error!("Failed to load principles: {e}");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let jsons = store.load_all_principles().map_err(|e| {
+        tracing::error!("Failed to load principles: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let principles: Vec<Value> = jsons
         .iter()

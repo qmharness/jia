@@ -147,8 +147,7 @@ impl LlmProvider for GeminiProvider {
                         }
                         Ok(None) => break,
                         Err(_elapsed) => {
-                            let _ = tx
-                                .send(Err(ProviderError::StreamStalled));
+                            let _ = tx.send(Err(ProviderError::StreamStalled));
                             return;
                         }
                     };

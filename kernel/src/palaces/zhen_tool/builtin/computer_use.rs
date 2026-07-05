@@ -4,8 +4,8 @@
 // Uses CGEventPostToPid for input events, AX API for accessibility tree,
 // and CGWindowListCreateImage for screenshots.
 
-use std::time::Duration;
 use crate::error::ToolError;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::Value;

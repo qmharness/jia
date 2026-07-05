@@ -1,7 +1,7 @@
 // ── Git Tool — Execute safe git commands ─────────────────────
 
-use async_trait::async_trait;
 use crate::error::ToolError;
+use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::palaces::zhen_tool::base::BaseTool;
@@ -78,7 +78,8 @@ impl BaseTool for GitTool {
                 "Git subcommand '{}' is not allowed. Allowed: {}",
                 first_word,
                 ALLOWED_COMMANDS.join(", "),
-            ).into());
+            )
+            .into());
         }
 
         for pattern in DANGEROUS_PATTERNS {

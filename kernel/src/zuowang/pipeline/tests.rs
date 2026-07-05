@@ -1180,19 +1180,48 @@ mod tests {
 
         // Session 1: create user preference seeds
         insert_test_seed(
-            &store, "seed-1", SeedNature::Preference, SeedSource::UserStatement,
-            SeedContent::KeyValue { key: "language".into(), value: "Rust".into() },
-            now - 3600, now - 3600, 5, 0.9, SeedTier::OnDemand,
+            &store,
+            "seed-1",
+            SeedNature::Preference,
+            SeedSource::UserStatement,
+            SeedContent::KeyValue {
+                key: "language".into(),
+                value: "Rust".into(),
+            },
+            now - 3600,
+            now - 3600,
+            5,
+            0.9,
+            SeedTier::OnDemand,
         );
         insert_test_seed(
-            &store, "seed-2", SeedNature::Fact, SeedSource::ToolObservation,
-            SeedContent::FreeText { text: "project uses PostgreSQL for persistence".into() },
-            now - 7200, now - 3600, 3, 0.7, SeedTier::OnDemand,
+            &store,
+            "seed-2",
+            SeedNature::Fact,
+            SeedSource::ToolObservation,
+            SeedContent::FreeText {
+                text: "project uses PostgreSQL for persistence".into(),
+            },
+            now - 7200,
+            now - 3600,
+            3,
+            0.7,
+            SeedTier::OnDemand,
         );
         insert_test_seed(
-            &store, "seed-3", SeedNature::Preference, SeedSource::UserStatement,
-            SeedContent::KeyValue { key: "editor".into(), value: "vim".into() },
-            now - 1800, now - 600, 8, 0.95, SeedTier::OnDemand,
+            &store,
+            "seed-3",
+            SeedNature::Preference,
+            SeedSource::UserStatement,
+            SeedContent::KeyValue {
+                key: "editor".into(),
+                value: "vim".into(),
+            },
+            now - 1800,
+            now - 600,
+            8,
+            0.95,
+            SeedTier::OnDemand,
         );
 
         // Verify all 3 seeds are stored
@@ -1201,18 +1230,27 @@ mod tests {
 
         // Top influence prompt should return the strongest seed first
         let (prompt, touched) = seed_store.top_influence_prompt(10);
-        assert!(!prompt.is_empty(), "top_influence should return prompt text");
+        assert!(
+            !prompt.is_empty(),
+            "top_influence should return prompt text"
+        );
         assert_eq!(touched.len(), 3, "all 3 seeds should be touched");
 
         // "Rust" preference should have highest relevance_score due to high strength
         // and recent access
         let rust_seed = all.iter().find(|s| s.id == "seed-1").unwrap();
         let score = rust_seed.relevance_score(now);
-        assert!(score > 0.4, "fresh strong seed should have relevance > 0.4, got {score}");
+        assert!(
+            score > 0.4,
+            "fresh strong seed should have relevance > 0.4, got {score}"
+        );
 
         // "editor=vim" should have highest score (most recent + highest strength)
         let vim_seed = all.iter().find(|s| s.id == "seed-3").unwrap();
         let vim_score = vim_seed.relevance_score(now);
-        assert!(vim_score > score, "most recent + strongest seed should rank highest");
+        assert!(
+            vim_score > score,
+            "most recent + strongest seed should rank highest"
+        );
     }
 }

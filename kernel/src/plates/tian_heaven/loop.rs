@@ -2,6 +2,7 @@ use futures::StreamExt;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use super::certainty::{CertaintyParams, LoopDecision, TurnCertainty};
 use crate::geju::GeJu;
 use crate::palaces::Palace;
 use crate::palaces::xun_context::ContextWindow;
@@ -311,8 +312,12 @@ impl super::Agent {
             };
             let tools_ref: Option<&[crate::stems::action::ToolSchema]> = tool_schemas.as_deref();
 
-            let mut stream =
-                ctx.core.infer_with_system(infer_messages, system_prompt, tools_ref, Some(ctx.cancel_token.clone()));
+            let mut stream = ctx.core.infer_with_system(
+                infer_messages,
+                system_prompt,
+                tools_ref,
+                Some(ctx.cancel_token.clone()),
+            );
             let mut full_response = String::new();
             let mut native_tool_calls: Vec<crate::stems::action::ToolCall> = Vec::new();
 
@@ -425,6 +430,21 @@ impl super::Agent {
                 "Parsed tool calls from LLM response"
             );
 
+            // ── 确定度评估（在解析工具调用之后、分发之前）──
+            let certainty = TurnCertainty::evaluate(
+                &self.working_memory.snapshots,
+                self.manas.atma_graha,
+                self.turn_count,
+                self.max_turns,
+                &CertaintyParams::default(),
+            );
+            self.certainty_history.push(certainty.composite);
+            // Adjust atma-graha based on certainty trend (feature-gated)
+            if self.earth.config.app_config.cognition.certainty_enabled {
+                self.manas
+                    .adjust_from_certainty_trend(&self.certainty_history);
+            }
+
             fire_void_hooks(
                 ctx.hook_registry,
                 ctx.event_bus,
@@ -433,14 +453,54 @@ impl super::Agent {
                 HookEvent::LlmResponse {
                     response_len,
                     tool_call_count: tool_calls.len(),
+                    certainty: Some(certainty.composite),
                 },
             );
 
             if tool_calls.is_empty() {
-                ctx.event_bus.emit(RuntimeEvent::TurnEnd {
-                    turn: self.turn_count as u64,
-                });
-                break;
+                match certainty.decision {
+                    LoopDecision::ConfidentStop => {
+                        tracing::info!(
+                            composite = certainty.composite,
+                            c_task = certainty.c_task,
+                            c_open = certainty.c_open,
+                            turn = self.turn_count,
+                            "ConfidentStop — agent believes task is complete"
+                        );
+                        ctx.event_bus.emit(RuntimeEvent::TurnEnd {
+                            turn: self.turn_count as u64,
+                        });
+                        break;
+                    }
+                    LoopDecision::EscalateToHuman => {
+                        tracing::warn!(
+                            composite = certainty.composite,
+                            turn = self.turn_count,
+                            "EscalateToHuman — low certainty, escalating to user"
+                        );
+                        // Continue loop — agent will use ask_user tool or continue
+                    }
+                    LoopDecision::HardLimitReached => {
+                        tracing::warn!(
+                            max_turns = self.max_turns,
+                            "HardLimitReached — exceeded maximum turns"
+                        );
+                        ctx.event_bus.emit(RuntimeEvent::TurnEnd {
+                            turn: self.turn_count as u64,
+                        });
+                        break;
+                    }
+                    LoopDecision::Continue => {
+                        // Continue loop normally
+                    }
+                }
+                // Only break on ConfidentStop or HardLimitReached.
+                // Continue/EscalateToHuman → keep looping.
+                if certainty.decision == LoopDecision::ConfidentStop
+                    || certainty.decision == LoopDecision::HardLimitReached
+                {
+                    // Already broke above; this guard ensures we don't proceed to tool dispatch.
+                }
             }
 
             // Notify frontend that tool batch is starting (create bubble B)
@@ -557,6 +617,9 @@ impl super::Agent {
                     tool_output: crate::utils::truncate_snapshot_output(&output),
                     tool_error: error.clone(),
                     timestamp: crate::utils::unix_now(),
+                    certainty: self.certainty_history.last().copied(),
+                    active_seed_ids: self.touched_seed_ids.clone(),
+                    tool_count: tool_calls.len() as u32,
                 });
 
                 // Push structured tool call entry into history
@@ -582,6 +645,22 @@ impl super::Agent {
                 tool_count += 1;
             }
             self.touched_seed_ids.extend(touched_acc);
+            // Feature-gated: coactivation recording + stability observation
+            let cog = &self.earth.config.app_config.cognition;
+            if cog.coactivation_enabled {
+                self.coactivation.record_coactivation(
+                    "",
+                    &self.touched_seed_ids,
+                    self.turn_count as u64,
+                );
+            }
+            if cog.observation_enabled {
+                ctx.event_bus.emit(RuntimeEvent::StabilityTransition {
+                    stable: self.manas.is_stable(),
+                    atma_graha: self.manas.atma_graha,
+                    epochs: self.manas.stable_epochs(),
+                });
+            }
 
             // Track skill tool invocations (Phase 2)
             for tc in &tool_calls {
@@ -602,12 +681,16 @@ impl super::Agent {
                     "enter_plan_mode" => {
                         self.interaction_mode = super::InteractionMode::Planning;
                         tracing::info!(session = %self.id, "entered planning mode");
-                        let _ = ctx.tx.send(AgentEvent::InteractionModeChanged { planning: true });
+                        let _ = ctx
+                            .tx
+                            .send(AgentEvent::InteractionModeChanged { planning: true });
                     }
                     "exit_plan_mode" => {
                         self.interaction_mode = super::InteractionMode::Normal;
                         tracing::info!(session = %self.id, "exited planning mode");
-                        let _ = ctx.tx.send(AgentEvent::InteractionModeChanged { planning: false });
+                        let _ = ctx
+                            .tx
+                            .send(AgentEvent::InteractionModeChanged { planning: false });
                     }
                     _ => {}
                 }
@@ -615,15 +698,39 @@ impl super::Agent {
 
             self.activate_skills(&touched_paths);
 
+            // BatchEnded hooks — all four spirits observe different dimensions
+            let batch_event = HookEvent::BatchEnded {
+                geju_name: None,
+                tool_count,
+                turn: self.turn_count as u64,
+            };
             fire_void_hooks(
                 ctx.hook_registry,
                 ctx.event_bus,
                 SpiritType::LiuHe,
                 Stem::Geng,
-                HookEvent::BatchEnded {
-                    tool_count,
-                    turn: self.turn_count as u64,
-                },
+                batch_event.clone(),
+            );
+            fire_void_hooks(
+                ctx.hook_registry,
+                ctx.event_bus,
+                SpiritType::TaiYin,
+                Stem::Ren,
+                batch_event.clone(),
+            );
+            fire_void_hooks(
+                ctx.hook_registry,
+                ctx.event_bus,
+                SpiritType::XuanWu,
+                Stem::Ren,
+                batch_event.clone(),
+            );
+            fire_void_hooks(
+                ctx.hook_registry,
+                ctx.event_bus,
+                SpiritType::JiuTian,
+                Stem::Ren,
+                batch_event.clone(),
             );
 
             // Enforce absolute history cap to prevent unbounded growth

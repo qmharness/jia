@@ -3,7 +3,6 @@
 use ratatui::text::{Line, Span};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-
 // ── Styled Line Wrapping ───────────────────────────────────
 //
 // Wraps a sequence of styled spans into display rows, preserving
@@ -81,4 +80,3 @@ pub(crate) fn wrap_styled_lines(spans: &[Span<'static>], max_width: usize) -> Ve
 
     rows
 }
-

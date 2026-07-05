@@ -28,19 +28,20 @@ pub(crate) use super::{ActionResult, AppInfo, CaptureResult, ScreenInfo, SomElem
 // Raw CF function for array access when type parameter is erased (Opaque).
 unsafe extern "C" {
     #[allow(unused)]
-    pub(crate) fn CFArrayGetValueAtIndex(arr: *const std::ffi::c_void, idx: isize) -> *const std::ffi::c_void;
+    pub(crate) fn CFArrayGetValueAtIndex(
+        arr: *const std::ffi::c_void,
+        idx: isize,
+    ) -> *const std::ffi::c_void;
 }
-
 
 // ── Submodules ───────────────────────────────────────────
 mod ax;
-mod screenshot;
 mod input;
+mod screenshot;
 
 pub(crate) use ax::*;
-pub(crate) use screenshot::*;
 pub(crate) use input::*;
-
+pub(crate) use screenshot::*;
 
 pub struct MacOsBackend;
 

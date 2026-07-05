@@ -72,4 +72,3 @@ pub async fn run_tui(config_path: Option<PathBuf>) {
 
     tui::run(config).await;
 }
-
