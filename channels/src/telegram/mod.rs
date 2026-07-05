@@ -47,6 +47,7 @@ pub fn spawn_telegram_bot(
     let client = reqwest::Client::new();
     let token = config.token.clone();
     let base = format!("https://api.telegram.org/bot{token}");
+    let allowed_chat_ids = config.allowed_chat_ids.clone();
 
     tokio::spawn(async move {
         let mut restart_count = 0u32;
@@ -159,8 +160,8 @@ async fn run_telegram_loop(
                 // Trust gate: if allowed_chat_ids is configured, only respond
                 // to those chats. Empty = no one can interact (fail-closed).
                 let chat_id_str = msg.chat.id.to_string();
-                if !config.allowed_chat_ids.is_empty()
-                    && !config.allowed_chat_ids.iter().any(|id| id == &chat_id_str)
+                if !allowed_chat_ids.is_empty()
+                    && !allowed_chat_ids.iter().any(|id| id == &chat_id_str)
                 {
                     tracing::warn!(chat_id = msg.chat.id, "Telegram message rejected: chat_id not in allowlist");
                     continue;
