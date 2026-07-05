@@ -126,6 +126,17 @@ impl BaseTool for WebFetchTool {
                 ct.to_string().contains("text/html") || ct.to_string().contains("application/xhtml")
             });
 
+        // Check Content-Length header to avoid OOM on large responses
+        const MAX_BODY_BYTES: usize = 10 * 1024 * 1024; // 10 MB
+        if let Some(cl) = response.content_length() {
+            if cl > MAX_BODY_BYTES as u64 {
+                return Err(crate::error::ToolError::InvalidInput {
+                    tool: "web_fetch".into(),
+                    reason: format!("Response body too large: {} bytes (max {})", cl, MAX_BODY_BYTES),
+                });
+            }
+        }
+
         let body = response
             .text()
             .await
@@ -134,11 +145,11 @@ impl BaseTool for WebFetchTool {
         let text = if is_html { html_to_text(&body) } else { body };
 
         let max_len = 32000;
-        let truncated = if text.len() > max_len {
+        let truncated = if text.chars().count() > max_len {
             format!(
                 "{}... (truncated from {} chars)",
-                &text[..max_len],
-                text.len()
+                crate::utils::truncate_chars(&text, max_len - 4), // -4 for "..."
+                text.chars().count()
             )
         } else {
             text

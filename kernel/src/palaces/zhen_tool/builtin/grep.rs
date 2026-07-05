@@ -87,7 +87,7 @@ impl BaseTool for GrepTool {
         let results = if search_root.is_file() {
             search_single_file(&search_root, pattern, max_results)?
         } else {
-            search_dir(&search_root, pattern, glob, max_results)?
+            search_dir(&search_root, pattern, glob, max_results, &ctx.permissions.sandbox.blocked_prefixes)?
         };
 
         if results.is_empty() {
@@ -126,6 +126,7 @@ fn search_dir(
     pattern: &str,
     glob: Option<&str>,
     max_results: usize,
+    blocked_prefixes: &[String],
 ) -> Result<Vec<String>, String> {
     let mut results = Vec::new();
 
@@ -135,6 +136,15 @@ fn search_dir(
         .filter_map(|e| e.ok())
     {
         if !entry.file_type().is_file() {
+            continue;
+        }
+
+        // Check blocked prefixes for each file in traversal
+        let path = entry.path();
+        let blocked = blocked_prefixes
+            .iter()
+            .any(|p| path.to_string_lossy().contains(p.as_str()));
+        if blocked {
             continue;
         }
 
