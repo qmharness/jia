@@ -63,12 +63,16 @@ use crate::palaces::zhen_tool::plugin_manager::PluginManager;
 use crate::plates::ren_human::{HumanPlate, PendingConfirmation};
 use crate::plates::shen_spirit::RuntimeEvent;
 use crate::plates::shen_spirit::SpiritPlate;
-use crate::plates::shen_spirit::bai_hu::{BaiHuConfig, BaiHuHook};
+use crate::plates::shen_spirit::baihu::{BaiHuConfig, BaiHuHook};
 use crate::plates::shen_spirit::completion_check::{CompletionCheckHook, CompletionChecklist};
 use crate::plates::shen_spirit::hook::{Hook, HookEvent, HookResult, SpiritType};
-use crate::plates::shen_spirit::jiu_tian::JiuTianHook;
-use crate::plates::shen_spirit::tai_yin::TaiYinHook;
-use crate::plates::shen_spirit::xuan_wu::XuanWuHook;
+use crate::plates::shen_spirit::jiudi::JiudiHook;
+use crate::plates::shen_spirit::jiutian::JiuTianHook;
+use crate::plates::shen_spirit::liuhe::LiuheHook;
+use crate::plates::shen_spirit::taiyin::TaiYinHook;
+use crate::plates::shen_spirit::tengshe::TengsheHook;
+use crate::plates::shen_spirit::xuanwu::XuanWuHook;
+use crate::plates::shen_spirit::zhifu::ZhifuHook;
 use crate::plates::tian_heaven::Agent;
 use crate::plates::tian_heaven::r#loop::{AgentEvent, RunContext};
 use crate::types::{HistoryEntry, Message, Role};
@@ -426,29 +430,19 @@ impl EarthPlate {
         let user_hooks = Arc::new(user_hooks);
 
         let mut spirit = SpiritPlate::new();
-        // Register built-in and new spirit hooks
-        spirit.hook_registry.register(Box::new(TracingHook));
         let event_bus = spirit.event_bus.clone();
-        spirit
-            .hook_registry
-            .register(Box::new(TaiYinHook::new(event_bus.clone())));
-        spirit.hook_registry.register(Box::new(BaiHuHook::new(
-            BaiHuConfig::default(),
-            event_bus.clone(),
-        )));
-        spirit
-            .hook_registry
-            .register(Box::new(XuanWuHook::new(event_bus.clone())));
-        spirit
-            .hook_registry
-            .register(Box::new(JiuTianHook::new(event_bus.clone(), false)));
+        // 八神 — eight spirit hooks (one file per spirit, pinyin naming)
+        spirit.hook_registry.register(Box::new(ZhifuHook));
+        spirit.hook_registry.register(Box::new(TengsheHook));
+        spirit.hook_registry.register(Box::new(TaiYinHook::new(event_bus.clone())));
+        spirit.hook_registry.register(Box::new(LiuheHook));
+        spirit.hook_registry.register(Box::new(BaiHuHook::new(BaiHuConfig::default(), event_bus.clone())));
+        spirit.hook_registry.register(Box::new(XuanWuHook::new(event_bus.clone())));
+        spirit.hook_registry.register(Box::new(JiudiHook));
+        spirit.hook_registry.register(Box::new(JiuTianHook::new(event_bus.clone(), false)));
         // CompletionChecklist — shared between hook and Agent
         let completion_checklist = Arc::new(CompletionChecklist::new());
-        spirit
-            .hook_registry
-            .register(Box::new(CompletionCheckHook::new(
-                completion_checklist.clone(),
-            )));
+        spirit.hook_registry.register(Box::new(CompletionCheckHook::new(completion_checklist.clone())));
 
         let earth = Arc::new(Self {
             io,
@@ -821,81 +815,3 @@ async fn run_io_agent(earth: Arc<EarthPlate>, input: crate::palaces::kan_io::Cha
     }
 }
 
-// ── Built-in Hook: TracingHook ────────────────────────────────
-
-/// Logs tool execution events via the tracing subsystem.
-///
-/// ZhiFu: tool lifecycle (pre/post execute)
-/// TengShe: LLM response observation
-/// JiuDi: context compaction events
-struct TracingHook;
-
-#[async_trait::async_trait]
-impl Hook for TracingHook {
-    fn name(&self) -> &str {
-        "tracing"
-    }
-
-    fn spirit_types(&self) -> Vec<SpiritType> {
-        vec![
-            SpiritType::ZhiFu,
-            SpiritType::TengShe,
-            SpiritType::JiuDi,
-            SpiritType::LiuHe,
-        ]
-    }
-
-    async fn on_event(&self, event: HookEvent) -> HookResult {
-        match &event {
-            HookEvent::ToolPreExecute { tool_name, input } => {
-                tracing::info!(tool = %tool_name, input = %input, "hook: tool pre-execute");
-            }
-            HookEvent::ToolPostExecute {
-                tool_name,
-                output,
-                error,
-                duration_ms,
-            } => {
-                if let Some(err) = error {
-                    tracing::warn!(tool = %tool_name, error = %err, duration_ms = duration_ms, "hook: tool post-execute (error)");
-                } else {
-                    tracing::info!(tool = %tool_name, output_len = output.len(), duration_ms = duration_ms, "hook: tool post-execute");
-                }
-            }
-            HookEvent::LlmResponse {
-                response_len,
-                tool_call_count,
-                certainty,
-            } => {
-                tracing::info!(
-                    response_len = response_len,
-                    tool_call_count = tool_call_count,
-                    certainty = certainty,
-                    "hook: LLM response"
-                );
-            }
-            HookEvent::BatchEnded {
-                tool_count, turn, ..
-            } => {
-                tracing::info!(tool_count = tool_count, turn = turn, "hook: batch ended");
-            }
-            HookEvent::CompactionTriggered {
-                messages_before,
-                messages_after,
-                tokens_before,
-                tokens_after,
-                method,
-            } => {
-                tracing::info!(
-                    messages_before = messages_before,
-                    messages_after = messages_after,
-                    tokens_before = tokens_before,
-                    tokens_after = tokens_after,
-                    method = method.as_str(),
-                    "hook: context compacted"
-                );
-            }
-        }
-        HookResult::Ok
-    }
-}

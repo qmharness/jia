@@ -2,15 +2,18 @@
 
 use tokio::sync::broadcast;
 
-pub mod bai_hu;
+pub mod baihu;
 pub mod completion_check;
-pub mod jiu_tian;
-pub mod tai_yin;
-pub mod xuan_wu;
+pub mod hook;
+pub mod jiudi;
+pub mod jiutian;
+pub mod liuhe;
+pub mod taiyin;
+pub mod tengshe;
+pub mod xuanwu;
+pub mod zhifu;
 
 use crate::telemetry::metrics::JIA_EVENTBUS_DROPS_TOTAL;
-
-pub mod hook;
 
 /// 神盘 (Spirit Plate) — Observability layer.
 ///

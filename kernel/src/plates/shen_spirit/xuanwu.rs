@@ -47,7 +47,7 @@ impl Hook for XuanWuHook {
             }
             HookEvent::BatchEnded {
                 tool_count: _,
-                turn,
+                turn: _,
                 ..
             } => {
                 let lost = self
