@@ -152,7 +152,7 @@ impl Default for PermissionMatrix {
         Self::from_config(
             &SecuritySection::default(),
             &workspace,
-            PathBuf::from(".jia-backups"),
+            PathBuf::from(".jia/backups"),
         )
     }
 }
@@ -524,7 +524,7 @@ mod tests {
             },
             confirmation_timeout: std::time::Duration::from_secs(30),
             sandbox_disabled: false,
-            backup_dir: PathBuf::from(".jia-backups"),
+            backup_dir: PathBuf::from(".jia/backups"),
             execution_sandbox: None,
         }
     }

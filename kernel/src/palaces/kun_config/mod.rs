@@ -493,6 +493,19 @@ pub fn pid_file_path() -> std::path::PathBuf {
     default_data_dir().join("gateway.pid")
 }
 
+/// Default project workspace root: `$HOME/Documents/jia-workspace`.
+/// Used when `security.project_root` is not explicitly configured.
+pub fn default_workspace_dir() -> std::path::PathBuf {
+    std::env::var("JIA_WORKSPACE")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            let home = std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .unwrap_or_else(|_| ".".into());
+            std::path::PathBuf::from(home).join("Documents/jia-workspace")
+        })
+}
+
 /// Default web dashboard directory.
 ///
 /// Resolved at compile time relative to the crate root so `jia web` finds

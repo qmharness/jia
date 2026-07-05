@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::palaces::gen_store::{Store, async_store::StoreAsync};
 use crate::palaces::kan_io::ChannelManager;
-use crate::palaces::kun_config::{AppConfig, ConfigLoader};
+use crate::palaces::kun_config::{AppConfig, ConfigLoader, default_workspace_dir};
 use crate::palaces::li_skill::SkillRegistry;
 use crate::palaces::li_skill::loader::SkillLoader;
 use crate::palaces::li_skill::spawn_skill_watcher;
@@ -138,7 +138,7 @@ impl EarthPlate {
         let config_loader = Arc::new(ConfigLoader::from_app_config(config));
 
         // Ensure workspace dir for cron/bot agents exists
-        std::fs::create_dir_all(data_dir.join("workspace"))
+        std::fs::create_dir_all(default_workspace_dir())
             .unwrap_or_else(|e| tracing::warn!("cannot create workspace dir: {e}"));
         std::fs::create_dir_all(&backup_dir)
             .unwrap_or_else(|e| tracing::warn!("cannot create backup dir: {e}"));
@@ -200,7 +200,7 @@ impl EarthPlate {
         let permissions = Arc::new(
             PermissionMatrix::from_config(
                 &config_loader.app_config.security,
-                &data_dir.join("workspace"),
+                &default_workspace_dir(),
                 backup_dir.clone(),
             )
             .with_sandbox(&config_loader.app_config.security.sandbox),
@@ -505,8 +505,11 @@ impl EarthPlate {
     pub fn build_worktree_exec_ctx(&self, root: &std::path::Path) -> ExecContext {
         let mut sec = self.config.app_config.security.clone();
         sec.project_root = Some(root.to_string_lossy().to_string());
+        // Per-project backup dir: <project_root>/.jia/backups/
+        let backup_dir = root.join(".jia/backups");
+        let _ = std::fs::create_dir_all(&backup_dir);
         let matrix = Arc::new(
-            PermissionMatrix::from_config(&sec, root, self.backup_dir.clone())
+            PermissionMatrix::from_config(&sec, root, backup_dir)
                 .with_sandbox(&sec.sandbox),
         );
         ExecContext {
@@ -528,7 +531,7 @@ impl EarthPlate {
                 earth.pending_confirmations.clone(),
             );
             let distilled_hashes = earth.store.load_distilled_hashes(&session_id);
-            let workspace = earth.data_dir.join("workspace");
+            let workspace = default_workspace_dir();
             let mut agent = Agent::with_session(
                 session_id.clone(),
                 earth.clone(),
@@ -733,7 +736,7 @@ async fn run_io_agent(earth: Arc<EarthPlate>, input: crate::palaces::kan_io::Cha
         earth.pending_confirmations.clone(),
     );
     let distilled_hashes = earth.store.load_distilled_hashes(&session_id);
-    let workspace = earth.data_dir.join("workspace");
+    let workspace = default_workspace_dir();
     let mut agent = Agent::with_session(
         session_id.clone(),
         earth.clone(),
