@@ -123,8 +123,14 @@ pub async fn handle_vijnana_state(State(state): State<Arc<AppState>>) -> Json<se
         })
         .collect();
 
+    let manas_history = earth
+        .store
+        .load_manas_history(100)
+        .unwrap_or_default();
+
     Json(serde_json::json!({
         "manas": manas,
+        "manas_history": manas_history,
         "entropy": { "current": current, "dissolution_history": history },
     }))
 }

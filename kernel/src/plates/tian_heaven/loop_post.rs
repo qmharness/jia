@@ -112,6 +112,13 @@ impl super::Agent {
                     self.manas
                         .recalibrate(&report.entropy_dimensions, remaining);
                     JIA_ATMA_GRAHA.set(self.manas.atma_graha as f64);
+                    // Record atma-graha time series for trend visualization
+                    let _ = store.insert_manas_snapshot(
+                        &self.id,
+                        self.manas.atma_graha,
+                        report.entropy_dimensions.total,
+                        remaining,
+                    );
                 }
             }
             Err(e) => {

@@ -139,5 +139,46 @@ impl Store {
         Ok(reports)
     }
 
+    // ── Manas history (ātma-grāha time series) ──────────────
+
+    pub fn insert_manas_snapshot(
+        &self,
+        session_id: &str,
+        atma_graha: f32,
+        entropy_total: f32,
+        seed_count: usize,
+    ) -> Result<(), StoreError> {
+        let conn = self.pool.get()?;
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = crate::utils::unix_now();
+        conn.execute(
+            "INSERT INTO manas_history (id, session_id, atma_graha, entropy_total, seed_count, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![id, session_id, atma_graha, entropy_total, seed_count as i64, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn load_manas_history(&self, limit: usize) -> Result<Vec<serde_json::Value>, StoreError> {
+        let conn = self.pool.get()?;
+        let mut stmt = conn.prepare(
+            "SELECT atma_graha, entropy_total, seed_count, created_at
+             FROM manas_history ORDER BY created_at DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![limit as i64], |row| {
+            Ok(serde_json::json!({
+                "atma_graha": row.get::<_, f64>(0)?,
+                "entropy_total": row.get::<_, f64>(1)?,
+                "seed_count": row.get::<_, i64>(2)?,
+                "created_at": row.get::<_, i64>(3)?,
+            }))
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
     // ── Principles persistence ────────────────────────────────
 }

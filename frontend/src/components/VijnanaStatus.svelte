@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { fetchVijnana } from '../lib/api';
-  import type { VijnanaManas, VijnanaEntropy } from '../lib/types';
+  import type { VijnanaManas, VijnanaEntropy, ManasSnapshot } from '../lib/types';
   import { showToast } from '../lib/store.svelte';
   import { t } from '../lib/i18n';
   import { formatTime } from '../lib/time';
@@ -9,6 +9,7 @@
   let { hideHistory = false, statusOnly = false }: { hideHistory?: boolean; statusOnly?: boolean } = $props();
 
   let manas = $state<VijnanaManas | null>(null);
+  let manasHistory = $state<ManasSnapshot[]>([]);
   let entropy = $state<VijnanaEntropy | null>(null);
   let loading = $state(true);
   let expanded = $state<number | null>(null);
@@ -18,6 +19,7 @@
     try {
       const data = await fetchVijnana();
       manas = data.manas;
+      manasHistory = data.manas_history?.slice().reverse() ?? [];
       entropy = data.entropy;
     } catch {
       showToast(t('vijnana.loadError'), 'error');
@@ -130,6 +132,24 @@
         </div>
       </div>
     </section>
+
+    <!-- ── Ātma-grāha Trend ──────────────────────────── -->
+    {#if manasHistory.length >= 2}
+      {@const maxV = Math.max(...manasHistory.map(d => d.atma_graha), 0.8)}
+      {@const minV = Math.min(...manasHistory.map(d => d.atma_graha), 0)}
+      {@const range = maxV - minV || 0.1}
+      {@const w = 100 / (manasHistory.length - 1)}
+      <section class="card">
+        <h3 class="section-title">ātma-grāha</h3>
+        <svg viewBox="0 0 100 60" class="trend-svg">
+          <line x1="0" y1={(100 - ((0.75 - minV) / range * 100)).toFixed(1)} x2="100" y2={(100 - ((0.75 - minV) / range * 100)).toFixed(1)} stroke="var(--error)" stroke-width="0.4" stroke-dasharray="2,1"/>
+          <polyline points={manasHistory.map((d,i) => `${(i*w).toFixed(1)},${(100 - ((d.atma_graha - minV) / range * 100)).toFixed(1)}`).join(' ')} fill="none" stroke="var(--accent)" stroke-width="1.2" stroke-linejoin="round"/>
+          {#each manasHistory as d, i}
+            <circle cx={(i*w).toFixed(1)} cy={(100 - ((d.atma_graha - minV) / range * 100)).toFixed(1)} r="1.2" fill="var(--accent)"/>
+          {/each}
+        </svg>
+      </section>
+    {/if}
 
     <!-- ── Memory Entropy ───────────────────────────────── -->
     {#if entropy}
@@ -340,6 +360,7 @@
   /* Radar chart */
   .entropy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
   .radar-svg { width: 180px; height: 180px; }
+  .trend-svg { width: 100%; height: 60px; }
   .rleg-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
   .rleg-icon { font-size: 13px; flex-shrink: 0; }
   .rleg-name { color: var(--text-secondary); width: 48px; flex-shrink: 0; }

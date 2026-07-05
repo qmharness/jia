@@ -103,7 +103,15 @@ export type PageId = 'chat' | 'session' | 'sessions' | 'projects' | 'project' | 
 
 export interface VijnanaState {
   manas: VijnanaManas;
+  manas_history: ManasSnapshot[];
   entropy: VijnanaEntropy;
+}
+
+export interface ManasSnapshot {
+  atma_graha: number;
+  entropy_total: number;
+  seed_count: number;
+  created_at: number;
 }
 
 export interface VijnanaManas {

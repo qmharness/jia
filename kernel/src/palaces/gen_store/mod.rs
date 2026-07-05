@@ -275,6 +275,18 @@ impl Store {
             [],
         );
 
+        // Migrate: manas history for atma-graha time series
+        let _ = conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS manas_history (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                atma_graha REAL NOT NULL,
+                entropy_total REAL NOT NULL,
+                seed_count INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            );",
+        );
+
         Self {
             pool,
             dissolve_lock: std::sync::Mutex::new(()),
