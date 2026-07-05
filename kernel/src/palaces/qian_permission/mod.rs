@@ -127,7 +127,7 @@ pub struct PermissionMatrix {
     pub sandbox: SandboxConfig,
     pub shell_policy: ShellPolicy,
     pub confirmation_timeout: std::time::Duration,
-    pub sandbox_disabled: bool,
+    pub sandbox_mode: crate::palaces::kun_config::SandboxMode,
     /// Directory for file backups (write_file / edit tools).
     pub backup_dir: PathBuf,
     /// Pluggable execution sandbox for shell commands.
@@ -140,7 +140,7 @@ impl std::fmt::Debug for PermissionMatrix {
         f.debug_struct("PermissionMatrix")
             .field("sandbox.project_root", &self.sandbox.project_root)
             .field("sandbox.blocked_prefixes", &self.sandbox.blocked_prefixes)
-            .field("sandbox_disabled", &self.sandbox_disabled)
+            .field("sandbox_mode", &self.sandbox_mode)
             .finish_non_exhaustive()
     }
 }
@@ -196,7 +196,7 @@ impl PermissionMatrix {
             confirmation_timeout: std::time::Duration::from_secs(
                 security.confirmation_timeout_secs,
             ),
-            sandbox_disabled: security.sandbox_disabled,
+            sandbox_mode: security.sandbox_mode.clone(),
             backup_dir,
             execution_sandbox: None,
         }
@@ -529,7 +529,7 @@ mod tests {
                 blocklist: vec!["rm -rf".into(), "mkfs.".into()],
             },
             confirmation_timeout: std::time::Duration::from_secs(30),
-            sandbox_disabled: false,
+            sandbox_mode: crate::palaces::kun_config::SandboxMode::Required,
             backup_dir: PathBuf::from(".jia/backups"),
             execution_sandbox: None,
         }

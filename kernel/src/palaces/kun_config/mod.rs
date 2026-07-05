@@ -3,7 +3,7 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use clap::{Parser, Subcommand};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::JiaError;
 
@@ -239,6 +239,19 @@ pub struct HookConfig {
     pub block_on_exit: bool,
 }
 
+/// Sandbox isolation mode.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum SandboxMode {
+    /// Must have true isolation — refuse execution if unavailable.
+    #[default]
+    Required,
+    /// Try isolation, fall back to Process sandbox if unavailable.
+    BestEffort,
+    /// Skip sandbox entirely.
+    Disabled,
+}
+
 /// Security configuration for tool sandboxing and permissions.
 #[derive(Debug, Clone, Deserialize)]
 pub struct SecuritySection {
@@ -260,9 +273,9 @@ pub struct SecuritySection {
     /// Timeout in seconds for user confirmation prompts. Default: 30.
     #[serde(default = "default_confirmation_timeout")]
     pub confirmation_timeout_secs: u64,
-    /// If true, Sandbox mode is downgraded to Guarded (no-op sandbox).
+    /// Sandbox isolation mode: Required (default), BestEffort, or Disabled.
     #[serde(default)]
-    pub sandbox_disabled: bool,
+    pub sandbox_mode: SandboxMode,
     /// Maximum context window token budget. Default: 8192.
     #[serde(default = "default_max_context_tokens")]
     pub max_context_tokens: usize,
@@ -463,7 +476,7 @@ impl Default for SecuritySection {
             command_allowlist: Vec::new(),
             command_blocklist: default_blocked_commands(),
             confirmation_timeout_secs: default_confirmation_timeout(),
-            sandbox_disabled: false,
+            sandbox_mode: crate::palaces::kun_config::SandboxMode::Required,
             max_context_tokens: default_max_context_tokens(),
             compaction_threshold: default_compaction_threshold(),
             api_key: None,

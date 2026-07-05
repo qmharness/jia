@@ -241,7 +241,7 @@ impl HumanPlate {
         exec_ctx: &ExecContext,
     ) -> Result<ToolResult, DispatchError> {
         // Check DuMen gate
-        if !self.gate_is_open(HumanGate::DuMen) || self.permissions.sandbox_disabled {
+        if !self.gate_is_open(HumanGate::DuMen) || !matches!(self.permissions.sandbox_mode, crate::palaces::kun_config::SandboxMode::Disabled) {
             tracing::warn!(
                 "HumanPlate: DuMen closed or sandbox disabled, downgrading Sandbox→Guarded for {}",
                 tool.name()

@@ -508,7 +508,7 @@ mod tests {
     fn temp_earth(tmp: &std::path::Path) -> Arc<EarthPlate> {
         let security = SecuritySection {
             project_root: Some(tmp.to_str().unwrap().to_string()),
-            sandbox_disabled: true,
+            sandbox_mode: crate::palaces::kun_config::SandboxMode::Disabled,
             ..SecuritySection::default()
         };
         let db_path = tmp.join("store.db");

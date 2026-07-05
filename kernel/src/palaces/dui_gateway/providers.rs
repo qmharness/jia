@@ -165,7 +165,7 @@ pub async fn handle_config(State(state): State<Arc<AppState>>) -> Json<serde_jso
 
         config["security"] = serde_json::json!({
             "project_root": earth.permissions.sandbox.project_root.to_string_lossy(),
-            "sandbox_disabled": earth.permissions.sandbox_disabled,
+            "sandbox_disabled": earth.permissions.sandbox_mode.clone(),
             "confirmation_timeout_secs": earth.permissions.confirmation_timeout.as_secs(),
         });
     }
