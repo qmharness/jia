@@ -173,6 +173,7 @@ The three are linked as cause and effect — not artificially designed, but natu
 - [QUICKSTART.md](./QUICKSTART.md) — Quick start: environment, build, run
 - [ROADMAP.md](./ROADMAP.md) — Eight-phase development roadmap and evolution history
 - [CHANGELOG.md](./CHANGELOG.md) — Version history
+- [PHILOSOPHY-ARCHITECTURE.md](./PHILOSOPHY-ARCHITECTURE.md) — System philosophy architecture: Qimen Dunjia, Vijnana, Zuowang, Confucian Ren
 
 ---
 

@@ -168,6 +168,7 @@
 - [QUICKSTART.md](./QUICKSTART.md) — 快速开始：环境、构建、运行
 - [ROADMAP.md](./ROADMAP.md) — 八阶段开发路线与演进史
 - [CHANGELOG.md](./CHANGELOG.md) — 版本记录
+- [PHILOSOPHY-ARCHITECTURE.zh-CN.md](./PHILOSOPHY-ARCHITECTURE.zh-CN.md) — 系统哲学架构：奇门遁甲、唯识、坐忘、儒家仁心
 
 ---
 

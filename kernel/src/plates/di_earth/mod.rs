@@ -509,8 +509,7 @@ impl EarthPlate {
         let backup_dir = root.join(".jia/backups");
         let _ = std::fs::create_dir_all(&backup_dir);
         let matrix = Arc::new(
-            PermissionMatrix::from_config(&sec, root, backup_dir)
-                .with_sandbox(&sec.sandbox),
+            PermissionMatrix::from_config(&sec, root, backup_dir).with_sandbox(&sec.sandbox),
         );
         ExecContext {
             permissions: matrix,

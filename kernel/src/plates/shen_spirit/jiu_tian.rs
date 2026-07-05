@@ -15,7 +15,8 @@ use std::sync::Mutex;
 struct TrajectoryPoint {
     turn: u64,
     geju_name: String,
-    execution_mode: String, #[allow(dead_code)]
+    execution_mode: String,
+    #[allow(dead_code)]
     composite_certainty: Option<f32>,
 }
 
