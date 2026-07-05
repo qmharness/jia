@@ -54,9 +54,17 @@ impl Store {
             .build(manager)
             .expect("Failed to create connection pool");
 
-        // Run schema migration on one pooled connection
+        // Run schema migration on one pooled connection.
+        // Version-driven: PRAGMA user_version tracks applied migrations.
+        // Only runs migrations whose version > current user_version.
+        const CURRENT_SCHEMA_VERSION: i64 = 1;
         let conn = pool.get().expect("Failed to get connection for migration");
-        conn.execute_batch(
+        let current_version: i64 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap_or(0);
+        if current_version < CURRENT_SCHEMA_VERSION {
+            tracing::info!(from = current_version, to = CURRENT_SCHEMA_VERSION, "Running schema migration");
+            conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY,
                 messages_json TEXT NOT NULL,
@@ -296,6 +304,13 @@ impl Store {
                 created_at INTEGER NOT NULL
             );",
         );
+            // TTL cleanup: prune history tables older than 90 days
+            let cutoff = crate::utils::unix_now() - 90 * 86400;
+            let _ = conn.execute("DELETE FROM manas_history WHERE created_at < ?1", rusqlite::params![cutoff]);
+            let _ = conn.execute("DELETE FROM dissolution_history WHERE timestamp < ?1", rusqlite::params![cutoff]);
+
+            let _ = conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION);
+        } // end migration version guard
 
         Self {
             pool,
