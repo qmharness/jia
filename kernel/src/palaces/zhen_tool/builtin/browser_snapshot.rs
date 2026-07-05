@@ -155,23 +155,26 @@ async fn get_snapshot(ws_url: &str) -> Result<String, String> {
         }
     }
 
-    // Find root and render
+    // Find root(s): RootWebArea nodes, or nodes without parents (fallback).
+    // Fixed: was filtering !isRootWebArea || noParent (inverted logic causing duplicates).
     let root_ids: Vec<String> = nodes
         .iter()
         .filter(|n| {
-            !n.get("role")
+            let is_root = n
+                .get("role")
                 .and_then(|r| r.get("value"))
                 .and_then(|v| v.as_str())
                 .map(|r| r == "RootWebArea")
-                .unwrap_or(false)
-                || n.get("parentId").is_none()
+                .unwrap_or(false);
+            is_root || n.get("parentId").is_none()
         })
         .filter_map(|n| n.get("nodeId").and_then(|v| v.as_str()).map(String::from))
         .collect();
 
     let mut out = String::new();
     for root_id in &root_ids {
-        render_node(root_id, &nodes_by_id, "", &mut out);
+        let mut visited = std::collections::HashSet::new();
+        render_node(root_id, &nodes_by_id, "", &mut out, 0, &mut visited);
     }
 
     if out.is_empty() {
@@ -181,7 +184,18 @@ async fn get_snapshot(ws_url: &str) -> Result<String, String> {
     Ok(out)
 }
 
-fn render_node(node_id: &str, nodes: &HashMap<String, &Value>, indent: &str, out: &mut String) {
+fn render_node(
+    node_id: &str,
+    nodes: &HashMap<String, &Value>,
+    indent: &str,
+    out: &mut String,
+    depth: usize,
+    visited: &mut std::collections::HashSet<String>,
+) {
+    const MAX_DEPTH: usize = 50;
+    if depth > MAX_DEPTH || !visited.insert(node_id.to_string()) {
+        return;
+    }
     let node = match nodes.get(node_id) {
         Some(n) => n,
         None => return,
@@ -217,7 +231,7 @@ fn render_node(node_id: &str, nodes: &HashMap<String, &Value>, indent: &str, out
         if let Some(children) = node.get("childIds").and_then(|c| c.as_array()) {
             for child in children {
                 if let Some(cid) = child.as_str() {
-                    render_node(cid, nodes, indent, out);
+                    render_node(cid, nodes, indent, out, depth + 1, visited);
                 }
             }
         }
@@ -257,7 +271,7 @@ fn render_node(node_id: &str, nodes: &HashMap<String, &Value>, indent: &str, out
         let next_indent = format!("{indent}  ");
         for child in children {
             if let Some(cid) = child.as_str() {
-                render_node(cid, nodes, &next_indent, out);
+                render_node(cid, nodes, &next_indent, out, depth + 1, visited);
             }
         }
     }
