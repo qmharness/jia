@@ -1,25 +1,44 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { fetchVijnanaSeeds } from '../lib/api';
+  import { fetchVijnanaSeeds, fetchProjects } from '../lib/api';
+  import type { ProjectInfo } from '../lib/api';
   import type { VijnanaSeed } from '../lib/types';
   import { showToast } from '../lib/store.svelte';
   import { t } from '../lib/i18n';
 
   let seeds = $state<VijnanaSeed[]>([]);
+  let projects = $state<ProjectInfo[]>([]);
+  let projectFilter = $state('');
   let loading = $state(true);
   let search = $state('');
   let natureFilter = $state('');
   let sourceFilter = $state('');
   let palaceFilter = $state('');
 
-  onMount(async () => {
+  async function loadSeeds() {
+    loading = true;
     try {
-      const data = await fetchVijnanaSeeds();
+      const data = await fetchVijnanaSeeds(undefined, projectFilter || undefined);
       seeds = data.seeds;
     } catch {
       showToast(t('seeds.loadError'), 'error');
     }
     loading = false;
+  }
+
+  function selectProject(ev: Event) {
+    projectFilter = (ev.currentTarget as HTMLSelectElement).value;
+    loadSeeds();
+  }
+
+  function projectName(pid: string): string {
+    if (!pid) return '';
+    return projects.find((p) => p.id === pid)?.name || pid.slice(0, 8);
+  }
+
+  onMount(async () => {
+    projects = await fetchProjects().catch(() => []);
+    await loadSeeds();
   });
 
   const allNatures = $derived([...new Set(seeds.map(s => s.nature))].sort());
@@ -82,6 +101,12 @@
     </div>
 
     <div class="filters">
+      <select onchange={selectProject} value={projectFilter}>
+        <option value="">{t('seeds.filterAllProjects')}</option>
+        {#each projects as p}
+          <option value={p.id}>{p.name || p.cwd}</option>
+        {/each}
+      </select>
       <select bind:value={natureFilter}>
         <option value="">{t('seeds.filterAllNature')}</option>
         {#each allNatures as n}
@@ -132,6 +157,7 @@
               <th>{t('seeds.colNature')}</th>
               <th>{t('seeds.colSource')}</th>
               <th>{t('seeds.colPalace')}</th>
+              <th>{t('seeds.colProject')}</th>
               <th class="num">{t('seeds.colStrength')}</th>
             </tr>
           </thead>
@@ -147,6 +173,7 @@
                 <td><span class="nature-tag">{seed.nature}</span></td>
                 <td class="source-cell">{seed.source}</td>
                 <td>{seed.palace}</td>
+                <td class="project-cell">{projectName(seed.project_id) || '—'}</td>
                 <td class="num">
                   <div class="strength-cell">
                     <div class="strength-track">
@@ -348,6 +375,15 @@
   }
 
   .source-cell {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .project-cell {
     font-size: 12px;
     color: var(--text-tertiary);
     max-width: 120px;

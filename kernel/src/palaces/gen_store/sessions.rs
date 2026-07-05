@@ -41,6 +41,20 @@ impl Store {
         Ok(rows.next().transpose()?)
     }
 
+    /// Look up the project_id of a session (None if session missing or unaffiliated).
+    /// Used at seed-create time to stamp project provenance without threading
+    /// project_id through the agent/engines.
+    pub fn session_project_id(&self, session_id: &str) -> Option<String> {
+        let conn = self.pool.get().ok()?;
+        conn.query_row(
+            "SELECT project_id FROM sessions WHERE id = ?1",
+            rusqlite::params![session_id],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .ok()
+        .flatten()
+    }
+
     /// Load session history deserialized as `Vec<HistoryEntry>`.
     pub fn load_session_history(&self, id: &str) -> Vec<HistoryEntry> {
         self.load_session(id)

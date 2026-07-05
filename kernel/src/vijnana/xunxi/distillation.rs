@@ -32,6 +32,7 @@ impl DistillationEngine {
         core: &JiaCore,
     ) -> (HashSet<u64>, usize) {
         let seed_store = SeedStore::new(store.clone());
+        let project_id = store.session_project_id(session_id).unwrap_or_default();
         let mut new_hashes = HashSet::new();
         let mut seeds_created = 0usize;
         let mut last_user: Option<&str> = None;
@@ -51,6 +52,7 @@ impl DistillationEngine {
                         {
                             let seed = Seed::new(
                                 session_id.to_string(),
+                                project_id.clone(),
                                 SeedNature::Inference,
                                 SeedSource::Consolidation,
                                 SeedContent::FreeText { text: thought },

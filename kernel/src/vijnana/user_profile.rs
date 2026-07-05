@@ -81,6 +81,7 @@ impl UserProfileManager {
         let seed = Seed {
             id: uuid::Uuid::new_v4().to_string(),
             session_id: session_id.to_string(),
+            project_id: String::new(),
             nature: SeedNature::Preference,
             source: SeedSource::SignalDetection,
             content: SeedContent::KeyValue {
@@ -162,6 +163,7 @@ mod tests {
             let seed = Seed {
                 id: uuid::Uuid::new_v4().to_string(),
                 session_id: "test".into(),
+                project_id: String::new(),
                 nature: SeedNature::Preference,
                 source: SeedSource::SignalDetection,
                 content: SeedContent::KeyValue {

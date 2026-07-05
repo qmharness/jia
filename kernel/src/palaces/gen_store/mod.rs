@@ -206,6 +206,16 @@ impl Store {
             "ALTER TABLE sessions ADD COLUMN project_id TEXT REFERENCES projects(id)",
             [],
         );
+        // Migrate: stamp project_id on seeds for same-project recall bias and
+        // per-project filtering. '' = global/legacy seed (no project affiliation).
+        let _ = conn.execute(
+            "ALTER TABLE seeds ADD COLUMN project_id TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_seeds_project ON seeds(project_id)",
+            [],
+        );
         // Create tier_access index after migration ensures the column exists
         let _ = conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_seeds_tier_access ON seeds(tier, access_count)",
@@ -382,6 +392,7 @@ mod tests {
         let seed = Seed {
             id: id.into(),
             session_id: "test".into(),
+            project_id: String::new(),
             nature: SeedNature::Fact,
             source: SeedSource::ToolObservation,
             content,

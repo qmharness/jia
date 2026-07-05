@@ -30,6 +30,7 @@ mod tests {
         let seed = Seed {
             id: id.into(),
             session_id: "test".into(),
+            project_id: String::new(),
             nature,
             source,
             content,
@@ -344,6 +345,7 @@ mod tests {
             let s = Seed {
                 id: format!("redun{i            }"),
                 session_id: "test".into(),
+                project_id: String::new(),
                 nature: SeedNature::Fact,
                 source: SeedSource::ToolObservation,
                 content: SeedContent::FreeText {
@@ -562,6 +564,7 @@ mod tests {
             Seed {
                 id: format!("{session}-{id}"),
                 session_id: session.into(),
+                project_id: String::new(),
                 nature: if success {
                     SeedNature::Fact
                 } else {
@@ -694,6 +697,7 @@ mod tests {
         let user_seed = Seed {
             id: "user-pref-1".into(),
             session_id: "s1".into(),
+            project_id: String::new(),
             nature: SeedNature::Preference,
             source: SeedSource::UserStatement,
             content: SeedContent::KeyValue {
@@ -954,6 +958,7 @@ mod tests {
             let seed = Seed {
                 id: format!("redun{i            }"),
                 session_id: "test".into(),
+                project_id: String::new(),
                 nature: SeedNature::Fact,
                 source: SeedSource::ToolObservation,
                 content: SeedContent::KeyValue {
@@ -1053,6 +1058,7 @@ mod tests {
             let seed = Seed {
                 id: format!("old_redun{i            }"),
                 session_id: "test".into(),
+                project_id: String::new(),
                 nature: SeedNature::Fact,
                 source: SeedSource::ToolObservation,
                 content: SeedContent::KeyValue {
@@ -1078,6 +1084,7 @@ mod tests {
             let seed = Seed {
                 id: format!("fresh{i            }"),
                 session_id: "test".into(),
+                project_id: String::new(),
                 nature: SeedNature::Fact,
                 source: SeedSource::ToolObservation,
                 content: SeedContent::KeyValue {
@@ -1102,6 +1109,7 @@ mod tests {
         let user_seed = Seed {
             id: "user-pref-extreme".into(),
             session_id: "test".into(),
+            project_id: String::new(),
             nature: SeedNature::Preference,
             source: SeedSource::UserStatement,
             content: SeedContent::KeyValue {

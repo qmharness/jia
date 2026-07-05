@@ -163,6 +163,7 @@ pub(crate) fn seed_row_to_json(row: &rusqlite::Row) -> String {
         "last_accessed_at": row.get::<_, i64>(11).unwrap_or(0),
         "strength": row.get::<_, f64>(12).unwrap_or(1.0),
         "tier": row.get::<_, String>(13).unwrap_or_else(|_| "OnDemand".into()),
+        "project_id": row.get::<_, String>(14).unwrap_or_default(),
     })
     .to_string()
 }

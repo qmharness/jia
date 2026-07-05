@@ -158,6 +158,7 @@ export interface VijnanaEntropy {
 
 export interface VijnanaSeed {
   id: string;
+  project_id: string;
   nature: string;
   source: string;
   content: { type: string } & Record<string, string>;

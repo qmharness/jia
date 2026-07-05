@@ -155,6 +155,7 @@ impl NamaRupaTool {
             let seed = Seed {
                 id: id.clone(),
                 session_id: String::new(),
+                project_id: String::new(),
                 nature: SeedNature::Fact,
                 source: SeedSource::Consolidation,
                 content: SeedContent::Triple {
@@ -425,6 +426,7 @@ mod tests {
         let seed = Seed {
             id: id.into(),
             session_id: "test".into(),
+            project_id: String::new(),
             nature: SeedNature::Fact,
             source: match source {
                 "UserStatement" => SeedSource::UserStatement,

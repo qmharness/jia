@@ -308,11 +308,13 @@ const T: Record<string, Record<Locale, string>> = {
   'seeds.filterAllNature': { zh: '全部类型', en: 'All types' },
   'seeds.filterAllSource': { zh: '全部来源', en: 'All sources' },
   'seeds.filterAllPalace': { zh: '全部宫', en: 'All palaces' },
+  'seeds.filterAllProjects': { zh: '全部项目', en: 'All projects' },
   'seeds.noMatch': { zh: '无匹配种子', en: 'No matching seeds' },
   'seeds.colContent': { zh: '内容', en: 'Content' },
   'seeds.colNature': { zh: '类型', en: 'Type' },
   'seeds.colSource': { zh: '来源', en: 'Source' },
   'seeds.colPalace': { zh: '宫', en: 'Palace' },
+  'seeds.colProject': { zh: '项目', en: 'Project' },
   'seeds.colStrength': { zh: '强度', en: 'Strength' },
 
   // ── ToolCard ──

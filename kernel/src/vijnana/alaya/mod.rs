@@ -30,6 +30,11 @@ pub enum SeedTier {
 pub struct Seed {
     pub id: String,
     pub session_id: String,
+    /// Project this seed was learned under ("" = global/legacy, no affiliation).
+    /// Used for same-project recall bias and per-project filtering; memory stays
+    /// globally shared (one ālaya) regardless of this field.
+    #[serde(default)]
+    pub project_id: String,
     pub nature: SeedNature,
     pub source: SeedSource,
     pub content: SeedContent,
@@ -85,6 +90,7 @@ pub enum SeedContent {
 impl Seed {
     pub fn new(
         session_id: String,
+        project_id: String,
         nature: SeedNature,
         source: SeedSource,
         content: SeedContent,
@@ -96,6 +102,7 @@ impl Seed {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             session_id,
+            project_id,
             nature,
             source,
             content,
@@ -150,6 +157,15 @@ impl SeedStore {
             .collect()
     }
 
+    /// Load all seeds affiliated with a project (exact project_id match).
+    pub fn load_by_project(&self, project_id: &str) -> Result<Vec<Seed>, JiaError> {
+        let jsons = self.store.load_seeds_by_project(project_id)?;
+        jsons
+            .into_iter()
+            .map(|j| serde_json::from_str(&j).map_err(JiaError::from))
+            .collect()
+    }
+
     /// Load ALL seeds (agent-wide, no session_id filter).
     pub fn load_all(&self) -> Result<Vec<Seed>, JiaError> {
         let jsons = self.store.load_all_seeds()?;
@@ -160,10 +176,14 @@ impl SeedStore {
     }
 
     /// Load top N seeds by strength, no palace/stem filter.
-    fn load_top(&self, limit: usize) -> Result<Vec<Seed>, JiaError> {
+    fn load_top(
+        &self,
+        limit: usize,
+        project_bias: Option<&str>,
+    ) -> Result<Vec<Seed>, JiaError> {
         let jsons = self
             .store
-            .load_top_seeds(limit)
+            .load_top_seeds(limit, project_bias)
             ?;
         jsons
             .into_iter()
@@ -174,7 +194,17 @@ impl SeedStore {
     /// Format top seeds as a compact prompt injection (no palace/stem filter).
     /// Returns (prompt_text, touched_seed_ids).
     pub fn top_influence_prompt(&self, limit: usize) -> (String, Vec<String>) {
-        let seeds = match self.load_top(limit) {
+        self.top_influence_prompt_with_bias(limit, None)
+    }
+
+    /// Same as `top_influence_prompt` but biases ranking toward seeds learned
+    /// under `project_bias` (same-project recall nudge; memory stays global).
+    pub fn top_influence_prompt_with_bias(
+        &self,
+        limit: usize,
+        project_bias: Option<&str>,
+    ) -> (String, Vec<String>) {
+        let seeds = match self.load_top(limit, project_bias) {
             Ok(s) => s,
             Err(_) => return (String::new(), Vec::new()),
         };
@@ -410,6 +440,7 @@ mod tests {
         let seed = Seed {
             id: id.into(),
             session_id: "test".into(),
+            project_id: String::new(),
             nature: SeedNature::Fact,
             source: SeedSource::ToolObservation,
             content,
@@ -550,6 +581,7 @@ mod tests {
         let seed = Seed {
             id: "s1".into(),
             session_id: "test".into(),
+            project_id: String::new(),
             nature: SeedNature::Fact,
             source: SeedSource::ToolObservation,
             content: SeedContent::FreeText { text: "x".into() },
@@ -578,6 +610,7 @@ mod tests {
         let seed = Seed {
             id: "s1".into(),
             session_id: "test".into(),
+            project_id: String::new(),
             nature: SeedNature::Fact,
             source: SeedSource::ToolObservation,
             content: SeedContent::FreeText { text: "x".into() },
@@ -604,6 +637,7 @@ mod tests {
         let seed = Seed {
             id: "s1".into(),
             session_id: "test".into(),
+            project_id: String::new(),
             nature: SeedNature::Fact,
             source: SeedSource::ToolObservation,
             content: SeedContent::FreeText { text: "x".into() },
@@ -629,6 +663,7 @@ mod tests {
         let seed_recent = Seed {
             id: "r".into(),
             session_id: "test".into(),
+            project_id: String::new(),
             nature: SeedNature::Fact,
             source: SeedSource::ToolObservation,
             content: SeedContent::FreeText { text: "x".into() },
@@ -644,6 +679,7 @@ mod tests {
         let seed_old = Seed {
             id: "o".into(),
             session_id: "test".into(),
+            project_id: String::new(),
             nature: SeedNature::Fact,
             source: SeedSource::ToolObservation,
             content: SeedContent::FreeText { text: "x".into() },
@@ -709,6 +745,7 @@ mod tests {
         let seed_a = Seed {
             id: "a".into(),
             session_id: "session_1".into(),
+            project_id: String::new(),
             nature: SeedNature::Fact,
             source: SeedSource::ToolObservation,
             content: SeedContent::FreeText {
@@ -726,6 +763,7 @@ mod tests {
         let seed_b = Seed {
             id: "b".into(),
             session_id: "session_2".into(),
+            project_id: String::new(),
             nature: SeedNature::Preference,
             source: SeedSource::UserStatement,
             content: SeedContent::KeyValue {
@@ -754,5 +792,95 @@ mod tests {
 
         let s3 = ss.load_by_session("nonexistent").unwrap();
         assert!(s3.is_empty());
+    }
+
+    #[test]
+    fn load_by_project_filters_correctly() {
+        let ss = temp_seed_store();
+        let mut a = Seed::new(
+            "s1".into(),
+            "projA".into(),
+            SeedNature::Fact,
+            SeedSource::ToolObservation,
+            SeedContent::FreeText { text: "in A".into() },
+            Palace::Zhen,
+            Stem::Geng,
+            "g".into(),
+        );
+        a.id = "a".into();
+        ss.insert(&a).unwrap();
+
+        let mut b = Seed::new(
+            "s2".into(),
+            "projB".into(),
+            SeedNature::Fact,
+            SeedSource::ToolObservation,
+            SeedContent::FreeText { text: "in B".into() },
+            Palace::Zhen,
+            Stem::Geng,
+            "g".into(),
+        );
+        b.id = "b".into();
+        ss.insert(&b).unwrap();
+
+        let in_a = ss.load_by_project("projA").unwrap();
+        assert_eq!(in_a.len(), 1);
+        assert_eq!(in_a[0].id, "a");
+        let in_b = ss.load_by_project("projB").unwrap();
+        assert_eq!(in_b.len(), 1);
+        assert_eq!(in_b[0].id, "b");
+        assert!(ss.load_by_project("nonexistent").unwrap().is_empty());
+    }
+
+    #[test]
+    fn top_influence_with_bias_prefers_same_project() {
+        let ss = temp_seed_store();
+        // Two equally strong seeds; only the same-project one gets the +0.1 nudge.
+        let mut foreign = Seed::new(
+            "s1".into(),
+            "other".into(),
+            SeedNature::Fact,
+            SeedSource::ToolObservation,
+            SeedContent::FreeText {
+                text: "foreign project".into(),
+            },
+            Palace::Zhen,
+            Stem::Geng,
+            "g".into(),
+        );
+        foreign.id = "f".into();
+        foreign.strength = 0.9;
+        ss.insert(&foreign).unwrap();
+
+        let mut mine = Seed::new(
+            "s2".into(),
+            "projA".into(),
+            SeedNature::Fact,
+            SeedSource::ToolObservation,
+            SeedContent::FreeText {
+                text: "my project".into(),
+            },
+            Palace::Zhen,
+            Stem::Geng,
+            "g".into(),
+        );
+        mine.id = "m".into();
+        mine.strength = 0.9;
+        ss.insert(&mine).unwrap();
+
+        // limit 1 + bias projA → "my project" beats "foreign project" (equal strength, +0.1).
+        let prompt = ss.top_influence_prompt_with_bias(1, Some("projA")).0;
+        assert!(
+            prompt.contains("my project"),
+            "biased prompt should surface same-project seed: {prompt:?}"
+        );
+        assert!(
+            !prompt.contains("foreign project"),
+            "biased prompt should not surface foreign seed at limit 1: {prompt:?}"
+        );
+
+        // No bias → plain strength order; either seed is acceptable, call must succeed.
+        let unb = ss.top_influence_prompt_with_bias(1, None).0;
+        assert!(unb.contains("my project") || unb.contains("foreign project"));
     }
 }

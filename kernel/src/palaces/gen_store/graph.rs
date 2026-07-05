@@ -238,6 +238,7 @@ mod tests {
     fn insert_triple(store: &Store, subj: &str, pred: &str, obj: &str) {
         let seed = Seed::new(
             "test-sess".into(),
+            String::new(),
             SeedNature::Fact,
             SeedSource::ToolObservation,
             SeedContent::Triple {
@@ -273,6 +274,7 @@ mod tests {
         let store = temp_store();
         let seed = Seed::new(
             "test-sess".into(),
+            String::new(),
             SeedNature::Fact,
             SeedSource::ToolObservation,
             SeedContent::FreeText {

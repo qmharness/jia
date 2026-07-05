@@ -305,6 +305,7 @@ Be attentive, truthful, and serve with sincerity.";
             let seed = Seed {
                 id: "ren_soul_root".to_string(),
                 session_id: "_jia_system".to_string(),
+                project_id: String::new(),
                 nature: SeedNature::Preference,
                 source: SeedSource::RenSoul,
                 content: SeedContent::FreeText { text },
@@ -437,6 +438,7 @@ Be attentive, truthful, and serve with sincerity.";
         }
 
         // Memory catalog: existence index for Alaya seeds
+        let cur_project = self.earth.store.session_project_id(&self.id);
         let seed_store = SeedStore::new(self.earth.store.clone());
         let (catalog, always_ids) = seed_store.memory_catalog();
         prompt.push_str(&catalog);
@@ -445,8 +447,10 @@ Be attentive, truthful, and serve with sincerity.";
         // Seed retrieval: inject top past experience when memory is trusted.
         // First 3 turns always inject (before L2 consolidation can fire); after that,
         // gate on atma_graha to avoid surfacing seeds when memory is unreliable.
+        // Nudge same-project memories up in ranking (global ālaya, project-aware recall).
         if self.manas.atma_graha < 0.60 || self.turn_count <= 3 {
-            let (seed_prompt, seed_ids) = seed_store.top_influence_prompt(5);
+            let (seed_prompt, seed_ids) =
+                seed_store.top_influence_prompt_with_bias(5, cur_project.as_deref());
             if !seed_prompt.is_empty() {
                 prompt.push_str(&seed_prompt);
             }

@@ -218,6 +218,7 @@ mod integration_tests {
             };
             let seed = Seed::new(
                 session_id.to_string(),
+                String::new(),
                 SeedNature::Inference,
                 SeedSource::Consolidation,
                 content,
@@ -407,6 +408,7 @@ mod integration_tests {
             .insert(&Seed {
                 id: "kv-config-broken".into(),
                 session_id: "inject".into(),
+                project_id: String::new(),
                 nature: SeedNature::Fact,
                 source: SeedSource::ToolObservation,
                 content: SeedContent::KeyValue {
@@ -427,6 +429,7 @@ mod integration_tests {
             .insert(&Seed {
                 id: "kv-config-fixed".into(),
                 session_id: "inject".into(),
+                project_id: String::new(),
                 nature: SeedNature::Fact,
                 source: SeedSource::ToolObservation,
                 content: SeedContent::KeyValue {
@@ -449,6 +452,7 @@ mod integration_tests {
             .insert(&Seed {
                 id: "aged-stale-seed".into(),
                 session_id: "old-session".into(),
+                project_id: String::new(),
                 nature: SeedNature::Fact,
                 source: SeedSource::Consolidation,
                 content: SeedContent::FreeText {
@@ -470,6 +474,7 @@ mod integration_tests {
             .insert(&Seed {
                 id: "user-pref-editor".into(),
                 session_id: "user".into(),
+                project_id: String::new(),
                 nature: SeedNature::Preference,
                 source: SeedSource::UserStatement,
                 content: SeedContent::KeyValue {
@@ -872,6 +877,7 @@ mod integration_tests {
             let seed = Seed {
                 id: format!("triple-{i            }"),
                 session_id: "triple-test".into(),
+                project_id: String::new(),
                 nature: SeedNature::Fact,
                 source: SeedSource::ToolObservation,
                 content: SeedContent::Triple {
@@ -1043,6 +1049,7 @@ mod integration_tests {
             .insert(&Seed {
                 id: "old-pref".into(),
                 session_id: "old".into(),
+                project_id: String::new(),
                 nature: SeedNature::Preference,
                 source: SeedSource::SignalDetection,
                 content: SeedContent::KeyValue {
@@ -1065,6 +1072,7 @@ mod integration_tests {
             .insert(&Seed {
                 id: "old-tool".into(),
                 session_id: "old".into(),
+                project_id: String::new(),
                 nature: SeedNature::Fact,
                 source: SeedSource::ToolObservation,
                 content: SeedContent::FreeText {
@@ -1530,6 +1538,7 @@ mod integration_tests {
                 .insert(&Seed {
                     id: format!("aged-{            }", i),
                     session_id: "ancient".into(),
+                    project_id: String::new(),
                     nature: SeedNature::Fact,
                     source: SeedSource::ToolObservation,
                     content: SeedContent::FreeText {
@@ -1559,6 +1568,7 @@ mod integration_tests {
                 .insert(&Seed {
                     id: format!("kv-{}-a", key_a),
                     session_id: "contra".into(),
+                    project_id: String::new(),
                     nature: SeedNature::Fact,
                     source: SeedSource::ToolObservation,
                     content: SeedContent::KeyValue {
@@ -1579,6 +1589,7 @@ mod integration_tests {
                 .insert(&Seed {
                     id: format!("kv-{}-b", key_b),
                     session_id: "contra".into(),
+                    project_id: String::new(),
                     nature: SeedNature::Fact,
                     source: SeedSource::ToolObservation,
                     content: SeedContent::KeyValue {
@@ -1613,6 +1624,7 @@ mod integration_tests {
                 .insert(&Seed {
                     id: format!("pref-{            }", key),
                     session_id: "user".into(),
+                    project_id: String::new(),
                     nature: SeedNature::Preference,
                     source: SeedSource::SignalDetection,
                     content: SeedContent::KeyValue {

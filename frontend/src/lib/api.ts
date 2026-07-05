@@ -310,9 +310,17 @@ export async function fetchVijnana(): Promise<VijnanaState> {
   return resp.json();
 }
 
-export async function fetchVijnanaSeeds(sessionId?: string): Promise<VijnanaSeedsResponse> {
-  const params = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : '';
-  const resp = await fetch(`${D}/vijnana/seeds${params}`, { headers: authHeaders() });
+export async function fetchVijnanaSeeds(
+  sessionId?: string,
+  projectId?: string,
+): Promise<VijnanaSeedsResponse> {
+  const p = new URLSearchParams();
+  if (sessionId) p.set('session_id', sessionId);
+  if (projectId) p.set('project_id', projectId);
+  const qs = p.toString();
+  const resp = await fetch(`${D}/vijnana/seeds${qs ? `?${qs}` : ''}`, {
+    headers: authHeaders(),
+  });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   return resp.json();
 }
