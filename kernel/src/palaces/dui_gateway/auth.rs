@@ -119,7 +119,20 @@ pub async fn auth_middleware(
     }
 
     match &state.api_key {
-        None => next.run(request).await,
+        None => {
+            // No API key configured: allow loopback, reject remote by default.
+            // Set security.allow_unauthenticated = true to override.
+            let addr = request
+                .extensions()
+                .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+                .map(|ci| ci.0.ip())
+                .unwrap_or_else(|| std::net::IpAddr::from([0, 0, 0, 0]));
+            if addr.is_loopback() {
+                return next.run(request).await;
+            }
+            tracing::warn!(remote = %addr, "Rejected unauthenticated remote request (no api_key configured)");
+            (axum::http::StatusCode::UNAUTHORIZED, "API key required for remote access").into_response()
+        }
         Some(expected_key) => {
             let authorized = request
                 .headers()

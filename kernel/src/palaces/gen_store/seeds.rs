@@ -360,6 +360,8 @@ impl Store {
         const ARCHIVE_BUDGET: usize = 1000;
 
         let conn = self.pool.get()?;
+        // RAII guard: rollback on any error to prevent transaction pollution
+        let result = (|| -> Result<TierBudgetReport, StoreError> {
         conn.execute("BEGIN IMMEDIATE", [])?;
 
         // ── OnDemand → Archive demotion ──
@@ -445,6 +447,14 @@ impl Store {
             archive_total,
             archive_deleted,
         })
+        })(); // end RAII closure
+        match result {
+            Ok(report) => Ok(report),
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK", []);
+                Err(e)
+            }
+        }
     }
 
     /// Load only `source` values for specific seed IDs — avoids full table scan

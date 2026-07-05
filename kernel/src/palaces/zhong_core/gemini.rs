@@ -49,9 +49,18 @@ fn build_gemini_body(messages: &[Message], max_tokens: u32, tools: Option<&[Tool
                 }));
             }
             Role::User => {
+                let mut parts: Vec<Value> = vec![serde_json::json!({"text": msg.content})];
+                for img in &msg.images {
+                    parts.push(serde_json::json!({
+                        "inline_data": {
+                            "mime_type": img.media_type,
+                            "data": img.data
+                        }
+                    }));
+                }
                 contents.push(serde_json::json!({
                     "role": "user",
-                    "parts": [{"text": msg.content}]
+                    "parts": parts
                 }));
             }
             Role::Assistant => {

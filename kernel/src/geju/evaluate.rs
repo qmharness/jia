@@ -101,13 +101,21 @@ impl GeJu {
             return GeJuResult { layer: 2, ..result };
         }
 
-        // Layer 3: Security baseline
+        // Layer 3: Security baseline.
+        // Geng(Exec) operations require user confirmation by default
+        // (shell, write, patch, computer_use — dangerous by nature).
+        let approval_chain = if self.heaven_stem == Stem::Geng {
+            vec![ApprovalGate::UserConfirmation("exec operation requires confirmation".into())]
+        } else {
+            vec![]
+        };
+
         GeJuResult {
             name: "默认安全底线".into(),
             execution_mode: ExecutionMode::Guarded,
-            requires_audit: false,
+            requires_audit: self.heaven_stem == Stem::Geng,
             max_retries: 1,
-            approval_chain: vec![],
+            approval_chain,
             layer: 3,
         }
     }
