@@ -304,6 +304,20 @@ async fn run_subagent_loop(
                     continue;
                 }
             };
+            // Subagent safety gate: reject destructive tools.
+            // Subagents run in a loop without GeJu/hook/planning-mode checks.
+            // Destructive operations (shell, write, patch, computer_use) are
+            // always denied here; subagents should only use read/observe tools.
+            if tool.is_destructive() {
+                messages.push(Message::text(
+                    Role::User,
+                    format!(
+                        "Error: Explore subagent cannot use destructive tool '{}'. Use a different subagent_type.",
+                        tc.name
+                    ),
+                ));
+                continue;
+            }
             match tool.execute(tc.parameters.clone(), exec_ctx).await {
                 Ok(output) => messages.push(Message::text(Role::User, output)),
                 Err(e) => messages.push(Message::text(Role::User, format!("Error: {e}"))),

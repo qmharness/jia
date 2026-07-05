@@ -785,7 +785,19 @@ async fn run_io_agent(earth: Arc<EarthPlate>, input: crate::palaces::kan_io::Cha
         tx,
         cancel_token: &cancel,
     };
-    agent.run(messages, &ctx).await;
+    // IO session timeout: 600s global deadline prevents permanent hang.
+    const IO_SESSION_TIMEOUT_SECS: u64 = 600;
+    let run_result =
+        tokio::time::timeout(std::time::Duration::from_secs(IO_SESSION_TIMEOUT_SECS), agent.run(messages, &ctx)).await;
+    match run_result {
+        Ok(()) => {}
+        Err(_elapsed) => {
+            tracing::warn!(session = %agent.id, "IO agent timed out after {IO_SESSION_TIMEOUT_SECS}s");
+            cancel.cancel();
+            let _ = ctx.tx.send(AgentEvent::Error("Session timed out".into()));
+            return;
+        }
+    }
     agent
         .post_loop(
             earth.store.clone(),
