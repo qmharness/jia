@@ -47,9 +47,9 @@ pub fn spawn_telegram_bot(
     let client = reqwest::Client::new();
     let token = config.token.clone();
     let base = format!("https://api.telegram.org/bot{token}");
-    let allowed_chat_ids = config.allowed_chat_ids.clone();
 
     tokio::spawn(async move {
+        let allowed_chat_ids = config.allowed_chat_ids;
         let mut restart_count = 0u32;
         const MAX_RESTARTS: u32 = 10;
 
@@ -58,9 +58,10 @@ pub fn spawn_telegram_bot(
             let base = base.clone();
             let client = client.clone();
             let cm = cm.clone();
+            let allowed = allowed_chat_ids.clone();
 
             let result: Result<(), Box<dyn std::any::Any + Send>> =
-                std::panic::AssertUnwindSafe(run_telegram_loop(client, token, base, cm))
+                std::panic::AssertUnwindSafe(run_telegram_loop(client, token, base, cm, allowed))
                     .catch_unwind()
                     .await;
 
@@ -110,6 +111,7 @@ async fn run_telegram_loop(
     token: String,
     base: String,
     cm: Arc<kernel::palaces::kan_io::ChannelManager>,
+    allowed_chat_ids: Vec<String>,
 ) {
     let mut last_update_id: u64 = 0;
     let mut consecutive_errors: u32 = 0;
