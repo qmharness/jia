@@ -360,6 +360,10 @@ pub struct BotsSection {
 #[derive(Debug, Clone, Deserialize)]
 pub struct TelegramBotConfig {
     pub token: String,
+    /// Allowed chat IDs (user or group). Empty = no one can interact.
+    /// Each entry is a numeric chat ID string, e.g. ["123456789"].
+    #[serde(default)]
+    pub allowed_chat_ids: Vec<String>,
 }
 
 /// WeChat personal bot configuration (iLink Bot API).
@@ -387,7 +391,7 @@ fn default_wechat_base_url() -> String {
     "https://ilinkai.weixin.qq.com".into()
 }
 fn default_dm_policy() -> String {
-    "open".into()
+    "disabled".into()
 }
 fn default_group_disabled() -> String {
     "disabled".into()

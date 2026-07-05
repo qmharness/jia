@@ -156,6 +156,15 @@ async fn run_telegram_loop(
                 if text.is_empty() {
                     continue;
                 }
+                // Trust gate: if allowed_chat_ids is configured, only respond
+                // to those chats. Empty = no one can interact (fail-closed).
+                let chat_id_str = msg.chat.id.to_string();
+                if !config.allowed_chat_ids.is_empty()
+                    && !config.allowed_chat_ids.iter().any(|id| id == &chat_id_str)
+                {
+                    tracing::warn!(chat_id = msg.chat.id, "Telegram message rejected: chat_id not in allowlist");
+                    continue;
+                }
                 tracing::info!(
                     chat_id = msg.chat.id,
                     text = %text,
