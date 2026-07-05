@@ -410,7 +410,6 @@ mod tests {
             bots: BotsSection::default(),
             hooks: vec![],
             cognition: CognitionSection::default(),
-            cognition: CognitionSection::default(),
         };
         let profile = ProviderProfile {
             kind: "openai".into(),

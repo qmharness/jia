@@ -308,6 +308,12 @@ impl PermissionMatrix {
             return Ok(());
         }
 
+        // Reject shell metacharacters that could chain or nest commands
+        const METACHARS: &[char] = &[';', '&', '|', '$', '`'];
+        if let Some(c) = cmd.chars().find(|ch| METACHARS.contains(ch)) {
+            return Err(format!("command contains disallowed metacharacter '{c}'"));
+        }
+
         // Extract the command name (first token, stripped of path)
         let cmd_name = tokens[0].split('/').next_back().unwrap_or(&tokens[0]);
 

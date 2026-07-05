@@ -103,8 +103,12 @@ impl BaseTool for GlobTool {
         let mut matches: Vec<(std::path::PathBuf, Option<SystemTime>)> = glob::glob(&full_pattern)
             .map_err(|e| format!("invalid glob pattern '{pattern}': {e}"))?
             .filter_map(|r| r.ok())
-            // Defense in depth: never return paths escaping the search root
-            .filter(|p| p.starts_with(&search_root))
+            // Defense in depth: canonicalize to prevent `..` traversal bypass
+            .filter(|p| {
+                p.canonicalize()
+                    .map(|cp| cp.starts_with(&search_root))
+                    .unwrap_or(false)
+            })
             .filter(|p| p.is_file())
             .map(|p| {
                 let mtime = std::fs::metadata(&p).and_then(|m| m.modified()).ok();

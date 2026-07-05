@@ -162,6 +162,17 @@ impl<W: Write> Drop for SecretsRedactWriter<W> {
 // Clone. For production use, redact_secrets is applied in the agent loop's
 // post-processing rather than at the tracing layer. See loop_post.rs.
 
+/// Truncate a string to at most `max_chars` Unicode characters, appending "…" if truncated.
+/// Safe for multi-byte UTF-8 (uses char boundaries, not byte indices).
+pub fn truncate_chars(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        s.to_string()
+    } else {
+        let t: String = s.chars().take(max_chars).collect();
+        format!("{t}…")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

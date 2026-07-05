@@ -364,16 +364,26 @@ impl super::Agent {
                         );
                     }
                     Some(Err(e)) => {
-                        if e.is_retryable() && ctx.core.try_llm_failover() {
-                            tracing::warn!(session = %self.id, error = %e, "LLM error, retrying with next provider");
+                        const MAX_LLM_RETRIES: u32 = 3;
+                        if e.is_retryable() && ctx.core.try_llm_failover() && self.retry_count < MAX_LLM_RETRIES {
+                            tracing::warn!(session = %self.id, error = %e, retry = self.retry_count + 1, "LLM error, retrying with next provider");
                             self.retry_count += 1;
                             continue;
+                        }
+                        if self.retry_count >= MAX_LLM_RETRIES {
+                            tracing::error!(session = %self.id, retries = self.retry_count, "LLM retry limit exhausted");
                         }
                         tracing::error!(session = %self.id, error = %e, "LLM inference error");
                         let _ = ctx.tx.send(AgentEvent::Error(format!("{e}")));
                         return;
                     }
-                    None => break,
+                    None => {
+                        if ctx.cancel_token.is_cancelled() {
+                            tracing::info!(session = %self.id, "Agent loop cancelled");
+                            return;
+                        }
+                        break;
+                    },
                 }
             }
 
@@ -458,49 +468,21 @@ impl super::Agent {
             );
 
             if tool_calls.is_empty() {
-                match certainty.decision {
-                    LoopDecision::ConfidentStop => {
-                        tracing::info!(
-                            composite = certainty.composite,
-                            c_task = certainty.c_task,
-                            c_open = certainty.c_open,
-                            turn = self.turn_count,
-                            "ConfidentStop — agent believes task is complete"
-                        );
-                        ctx.event_bus.emit(RuntimeEvent::TurnEnd {
-                            turn: self.turn_count as u64,
-                        });
-                        break;
-                    }
-                    LoopDecision::EscalateToHuman => {
-                        tracing::warn!(
-                            composite = certainty.composite,
-                            turn = self.turn_count,
-                            "EscalateToHuman — low certainty, escalating to user"
-                        );
-                        // Continue loop — agent will use ask_user tool or continue
-                    }
-                    LoopDecision::HardLimitReached => {
-                        tracing::warn!(
-                            max_turns = self.max_turns,
-                            "HardLimitReached — exceeded maximum turns"
-                        );
-                        ctx.event_bus.emit(RuntimeEvent::TurnEnd {
-                            turn: self.turn_count as u64,
-                        });
-                        break;
-                    }
-                    LoopDecision::Continue => {
-                        // Continue loop normally
-                    }
-                }
-                // Only break on ConfidentStop or HardLimitReached.
-                // Continue/EscalateToHuman → keep looping.
-                if certainty.decision == LoopDecision::ConfidentStop
-                    || certainty.decision == LoopDecision::HardLimitReached
-                {
-                    // Already broke above; this guard ensures we don't proceed to tool dispatch.
-                }
+                // Certainty signal is informational (logged, observed by TaiYin).
+                // Empty tool calls always end the turn — the LLM chose to respond
+                // with text only. Certainty enriches the observation but does not
+                // gate the break: Continue/EscalateToHuman must not keep looping
+                // with the same context (infinite loop).
+                tracing::info!(
+                    composite = certainty.composite,
+                    decision = ?certainty.decision,
+                    turn = self.turn_count,
+                    "Turn end — no tool calls"
+                );
+                ctx.event_bus.emit(RuntimeEvent::TurnEnd {
+                    turn: self.turn_count as u64,
+                });
+                break;
             }
 
             // Notify frontend that tool batch is starting (create bubble B)

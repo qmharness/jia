@@ -523,7 +523,6 @@ mod tests {
             bots: Default::default(),
             hooks: vec![],
             cognition: CognitionSection::default(),
-            cognition: CognitionSection::default(),
         };
         let config_loader = Arc::new(crate::palaces::kun_config::ConfigLoader::from_app_config(
             config,

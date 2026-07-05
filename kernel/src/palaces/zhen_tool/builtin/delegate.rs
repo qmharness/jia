@@ -321,7 +321,7 @@ async fn run_subagent_loop(
             "## Sub-agent turn {} / {}\n\n### Response\n{}\n\n{} tools called\n",
             turn + 1,
             max_turns,
-            &clean_text[..clean_text.len().min(500)],
+            &crate::utils::truncate_chars(&clean_text, 500),
             tool_calls.len(),
         );
         let _ = std::fs::write(&progress_file, &summary);

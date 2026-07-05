@@ -234,14 +234,14 @@ fn render_node(node_id: &str, nodes: &HashMap<String, &Value>, indent: &str, out
     let name_str = if name.is_empty() {
         String::new()
     } else if name.len() > 80 {
-        format!(" \"{}...\"", &name[..80])
+        format!(" \"{}\"", crate::utils::truncate_chars(&name, 80))
     } else {
         format!(" \"{}\"", name)
     };
 
     let value_str = if let Some(v) = value {
         if v.len() > 40 {
-            format!(" = \"{}...\"", &v[..40])
+            format!(" = \"{}\"", crate::utils::truncate_chars(v, 40))
         } else {
             format!(" = \"{}\"", v)
         }

@@ -345,7 +345,7 @@ impl EarthPlate {
         // P8 · crash recovery: hydrate subagent sessions from SQLite
         if let Ok(rows) = store.load_all_subagent_sessions() {
             if !rows.is_empty() {
-                let mut guard = subagent_sessions.lock().unwrap();
+                let mut guard = subagent_sessions.lock().unwrap_or_else(|e| e.into_inner());
                 for (id, messages_json, subagent_type, created_at, last_used) in rows {
                     if let Ok(messages) =
                         serde_json::from_str::<Vec<crate::types::Message>>(&messages_json)
@@ -434,15 +434,28 @@ impl EarthPlate {
         // 八神 — eight spirit hooks (one file per spirit, pinyin naming)
         spirit.hook_registry.register(Box::new(ZhifuHook));
         spirit.hook_registry.register(Box::new(TengsheHook));
-        spirit.hook_registry.register(Box::new(TaiYinHook::new(event_bus.clone())));
+        spirit
+            .hook_registry
+            .register(Box::new(TaiYinHook::new(event_bus.clone())));
         spirit.hook_registry.register(Box::new(LiuheHook));
-        spirit.hook_registry.register(Box::new(BaiHuHook::new(BaiHuConfig::default(), event_bus.clone())));
-        spirit.hook_registry.register(Box::new(XuanWuHook::new(event_bus.clone())));
+        spirit.hook_registry.register(Box::new(BaiHuHook::new(
+            BaiHuConfig::default(),
+            event_bus.clone(),
+        )));
+        spirit
+            .hook_registry
+            .register(Box::new(XuanWuHook::new(event_bus.clone())));
         spirit.hook_registry.register(Box::new(JiudiHook));
-        spirit.hook_registry.register(Box::new(JiuTianHook::new(event_bus.clone(), false)));
+        spirit
+            .hook_registry
+            .register(Box::new(JiuTianHook::new(event_bus.clone(), false)));
         // CompletionChecklist — shared between hook and Agent
         let completion_checklist = Arc::new(CompletionChecklist::new());
-        spirit.hook_registry.register(Box::new(CompletionCheckHook::new(completion_checklist.clone())));
+        spirit
+            .hook_registry
+            .register(Box::new(CompletionCheckHook::new(
+                completion_checklist.clone(),
+            )));
 
         let earth = Arc::new(Self {
             io,
@@ -700,7 +713,7 @@ async fn run_io_agent(earth: Arc<EarthPlate>, input: crate::palaces::kan_io::Cha
     // Serialize per session — prevent concurrent messages from the same
     // source racing on history read/write in post_loop.
     let session_lock = {
-        let mut map = earth.session_locks.lock().unwrap();
+        let mut map = earth.session_locks.lock().unwrap_or_else(|e| e.into_inner());
         // Drop entries with no live holders (strong_count == 1 means only map holds it)
         map.retain(|_, v| Arc::strong_count(v) > 1);
         map.entry(session_id.clone())
@@ -814,4 +827,3 @@ async fn run_io_agent(earth: Arc<EarthPlate>, input: crate::palaces::kan_io::Cha
         }
     }
 }
-

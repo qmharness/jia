@@ -404,7 +404,6 @@ mod tests {
                 bots: BotsSection::default(),
                 hooks: vec![],
                 cognition: CognitionSection::default(),
-                cognition: CognitionSection::default(),
             })),
             tools: Arc::new(ToolRegistry::new()),
             main_core: mock_core,

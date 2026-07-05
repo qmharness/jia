@@ -24,6 +24,7 @@ impl WebFetchTool {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .user_agent("jia/0.1.0")
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("reqwest client builder");
         Self { client }

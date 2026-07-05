@@ -243,7 +243,10 @@ async fn rpc_request(
     send_tx
         .send(req)
         .map_err(|e| format!("Connection closed: {e}"))?;
-    rx.await.map_err(|_| "Request cancelled".to_string())?
+    tokio::time::timeout(std::time::Duration::from_secs(60), rx)
+        .await
+        .map_err(|_| "MCP request timed out after 60s".to_string())?
+        .map_err(|_| "Request cancelled".to_string())?
 }
 
 async fn rpc_notification(

@@ -55,6 +55,7 @@ impl ProviderError {
                 | ProviderError::ServerError { .. }
                 | ProviderError::Network(_)
                 | ProviderError::StreamStalled
+                | ProviderError::AuthFailed { .. }
         )
     }
 }
