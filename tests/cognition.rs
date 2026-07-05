@@ -18,7 +18,7 @@ use kernel::vijnana::alaya::{
 };
 use kernel::vijnana::manas::Manas;
 use kernel::vijnana::mano::{TurnSnapshot, WorkingMemory};
-use kernel::vijnana::xunxi::coactivation::SeedCoActivationMatrix;
+use kernel::vijnana::vasana::coactivation::SeedCoActivationMatrix;
 use std::sync::Arc;
 use tempfile::tempdir;
 

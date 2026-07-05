@@ -135,7 +135,7 @@ Agent 完整 推理→格局判断→工具执行→结果反馈 循环。
   - `alaya/` — 第八识阿赖耶识（seed + store）
   - `mano/` — 第六识 Manovijñāna（WorkingMemory）
   - `manas/` — 第七识末那识（Manas）
-  - `xunxi/` — 熏习（ConsolidationEngine）
+  - `vasana/` — 熏习（ConsolidationEngine）
 - [x] **坐忘 zuowang/ 提升为顶级模块** — pipeline + trigger 纯英文子目录
 - [x] 架构文档 `jia-architecture.md` 同步更新
 

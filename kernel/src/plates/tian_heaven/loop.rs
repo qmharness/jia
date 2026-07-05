@@ -16,7 +16,7 @@ use crate::telemetry::metrics::{JIA_LLM_DURATION_SECONDS, JIA_TOKENS_COMPACTED_T
 use crate::types::{HistoryEntry, Message, Role, to_llm_messages};
 use crate::vijnana::alaya::SeedStore;
 use crate::vijnana::mano::TurnSnapshot;
-use crate::vijnana::xunxi::signal::SignalDetector;
+use crate::vijnana::vasana::signal::SignalDetector;
 
 // ── Re-exports from split submodules ────────────────────────────
 
@@ -179,7 +179,7 @@ impl super::Agent {
                                         crate::types::Role::Assistant => "A",
                                         crate::types::Role::System => "S",
                                     };
-                                    let hash_key = crate::vijnana::xunxi::distillation::fnv1a_hash(&format!("{role_tag}:{}", m.content));
+                                    let hash_key = crate::vijnana::vasana::distillation::fnv1a_hash(&format!("{role_tag}:{}", m.content));
                                     if !seen.insert(hash_key) {
                                         crate::types::Message::text(
                                             m.role,

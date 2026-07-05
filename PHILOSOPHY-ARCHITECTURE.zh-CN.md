@@ -477,7 +477,7 @@ TurnSnapshot {
 
 ### 3.5 熏习：经验→种子的转化
 
-熏习（Vāsanā / Perfuming / Xunxi）是经验（现行位）转化为记忆（种子位）的过程。
+熏习（Vāsanā / Perfuming / Vasana）是经验（现行位）转化为记忆（种子位）的过程。
 
 #### 三层熏习管道
 

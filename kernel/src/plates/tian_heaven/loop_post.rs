@@ -4,8 +4,8 @@ use crate::palaces::zhong_core::JiaCore;
 use crate::principles::SystemPrinciple;
 use crate::telemetry::metrics::{JIA_ATMA_GRAHA, JIA_SEEDS_TOTAL};
 use crate::vijnana::alaya::SeedStore;
-use crate::vijnana::xunxi::ConsolidationEngine;
-use crate::vijnana::xunxi::distillation::DistillationEngine;
+use crate::vijnana::vasana::ConsolidationEngine;
+use crate::vijnana::vasana::distillation::DistillationEngine;
 use crate::zuowang::pipeline::ZuowangPipeline;
 use std::sync::Arc;
 

@@ -1,4 +1,4 @@
-//! xunxi — Consolidation / Habituation (熏习)
+//! vasana — Consolidation / Habituation (熏习)
 
 use std::sync::Arc;
 pub mod coactivation;

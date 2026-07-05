@@ -91,7 +91,7 @@ pub struct Agent {
     pub certainty_history: Vec<f32>,
     /// Seed co-activation matrix — tracks which seeds are retrieved together.
     /// Per-project sparse matrix with exponential decay.
-    pub coactivation: crate::vijnana::xunxi::coactivation::SeedCoActivationMatrix,
+    pub coactivation: crate::vijnana::vasana::coactivation::SeedCoActivationMatrix,
 }
 
 /// P3 · Interaction mode — 谋划态 (planning) vs Normal.

@@ -490,7 +490,7 @@ The Mano is the input source for perfuming (Consolidation)—the most recent Tur
 
 ### 3.5 Perfuming: Experience → Seed Transformation
 
-Perfuming (Vāsanā / Xunxi) is the process by which experience (manifest realm, 现行位) is transformed into memory (seed realm, 种子位).
+Perfuming (Vāsanā / Vasana) is the process by which experience (manifest realm, 现行位) is transformed into memory (seed realm, 种子位).
 
 #### Three-Layer Perfuming Pipeline
 

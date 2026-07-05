@@ -116,7 +116,7 @@ impl Hook for BaiHuHook {
                 }
             }
             HookEvent::ToolPreExecute { tool_name, input } => {
-                let hash = crate::vijnana::xunxi::distillation::fnv1a_hash(&format!(
+                let hash = crate::vijnana::vasana::distillation::fnv1a_hash(&format!(
                     "{}|{}",
                     tool_name, input
                 ));

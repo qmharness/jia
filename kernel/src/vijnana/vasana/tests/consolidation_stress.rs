@@ -329,7 +329,7 @@ mod integration_tests {
     //          recovery (post-dissolution entropy drops, manas converges)
     //
     /// Requires a running LLM backend (see config.toml). Run with:
-    ///   cargo test --lib vijnana::xunxi::integration_tests -- --ignored --nocapture
+    ///   cargo test --lib vijnana::vasana::integration_tests -- --ignored --nocapture
     #[tokio::test]
     #[ignore = "requires running LLM backend configured in config.toml"]
     async fn real_llm_multisession_evolution() {
@@ -697,7 +697,7 @@ mod integration_tests {
     //   4. Triple 1-hop — graph_expand() on related Triple seeds
     //
     /// Run with:
-    ///   cargo test --lib vijnana::xunxi::integration_tests -- --ignored --nocapture
+    ///   cargo test --lib vijnana::vasana::integration_tests -- --ignored --nocapture
     #[tokio::test]
     #[ignore = "requires running LLM backend configured in config.toml"]
     async fn e2e_new_memory_system() {
@@ -727,7 +727,7 @@ mod integration_tests {
         // ═══════════════════════════════════════════════════
         println!("\n── Phase 1: L1 SignalDetector ──");
 
-        use crate::vijnana::xunxi::signal::SignalDetector;
+        use crate::vijnana::vasana::signal::SignalDetector;
 
         let user_messages = vec![
             ("session-1", "我用vim和Rust开发后端，我是后端工程师"),
@@ -1132,7 +1132,7 @@ mod integration_tests {
     //   4. "Evolution & Cleanup" — inject aged + contradictory seeds, dissolve, verify survivors
     //
     /// Run with:
-    ///   cargo test --lib vijnana::xunxi::integration_tests -- --ignored --nocapture
+    ///   cargo test --lib vijnana::vasana::integration_tests -- --ignored --nocapture
     #[tokio::test]
     #[ignore = "requires running LLM backend configured in config.toml"]
     async fn stress_multisession_evolution() {
@@ -1160,7 +1160,7 @@ mod integration_tests {
         let mut manas = Manas::new();
 
         use crate::vijnana::user_profile::UserProfileManager;
-        use crate::vijnana::xunxi::signal::SignalDetector;
+        use crate::vijnana::vasana::signal::SignalDetector;
 
         // ═══════════════════════════════════════════════════
         // Session 1: "Project Alpha" — Backend Identity

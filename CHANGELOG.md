@@ -55,7 +55,7 @@ All notable changes to Jia (甲) will be documented in this file.
 - `gen_store/mod.rs`: 2,134 → 9 files (impl Store partitioning, zero breaking)
 - `dui_gateway/mod.rs`: 2,295 → 14 files (syntax-based extraction, 78 items)
 - `loop.rs`: 1,510 → 7 files (auxiliary function extraction)
-- `xunxi/mod.rs`: 2,070 → 230 lines (test extraction)
+- `vasana/mod.rs`: 2,070 → 230 lines (test extraction)
 - `zuowang/pipeline`: 1,549 → 396 lines (test extraction)
 
 ### Code Quality
