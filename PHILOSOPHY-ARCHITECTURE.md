@@ -797,4 +797,4 @@ Jia uses Rust's type system and ownership model to realize philosophical concept
 
 ---
 
-*This document is based on the Jia codebase as of 2026-07-05. All philosophical concept mappings have been cross-verified against architecture.md, source code comments, and test cases.*
+*This document is based on the Jia codebase as of 2026-07-05. All philosophical concept mappings have been cross-verified against source code comments and test cases.*
