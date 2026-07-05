@@ -137,6 +137,31 @@ impl SeedCoActivationMatrix {
     pub fn total_pairs(&self, project_id: &str) -> usize {
         self.matrices.get(project_id).map(|m| m.len()).unwrap_or(0)
     }
+
+    /// Cap the number of pairs per seed to prevent unbounded growth.
+    /// For each seed, keeps only the top `max_pairs` strongest coactivation entries.
+    pub fn enforce_cap(&mut self, project_id: &str, max_pairs_per_seed: usize) {
+        let Some(matrix) = self.matrices.get_mut(project_id) else { return };
+        // Collect per-seed pair counts and strengths
+        let mut seed_pairs: HashMap<String, Vec<((String, String), f32)>> = HashMap::new();
+        for (pair, entry) in matrix.iter() {
+            seed_pairs.entry(pair.0.clone()).or_default().push((pair.clone(), entry.strength));
+            seed_pairs.entry(pair.1.clone()).or_default().push((pair.clone(), entry.strength));
+        }
+        // Find pairs to remove: weakest per seed above cap
+        let mut to_remove: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+        for (_, mut pairs) in seed_pairs {
+            if pairs.len() > max_pairs_per_seed {
+                pairs.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+                for (pair, _) in pairs.iter().take(pairs.len() - max_pairs_per_seed) {
+                    to_remove.insert(pair.clone());
+                }
+            }
+        }
+        for pair in to_remove {
+            matrix.remove(&pair);
+        }
+    }
 }
 
 #[cfg(test)]

@@ -353,7 +353,7 @@ impl Store {
     }
 
     /// Enforce tier budgets: demote excess OnDemand → Archive, delete excess Archive.
-    /// Protected seeds (UserStatement source OR Preference nature) are never evicted.
+    /// Protected seeds (UserStatement/RenSoul/Handoff source OR Preference nature) are never evicted.
     /// Both operations run in a single transaction for atomicity.
     pub fn enforce_tier_budgets(&self) -> Result<TierBudgetReport, StoreError> {
         const ONDEMAND_BUDGET: usize = 200;
@@ -380,6 +380,7 @@ impl Store {
                  WHERE tier = 'OnDemand'
                    AND source != 'UserStatement'
                    AND source != 'RenSoul'
+                   AND source != 'Handoff'
                    AND nature != 'Preference'
                  ORDER BY strength ASC
                  LIMIT ?1",
@@ -418,6 +419,7 @@ impl Store {
                  WHERE tier = 'Archive'
                    AND source != 'UserStatement'
                    AND source != 'RenSoul'
+                   AND source != 'Handoff'
                    AND nature != 'Preference'
                  ORDER BY strength ASC
                  LIMIT ?1",

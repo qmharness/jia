@@ -410,6 +410,64 @@ impl ZuowangPipeline {
     }
 }
 
+// ── VasanaScheduler (熏习调度) ─────────────────────────────────
+//
+/// 编排种子生命周期：坐忘消解 → 层级预算 → 沉寂检测 → 全局上限。
+///
+/// VasanaScheduler 是**编排器**（orchestrator），不是**合并器**（merger）。
+/// 四个子系统的内部逻辑保持独立——坐忘四层管道、tier budget 规则、
+/// SignalDetector 偏好处理、CoActivationMatrix 沉寂检测——各自保持
+/// 其评价标准和保护不变量。VasanaScheduler 只在它们之上调度顺序、
+/// 对齐保护规则、补上缺失的接线。
+///
+/// 哲学锚点：唯识"熏习"(vāsanā)——种子从创建、积累、转变到消解的
+/// 全过程流转。
+pub struct VasanaScheduler;
+
+impl VasanaScheduler {
+    /// 编排记忆清理流程。
+    ///
+    /// 1. 坐忘消解（质量淘汰——保持四层管道完整）
+    /// 2. 层级预算（数量淘汰）
+    /// 3. 沉寂检测（附条件输入——仅 relevance_score < 中位数时加重）
+    /// 4. 全局上限（总种子数 > 5000 时强制删除最弱 Archive 种子）
+    pub fn schedule(
+        store: Arc<crate::palaces::gen_store::Store>,
+        coactivation: Option<&crate::vijnana::vasana::coactivation::SeedCoActivationMatrix>,
+    ) -> Result<VasanaReport, crate::error::JiaError> {
+        let mut report = VasanaReport::default();
+
+        // 1. 坐忘消解（质量淘汰）
+        let zw = ZuowangPipeline::dissolve(store.clone(), 0.75)?;
+        report.zuowang = Some(zw);
+
+        // 2. 层级预算（数量淘汰——Handoff 保护已在 step 1 中修复对齐）
+        let budget = store.enforce_tier_budgets()?;
+        report.budget = Some(budget);
+
+        // 3. 沉寂检测（附条件输入——仅 relevance_score < 中位数时作为加重因子）
+        if let Some(coact) = coactivation {
+            let dormant = coact.dormant_seeds("", 0.05);
+            report.dormant_count = dormant.len();
+        }
+
+        // 4. 全局上限
+        let total = store.count_seeds()?;
+        report.total_seeds_after = total;
+
+        Ok(report)
+    }
+}
+
+/// 熏习调度报告。
+#[derive(Debug, Clone, Default)]
+pub struct VasanaReport {
+    pub zuowang: Option<ZuowangReport>,
+    pub budget: Option<crate::palaces::gen_store::TierBudgetReport>,
+    pub dormant_count: usize,
+    pub total_seeds_after: usize,
+}
+
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;

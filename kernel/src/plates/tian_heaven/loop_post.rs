@@ -6,7 +6,7 @@ use crate::telemetry::metrics::{JIA_ATMA_GRAHA, JIA_SEEDS_TOTAL};
 use crate::vijnana::alaya::SeedStore;
 use crate::vijnana::vasana::ConsolidationEngine;
 use crate::vijnana::vasana::distillation::DistillationEngine;
-use crate::zuowang::pipeline::ZuowangPipeline;
+use crate::zuowang::pipeline::VasanaScheduler;
 use std::sync::Arc;
 
 impl super::Agent {
@@ -93,58 +93,55 @@ impl super::Agent {
             }
         }
 
-        // Zuowang dissolution: prune stale/weak seeds when entropy exceeds threshold.
-        // Runs after consolidation and distillation so newly created seeds are counted.
-        match ZuowangPipeline::dissolve(store.clone(), 0.75) {
+        // ── VasanaScheduler (熏习调度) ──
+        // Orchestrates: zuowang dissolution → tier budgets → dormancy detection.
+        // Replaces the separate dissolve + enforce_tier_budgets calls.
+        match VasanaScheduler::schedule(
+            store.clone(),
+            Some(&self.coactivation),
+        ) {
             Ok(report) => {
-                if report.seeds_examined > 0 {
-                    tracing::info!(
-                        session = %self.id,
-                        examined = report.seeds_examined,
-                        dissolved = report.seeds_dissolved,
-                        weakened = report.seeds_weakened,
-                        downgraded = report.seeds_downgraded,
-                        entropy_before = %report.entropy_before,
-                        entropy_after = %report.entropy_after,
-                        "Zuowang dissolution complete"
-                    );
-                    // Recalibrate Manas with post-dissolution dimensional entropy
-                    let remaining = store.count_seeds().unwrap_or(0);
-                    self.manas
-                        .recalibrate(&report.entropy_dimensions, remaining);
-                    JIA_ATMA_GRAHA.set(self.manas.atma_graha as f64);
-                    // Record atma-graha time series for trend visualization
-                    let _ = store.insert_manas_snapshot(
-                        &self.id,
-                        self.manas.atma_graha,
-                        report.entropy_dimensions.total,
-                        remaining,
-                    );
+                // Zuowang dissolution results
+                if let Some(ref zw) = report.zuowang {
+                    if zw.seeds_examined > 0 {
+                        tracing::info!(
+                            session = %self.id,
+                            examined = zw.seeds_examined,
+                            dissolved = zw.seeds_dissolved,
+                            weakened = zw.seeds_weakened,
+                            downgraded = zw.seeds_downgraded,
+                            entropy_before = %zw.entropy_before,
+                            entropy_after = %zw.entropy_after,
+                            dormant_detected = report.dormant_count,
+                            "VasanaScheduler: zuowang dissolution complete"
+                        );
+                        let remaining = report.total_seeds_after;
+                        self.manas.recalibrate(&zw.entropy_dimensions, remaining);
+                        JIA_ATMA_GRAHA.set(self.manas.atma_graha as f64);
+                        let _ = store.insert_manas_snapshot(
+                            &self.id,
+                            self.manas.atma_graha,
+                            zw.entropy_dimensions.total,
+                            remaining,
+                        );
+                    }
+                }
+                // Tier budget enforcement results
+                if let Some(ref budget) = report.budget {
+                    if budget.ondemand_demoted > 0 || budget.archive_deleted > 0 {
+                        tracing::info!(
+                            session = %self.id,
+                            ondemand_total = budget.ondemand_total,
+                            ondemand_demoted = budget.ondemand_demoted,
+                            archive_total = budget.archive_total,
+                            archive_deleted = budget.archive_deleted,
+                            "VasanaScheduler: tier budget enforced"
+                        );
+                    }
                 }
             }
             Err(e) => {
-                tracing::warn!(session = %self.id, error = %e, "Zuowang dissolution failed");
-            }
-        }
-
-        // Tier budget enforcement: cap memory pyramid layers after dissolve.
-        // OnDemand > 200 → demote to Archive; Archive > 1000 → delete.
-        // Runs after dissolve so quality filtering is applied first.
-        match store.enforce_tier_budgets() {
-            Ok(report) => {
-                if report.ondemand_demoted > 0 || report.archive_deleted > 0 {
-                    tracing::info!(
-                        session = %self.id,
-                        ondemand_total = report.ondemand_total,
-                        ondemand_demoted = report.ondemand_demoted,
-                        archive_total = report.archive_total,
-                        archive_deleted = report.archive_deleted,
-                        "Tier budget enforced"
-                    );
-                }
-            }
-            Err(e) => {
-                tracing::warn!(session = %self.id, error = %e, "Tier budget enforcement failed");
+                tracing::warn!(session = %self.id, error = %e, "VasanaScheduler failed");
             }
         }
 
