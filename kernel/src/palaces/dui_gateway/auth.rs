@@ -131,7 +131,11 @@ pub async fn auth_middleware(
                 return next.run(request).await;
             }
             tracing::warn!(remote = %addr, "Rejected unauthenticated remote request (no api_key configured)");
-            (axum::http::StatusCode::UNAUTHORIZED, "API key required for remote access").into_response()
+            (
+                axum::http::StatusCode::UNAUTHORIZED,
+                "API key required for remote access",
+            )
+                .into_response()
         }
         Some(expected_key) => {
             let authorized = request

@@ -132,7 +132,10 @@ impl BaseTool for WebFetchTool {
             if cl > MAX_BODY_BYTES as u64 {
                 return Err(crate::error::ToolError::InvalidInput {
                     tool: "web_fetch".into(),
-                    reason: format!("Response body too large: {} bytes (max {})", cl, MAX_BODY_BYTES),
+                    reason: format!(
+                        "Response body too large: {} bytes (max {})",
+                        cl, MAX_BODY_BYTES
+                    ),
                 });
             }
         }

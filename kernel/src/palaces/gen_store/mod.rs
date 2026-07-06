@@ -63,9 +63,13 @@ impl Store {
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap_or(0);
         if current_version < CURRENT_SCHEMA_VERSION {
-            tracing::info!(from = current_version, to = CURRENT_SCHEMA_VERSION, "Running schema migration");
+            tracing::info!(
+                from = current_version,
+                to = CURRENT_SCHEMA_VERSION,
+                "Running schema migration"
+            );
             conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS sessions (
+                "CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY,
                 messages_json TEXT NOT NULL,
                 updated_at INTEGER NOT NULL
@@ -141,51 +145,51 @@ impl Store {
                 score_protected INTEGER NOT NULL,
                 dissolved_sample_json TEXT NOT NULL
             );",
-        )
-        .expect("Failed to create tables");
+            )
+            .expect("Failed to create tables");
 
-        // Migrate: remove old tool_events_json column (now merged into messages_json)
-        let _ = conn.execute("ALTER TABLE sessions DROP COLUMN tool_events_json", []);
-        // Migrate: add title column (user-customizable session title, overrides derived)
-        let _ = conn.execute("ALTER TABLE sessions ADD COLUMN title TEXT", []);
-        // Migrate: add stable_epochs to manas table (agent stability tracking)
-        let _ = conn.execute(
-            "ALTER TABLE manas ADD COLUMN stable_epochs INTEGER NOT NULL DEFAULT 0",
-            [],
-        );
-        // Migrate: rename ego_grasp → atma_graha (ātma-grāha)
-        let _ = conn.execute(
-            "ALTER TABLE manas RENAME COLUMN ego_grasp TO atma_graha",
-            [],
-        );
-        // Migrate: persist distilled thought hashes to avoid redundant LLM calls
-        let _ = conn.execute(
-            "ALTER TABLE sessions ADD COLUMN distilled_hashes_json TEXT NOT NULL DEFAULT '[]'",
-            [],
-        );
-        // Migrate: archive support (0=active, 1=archived)
-        let _ = conn.execute(
-            "ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
-            [],
-        );
-        // Migrate: add content_text column for FTS5 indexing
-        let _ = conn.execute(
-            "ALTER TABLE seeds ADD COLUMN content_text TEXT NOT NULL DEFAULT ''",
-            [],
-        );
-        // Migrate: add tier column for seed injection policy (existence encoding)
-        let _ = conn.execute(
-            "ALTER TABLE seeds ADD COLUMN tier TEXT NOT NULL DEFAULT 'OnDemand'",
-            [],
-        );
-        // Migrate: add cwd column for project/workspace tracking
-        let _ = conn.execute(
-            "ALTER TABLE sessions ADD COLUMN cwd TEXT NOT NULL DEFAULT ''",
-            [],
-        );
-        // Migrate: projects table
-        let _ = conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS projects (
+            // Migrate: remove old tool_events_json column (now merged into messages_json)
+            let _ = conn.execute("ALTER TABLE sessions DROP COLUMN tool_events_json", []);
+            // Migrate: add title column (user-customizable session title, overrides derived)
+            let _ = conn.execute("ALTER TABLE sessions ADD COLUMN title TEXT", []);
+            // Migrate: add stable_epochs to manas table (agent stability tracking)
+            let _ = conn.execute(
+                "ALTER TABLE manas ADD COLUMN stable_epochs INTEGER NOT NULL DEFAULT 0",
+                [],
+            );
+            // Migrate: rename ego_grasp → atma_graha (ātma-grāha)
+            let _ = conn.execute(
+                "ALTER TABLE manas RENAME COLUMN ego_grasp TO atma_graha",
+                [],
+            );
+            // Migrate: persist distilled thought hashes to avoid redundant LLM calls
+            let _ = conn.execute(
+                "ALTER TABLE sessions ADD COLUMN distilled_hashes_json TEXT NOT NULL DEFAULT '[]'",
+                [],
+            );
+            // Migrate: archive support (0=active, 1=archived)
+            let _ = conn.execute(
+                "ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+                [],
+            );
+            // Migrate: add content_text column for FTS5 indexing
+            let _ = conn.execute(
+                "ALTER TABLE seeds ADD COLUMN content_text TEXT NOT NULL DEFAULT ''",
+                [],
+            );
+            // Migrate: add tier column for seed injection policy (existence encoding)
+            let _ = conn.execute(
+                "ALTER TABLE seeds ADD COLUMN tier TEXT NOT NULL DEFAULT 'OnDemand'",
+                [],
+            );
+            // Migrate: add cwd column for project/workspace tracking
+            let _ = conn.execute(
+                "ALTER TABLE sessions ADD COLUMN cwd TEXT NOT NULL DEFAULT ''",
+                [],
+            );
+            // Migrate: projects table
+            let _ = conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS projects (
                 id TEXT PRIMARY KEY,
                 cwd TEXT NOT NULL UNIQUE,
                 name TEXT NOT NULL DEFAULT '',
@@ -195,56 +199,56 @@ impl Store {
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );",
-        );
-        // Migrate: add name/desc/tags columns if upgrading from old schema
-        let _ = conn.execute(
-            "ALTER TABLE projects ADD COLUMN name TEXT NOT NULL DEFAULT ''",
-            [],
-        );
-        let _ = conn.execute(
-            "ALTER TABLE projects ADD COLUMN description TEXT NOT NULL DEFAULT ''",
-            [],
-        );
-        let _ = conn.execute(
-            "ALTER TABLE projects ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'",
-            [],
-        );
-        // Migrate: add project_id to sessions
-        let _ = conn.execute(
-            "ALTER TABLE sessions ADD COLUMN project_id TEXT REFERENCES projects(id)",
-            [],
-        );
-        // Migrate: stamp project_id on seeds for same-project recall bias and
-        // per-project filtering. '' = global/legacy seed (no project affiliation).
-        let _ = conn.execute(
-            "ALTER TABLE seeds ADD COLUMN project_id TEXT NOT NULL DEFAULT ''",
-            [],
-        );
-        let _ = conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_seeds_project ON seeds(project_id)",
-            [],
-        );
-        // Create tier_access index after migration ensures the column exists
-        let _ = conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_seeds_tier_access ON seeds(tier, access_count)",
-            [],
-        );
-        // Index for profile seed queries (nature + content_type filtered)
-        let _ = conn.execute(
+            );
+            // Migrate: add name/desc/tags columns if upgrading from old schema
+            let _ = conn.execute(
+                "ALTER TABLE projects ADD COLUMN name TEXT NOT NULL DEFAULT ''",
+                [],
+            );
+            let _ = conn.execute(
+                "ALTER TABLE projects ADD COLUMN description TEXT NOT NULL DEFAULT ''",
+                [],
+            );
+            let _ = conn.execute(
+                "ALTER TABLE projects ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'",
+                [],
+            );
+            // Migrate: add project_id to sessions
+            let _ = conn.execute(
+                "ALTER TABLE sessions ADD COLUMN project_id TEXT REFERENCES projects(id)",
+                [],
+            );
+            // Migrate: stamp project_id on seeds for same-project recall bias and
+            // per-project filtering. '' = global/legacy seed (no project affiliation).
+            let _ = conn.execute(
+                "ALTER TABLE seeds ADD COLUMN project_id TEXT NOT NULL DEFAULT ''",
+                [],
+            );
+            let _ = conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_seeds_project ON seeds(project_id)",
+                [],
+            );
+            // Create tier_access index after migration ensures the column exists
+            let _ = conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_seeds_tier_access ON seeds(tier, access_count)",
+                [],
+            );
+            // Index for profile seed queries (nature + content_type filtered)
+            let _ = conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_seeds_nature_content ON seeds(nature, content_type)",
             [],
         );
-        // Migrate: create FTS5 virtual table for semantic search
-        let _ = conn.execute_batch(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS seeds_fts USING fts5(
+            // Migrate: create FTS5 virtual table for semantic search
+            let _ = conn.execute_batch(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS seeds_fts USING fts5(
                 id UNINDEXED,
                 content_text,
                 tokenize='unicode61'
             );",
-        );
+            );
 
-        // Migrate: skill evolution tables (Phase 0)
-        let _ = conn.execute_batch(
+            // Migrate: skill evolution tables (Phase 0)
+            let _ = conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS skill_reflections (
                 id TEXT PRIMARY KEY,
                 skill_name TEXT NOT NULL,
@@ -276,26 +280,26 @@ impl Store {
             CREATE INDEX IF NOT EXISTS idx_skill_revisions_skill ON skill_revisions(skill_name);"
         );
 
-        // Migrate: sub-agent session persistence (P1)
-        let _ = conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS subagent_sessions (
+            // Migrate: sub-agent session persistence (P1)
+            let _ = conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS subagent_sessions (
                 id TEXT PRIMARY KEY,
                 messages_json TEXT NOT NULL,
                 subagent_type TEXT NOT NULL,
                 created_at INTEGER NOT NULL,
                 last_used INTEGER NOT NULL
             );",
-        );
+            );
 
-        // Migrate: principle archive support (0=active, 1=archived by user)
-        let _ = conn.execute(
-            "ALTER TABLE principles ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
-            [],
-        );
+            // Migrate: principle archive support (0=active, 1=archived by user)
+            let _ = conn.execute(
+                "ALTER TABLE principles ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+                [],
+            );
 
-        // Migrate: manas history for atma-graha time series
-        let _ = conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS manas_history (
+            // Migrate: manas history for atma-graha time series
+            let _ = conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS manas_history (
                 id TEXT PRIMARY KEY,
                 session_id TEXT NOT NULL,
                 atma_graha REAL NOT NULL,
@@ -303,11 +307,17 @@ impl Store {
                 seed_count INTEGER NOT NULL,
                 created_at INTEGER NOT NULL
             );",
-        );
+            );
             // TTL cleanup: prune history tables older than 90 days
             let cutoff = crate::utils::unix_now() - 90 * 86400;
-            let _ = conn.execute("DELETE FROM manas_history WHERE created_at < ?1", rusqlite::params![cutoff]);
-            let _ = conn.execute("DELETE FROM dissolution_history WHERE timestamp < ?1", rusqlite::params![cutoff]);
+            let _ = conn.execute(
+                "DELETE FROM manas_history WHERE created_at < ?1",
+                rusqlite::params![cutoff],
+            );
+            let _ = conn.execute(
+                "DELETE FROM dissolution_history WHERE timestamp < ?1",
+                rusqlite::params![cutoff],
+            );
 
             let _ = conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION);
         } // end migration version guard

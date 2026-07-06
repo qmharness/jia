@@ -87,7 +87,13 @@ impl BaseTool for GrepTool {
         let results = if search_root.is_file() {
             search_single_file(&search_root, pattern, max_results)?
         } else {
-            search_dir(&search_root, pattern, glob, max_results, &ctx.permissions.sandbox.blocked_prefixes)?
+            search_dir(
+                &search_root,
+                pattern,
+                glob,
+                max_results,
+                &ctx.permissions.sandbox.blocked_prefixes,
+            )?
         };
 
         if results.is_empty() {

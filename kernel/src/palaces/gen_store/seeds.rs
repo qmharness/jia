@@ -362,21 +362,21 @@ impl Store {
         let conn = self.pool.get()?;
         // RAII guard: rollback on any error to prevent transaction pollution
         let result = (|| -> Result<TierBudgetReport, StoreError> {
-        conn.execute("BEGIN IMMEDIATE", [])?;
+            conn.execute("BEGIN IMMEDIATE", [])?;
 
-        // ── OnDemand → Archive demotion ──
-        let ondemand_total: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM seeds WHERE tier = 'OnDemand'",
-            [],
-            |row| row.get(0),
-        )?;
-        let ondemand_total = ondemand_total as usize;
+            // ── OnDemand → Archive demotion ──
+            let ondemand_total: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM seeds WHERE tier = 'OnDemand'",
+                [],
+                |row| row.get(0),
+            )?;
+            let ondemand_total = ondemand_total as usize;
 
-        let mut ondemand_demoted = 0usize;
-        if ondemand_total > ONDEMAND_BUDGET {
-            let excess = ondemand_total - ONDEMAND_BUDGET;
-            let mut stmt = conn.prepare(
-                "SELECT id FROM seeds
+            let mut ondemand_demoted = 0usize;
+            if ondemand_total > ONDEMAND_BUDGET {
+                let excess = ondemand_total - ONDEMAND_BUDGET;
+                let mut stmt = conn.prepare(
+                    "SELECT id FROM seeds
                  WHERE tier = 'OnDemand'
                    AND source != 'UserStatement'
                    AND source != 'RenSoul'
@@ -384,38 +384,38 @@ impl Store {
                    AND nature != 'Preference'
                  ORDER BY strength ASC
                  LIMIT ?1",
-            )?;
-            let ids: Vec<String> = stmt
-                .query_map(rusqlite::params![excess as i64], |row| {
-                    row.get::<_, String>(0)
-                })?
-                .filter_map(|r| r.ok())
-                .collect();
-            ondemand_demoted = ids.len();
-            if !ids.is_empty() {
-                drop(stmt);
-                for id in &ids {
-                    conn.execute(
-                        "UPDATE seeds SET tier = 'Archive' WHERE id = ?1",
-                        rusqlite::params![id],
-                    )?;
+                )?;
+                let ids: Vec<String> = stmt
+                    .query_map(rusqlite::params![excess as i64], |row| {
+                        row.get::<_, String>(0)
+                    })?
+                    .filter_map(|r| r.ok())
+                    .collect();
+                ondemand_demoted = ids.len();
+                if !ids.is_empty() {
+                    drop(stmt);
+                    for id in &ids {
+                        conn.execute(
+                            "UPDATE seeds SET tier = 'Archive' WHERE id = ?1",
+                            rusqlite::params![id],
+                        )?;
+                    }
                 }
             }
-        }
 
-        // ── Archive → delete ──
-        let archive_total: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM seeds WHERE tier = 'Archive'",
-            [],
-            |row| row.get(0),
-        )?;
-        let archive_total = archive_total as usize;
+            // ── Archive → delete ──
+            let archive_total: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM seeds WHERE tier = 'Archive'",
+                [],
+                |row| row.get(0),
+            )?;
+            let archive_total = archive_total as usize;
 
-        let mut archive_deleted = 0usize;
-        if archive_total > ARCHIVE_BUDGET {
-            let excess = archive_total - ARCHIVE_BUDGET;
-            let mut stmt = conn.prepare(
-                "SELECT id FROM seeds
+            let mut archive_deleted = 0usize;
+            if archive_total > ARCHIVE_BUDGET {
+                let excess = archive_total - ARCHIVE_BUDGET;
+                let mut stmt = conn.prepare(
+                    "SELECT id FROM seeds
                  WHERE tier = 'Archive'
                    AND source != 'UserStatement'
                    AND source != 'RenSoul'
@@ -423,32 +423,32 @@ impl Store {
                    AND nature != 'Preference'
                  ORDER BY strength ASC
                  LIMIT ?1",
-            )?;
-            let ids: Vec<String> = stmt
-                .query_map(rusqlite::params![excess as i64], |row| {
-                    row.get::<_, String>(0)
-                })?
-                .filter_map(|r| r.ok())
-                .collect();
-            archive_deleted = ids.len();
-            if !ids.is_empty() {
-                drop(stmt);
-                for id in &ids {
-                    conn.execute("DELETE FROM seeds WHERE id = ?1", rusqlite::params![id])?;
-                    let _ =
-                        conn.execute("DELETE FROM seeds_fts WHERE id = ?1", rusqlite::params![id]);
+                )?;
+                let ids: Vec<String> = stmt
+                    .query_map(rusqlite::params![excess as i64], |row| {
+                        row.get::<_, String>(0)
+                    })?
+                    .filter_map(|r| r.ok())
+                    .collect();
+                archive_deleted = ids.len();
+                if !ids.is_empty() {
+                    drop(stmt);
+                    for id in &ids {
+                        conn.execute("DELETE FROM seeds WHERE id = ?1", rusqlite::params![id])?;
+                        let _ = conn
+                            .execute("DELETE FROM seeds_fts WHERE id = ?1", rusqlite::params![id]);
+                    }
                 }
             }
-        }
 
-        conn.execute("COMMIT", [])?;
+            conn.execute("COMMIT", [])?;
 
-        Ok(TierBudgetReport {
-            ondemand_total,
-            ondemand_demoted,
-            archive_total,
-            archive_deleted,
-        })
+            Ok(TierBudgetReport {
+                ondemand_total,
+                ondemand_demoted,
+                archive_total,
+                archive_deleted,
+            })
         })(); // end RAII closure
         match result {
             Ok(report) => Ok(report),

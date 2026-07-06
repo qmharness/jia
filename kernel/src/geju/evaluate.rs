@@ -105,7 +105,9 @@ impl GeJu {
         // Geng(Exec) operations require user confirmation by default
         // (shell, write, patch, computer_use — dangerous by nature).
         let approval_chain = if self.heaven_stem == Stem::Geng {
-            vec![ApprovalGate::UserConfirmation("exec operation requires confirmation".into())]
+            vec![ApprovalGate::UserConfirmation(
+                "exec operation requires confirmation".into(),
+            )]
         } else {
             vec![]
         };

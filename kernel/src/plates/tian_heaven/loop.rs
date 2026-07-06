@@ -365,7 +365,10 @@ impl super::Agent {
                     }
                     Some(Err(e)) => {
                         const MAX_LLM_RETRIES: u32 = 3;
-                        if e.is_retryable() && ctx.core.try_llm_failover() && self.retry_count < MAX_LLM_RETRIES {
+                        if e.is_retryable()
+                            && ctx.core.try_llm_failover()
+                            && self.retry_count < MAX_LLM_RETRIES
+                        {
                             tracing::warn!(session = %self.id, error = %e, retry = self.retry_count + 1, "LLM error, retrying with next provider");
                             self.retry_count += 1;
                             continue;
@@ -383,7 +386,7 @@ impl super::Agent {
                             return;
                         }
                         break;
-                    },
+                    }
                 }
             }
 

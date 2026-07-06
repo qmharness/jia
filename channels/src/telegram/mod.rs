@@ -165,7 +165,10 @@ async fn run_telegram_loop(
                 if !allowed_chat_ids.is_empty()
                     && !allowed_chat_ids.iter().any(|id| id == &chat_id_str)
                 {
-                    tracing::warn!(chat_id = msg.chat.id, "Telegram message rejected: chat_id not in allowlist");
+                    tracing::warn!(
+                        chat_id = msg.chat.id,
+                        "Telegram message rejected: chat_id not in allowlist"
+                    );
                     continue;
                 }
                 tracing::info!(

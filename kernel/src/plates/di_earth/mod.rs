@@ -486,15 +486,41 @@ impl EarthPlate {
         cron_runner::spawn_cron_runner(cron_store.clone(), earth.clone());
 
         // Spawn IO consumer — reads from ChannelManager and spawns Agent sessions
-        // for bot messages (WeChat, Telegram, Discord, webhooks, etc.)
+        // for bot messages (WeChat, Telegram, Discord, webhooks, etc.).
+        // CON-M1: Semaphore limits concurrent agent count to prevent resource exhaustion.
+        // Same-source dedup: if a session is already active, new messages for that
+        // source are dropped (the existing session handles the ongoing conversation).
         {
+            use crate::palaces::kan_io::ChannelSource;
             let earth_io = earth.clone();
+            let io_permits = Arc::new(tokio::sync::Semaphore::new(8));
+            let active_sessions: Arc<Mutex<HashMap<String, ()>>> =
+                Arc::new(Mutex::new(HashMap::new()));
             tokio::spawn(async move {
                 let mut rx = UnboundedReceiverStream::new(io_rx);
                 while let Some(input) = rx.next().await {
+                    // Same-source dedup: derive source key and skip if already active
+                    let source_key = match &input.source {
+                        ChannelSource::Stdin => "stdin".into(),
+                        ChannelSource::FileWatch { path } => format!("filewatch:{path}"),
+                        ChannelSource::Webhook { endpoint } => format!("webhook:{endpoint}"),
+                        ChannelSource::Api => "api".into(),
+                    };
+                    {
+                        let mut active = active_sessions.lock().unwrap_or_else(|e| e.into_inner());
+                        if active.contains_key(&source_key) {
+                            tracing::debug!(source = %source_key, "Dropping duplicate message: session already active");
+                            continue;
+                        }
+                        active.insert(source_key.clone(), ());
+                    }
                     let earth = earth_io.clone();
+                    let permits = io_permits.clone();
+                    let sessions = active_sessions.clone();
                     tokio::spawn(async move {
+                        let _permit = permits.acquire().await;
                         run_io_agent(earth, input).await;
+                        sessions.lock().unwrap_or_else(|e| e.into_inner()).remove(&source_key);
                     });
                 }
                 tracing::info!("IO consumer stopped");
@@ -713,7 +739,10 @@ async fn run_io_agent(earth: Arc<EarthPlate>, input: crate::palaces::kan_io::Cha
     // Serialize per session — prevent concurrent messages from the same
     // source racing on history read/write in post_loop.
     let session_lock = {
-        let mut map = earth.session_locks.lock().unwrap_or_else(|e| e.into_inner());
+        let mut map = earth
+            .session_locks
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         // Drop entries with no live holders (strong_count == 1 means only map holds it)
         map.retain(|_, v| Arc::strong_count(v) > 1);
         map.entry(session_id.clone())
@@ -787,8 +816,11 @@ async fn run_io_agent(earth: Arc<EarthPlate>, input: crate::palaces::kan_io::Cha
     };
     // IO session timeout: 600s global deadline prevents permanent hang.
     const IO_SESSION_TIMEOUT_SECS: u64 = 600;
-    let run_result =
-        tokio::time::timeout(std::time::Duration::from_secs(IO_SESSION_TIMEOUT_SECS), agent.run(messages, &ctx)).await;
+    let run_result = tokio::time::timeout(
+        std::time::Duration::from_secs(IO_SESSION_TIMEOUT_SECS),
+        agent.run(messages, &ctx),
+    )
+    .await;
     match run_result {
         Ok(()) => {}
         Err(_elapsed) => {
