@@ -520,7 +520,10 @@ impl EarthPlate {
                     tokio::spawn(async move {
                         let _permit = permits.acquire().await;
                         run_io_agent(earth, input).await;
-                        sessions.lock().unwrap_or_else(|e| e.into_inner()).remove(&source_key);
+                        sessions
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .remove(&source_key);
                     });
                 }
                 tracing::info!("IO consumer stopped");
