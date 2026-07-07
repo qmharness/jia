@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { getApiBase, getAuthHeaders } from '../lib/api';
 
   interface SpiritEvent {
     type: string;
@@ -35,8 +34,7 @@
   });
 
   function connect() {
-    const base = getApiBase();
-    const url = `${base}/events`;
+    const url = `${window.location.origin}/events`;
     eventSource = new EventSource(url);
     eventSource.onopen = () => connected = true;
     eventSource.onerror = () => connected = false;

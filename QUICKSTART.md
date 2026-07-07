@@ -18,8 +18,6 @@
   cargo --version
   ```
 
-- **SQLite**: bundled — no separate install needed.
-
 ## Install
 
 ```bash
