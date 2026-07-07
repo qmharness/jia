@@ -6,7 +6,13 @@ resolver = "3"
 name = "jia"
 version = "0.1.0"
 edition = "2024"
-description = "甲 (Jia) — AI Agent runtime based on Qimen Dunjia architecture"
+description = "JIA (甲) — AI Agent runtime based on Qimen Dunjia architecture"
+license = "Apache-2.0"
+repository = "https://github.com/qmharness/jia"
+homepage = "https://github.com/qmharness/jia"
+readme = "README.md"
+keywords = ["agent", "ai", "llm", "cli", "tui"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 kernel = { path = "kernel" }

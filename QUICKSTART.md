@@ -5,13 +5,18 @@
 - Rust toolchain 1.85+ (edition 2024)
 - SQLite 3
 
-## Build
+## Install
+
+```bash
+cargo install --git https://github.com/qmharness/jia.git
+```
+
+Or build from source:
 
 ```bash
 cargo build --release
+# binary at target/release/jia
 ```
-
-Binary at `target/release/jia`.
 
 ## Configuration
 
