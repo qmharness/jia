@@ -18,9 +18,7 @@
   cargo --version
   ```
 
-- **SQLite 3**
-
-  macOS: pre-installed. Linux: `apt install libsqlite3-dev` or `dnf install sqlite-devel`.
+- **SQLite**: bundled — no separate install needed.
 
 ## Install
 
