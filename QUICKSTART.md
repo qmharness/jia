@@ -2,8 +2,20 @@
 
 ## Prerequisites
 
-- Rust toolchain 1.85+ (edition 2024)
-- SQLite 3
+- **Rust** 1.85+ (edition 2024)
+
+  ```bash
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  ```
+  Restart your terminal after installation, then verify:
+  ```bash
+  rustc --version   # ≥ 1.85.0
+  cargo --version
+  ```
+
+- **SQLite 3**
+
+  macOS: pre-installed. Linux: `apt install libsqlite3-dev` or `dnf install sqlite-devel`.
 
 ## Install
 
