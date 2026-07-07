@@ -4,9 +4,14 @@
 
 - **Rust** 1.85+ (edition 2024)
 
+  macOS / Linux:
   ```bash
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
   ```
+
+  Windows (PowerShell): download and run [rustup-init.exe](https://rustup.rs).  
+  Follow the prompts — the installer will offer to install Visual Studio Build Tools if needed.
+
   Restart your terminal after installation, then verify:
   ```bash
   rustc --version   # ≥ 1.85.0
