@@ -162,6 +162,10 @@ pub struct ServerSection {
     pub host: String,
     #[serde(default = "default_port")]
     pub port: u16,
+    /// Path to web dashboard static files (frontend/dist/).
+    /// Leave empty to disable web UI.
+    #[serde(default)]
+    pub web_dir: Option<String>,
 }
 
 /// LLM configuration section ([llm] in config.toml).
@@ -540,6 +544,7 @@ impl Default for ServerSection {
         Self {
             host: default_host(),
             port: default_port(),
+            web_dir: None,
         }
     }
 }
@@ -570,6 +575,7 @@ impl Default for CognitionSection {
 pub struct AppConfig {
     pub host: String,
     pub port: u16,
+    pub web_dir: Option<String>,
     pub providers: HashMap<String, ProviderProfile>,
     pub default_main_model_provider: Option<String>,
     pub default_aux_model_provider: Option<String>,
@@ -666,6 +672,7 @@ impl AppConfig {
         Ok(Self {
             host,
             port,
+            web_dir: toml.server.web_dir.clone(),
             providers: toml.providers,
             default_main_model_provider: toml.llm.default_main_model_provider,
             default_aux_model_provider: toml.llm.default_aux_model_provider,

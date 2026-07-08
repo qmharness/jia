@@ -232,15 +232,12 @@ pub async fn run_start(
         }
     }
 
-    let web_dir_default = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("frontend")
-        .join("dist");
+    // web_dir resolution: CLI flag > config.toml server.web_dir > disabled
     let web_dir = web_dir
         .as_ref()
-        .map(|wd| wd.to_path_buf())
-        .unwrap_or(web_dir_default)
-        .display()
-        .to_string();
+        .map(|wd| wd.to_string_lossy().to_string())
+        .or_else(|| config.web_dir.clone())
+        .unwrap_or_default();
 
     // Fetch model lists for providers without explicit models configured
     for (name, p) in config.providers.iter_mut() {

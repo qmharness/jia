@@ -94,3 +94,8 @@ observation_enabled = true
 checklist_enabled = true
 # 上下文重置（长会话续命）
 reset_enabled = true
+
+# ── Web Dashboard ──────────────────────────────────────────
+# Path to frontend/dist/ for jia web.
+# Leave empty to disable web UI.
+# web_dir = "../jia-frontend/dist"
