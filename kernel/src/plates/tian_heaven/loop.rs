@@ -693,7 +693,7 @@ impl super::Agent {
                 ctx.hook_registry,
                 ctx.event_bus,
                 SpiritType::LiuHe,
-                Stem::Geng,
+                Stem::Xin,
                 batch_event.clone(),
             );
             fire_void_hooks(
@@ -707,14 +707,14 @@ impl super::Agent {
                 ctx.hook_registry,
                 ctx.event_bus,
                 SpiritType::XuanWu,
-                Stem::Ren,
+                Stem::Bing,
                 batch_event.clone(),
             );
             fire_void_hooks(
                 ctx.hook_registry,
                 ctx.event_bus,
                 SpiritType::JiuTian,
-                Stem::Ren,
+                Stem::Ding,
                 batch_event.clone(),
             );
 

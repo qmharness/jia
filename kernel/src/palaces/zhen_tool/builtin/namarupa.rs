@@ -13,7 +13,7 @@ use crate::stems::Stem;
 use crate::stems::action::ExecContext;
 use crate::stems::intent::StoreAction;
 use crate::utils;
-use crate::vijnana::alaya::{Seed, SeedContent, SeedDisposition, SeedNature, SeedSource, SeedTier};
+use crate::vijnana::alaya::{Seed, SeedContent, SeedNature, SeedSource, SeedTier};
 
 pub struct NamaRupaTool {
     store: Arc<Store>,
@@ -171,7 +171,6 @@ impl NamaRupaTool {
                 last_accessed_at: now,
                 strength: 0.8,
                 tier: SeedTier::OnDemand,
-                disposition: SeedDisposition::default(),
             };
 
             match serde_json::to_string(&seed) {
@@ -418,7 +417,7 @@ mod tests {
     use crate::palaces::Palace;
     use crate::stems::Stem;
     use crate::vijnana::alaya::{
-        Seed, SeedContent, SeedDisposition, SeedNature, SeedSource, SeedTier,
+        Seed, SeedContent, SeedNature, SeedSource, SeedTier,
     };
 
     fn temp_store() -> Arc<Store> {
@@ -451,7 +450,6 @@ mod tests {
             last_accessed_at: crate::utils::unix_now(),
             strength: 1.0,
             tier: SeedTier::OnDemand,
-            disposition: SeedDisposition::default(),
         };
         store
             .insert_seed(&serde_json::to_string(&seed).unwrap())

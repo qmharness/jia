@@ -242,7 +242,7 @@ impl HumanPlate {
     ) -> Result<ToolResult, DispatchError> {
         // Check DuMen gate
         if !self.gate_is_open(HumanGate::DuMen)
-            || !matches!(
+            || matches!(
                 self.permissions.sandbox_mode,
                 crate::palaces::kun_config::SandboxMode::Disabled
             )

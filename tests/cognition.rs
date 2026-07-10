@@ -14,7 +14,6 @@ use kernel::plates::tian_heaven::Agent;
 use kernel::plates::tian_heaven::certainty::{CertaintyParams, LoopDecision, TurnCertainty};
 use kernel::stems::Stem;
 use kernel::vijnana::alaya::{
-    Seed, SeedContent, SeedDisposition, SeedNature, SeedSource, SeedTier,
 };
 use kernel::vijnana::manas::Manas;
 use kernel::vijnana::mano::{TurnSnapshot, WorkingMemory};
@@ -72,27 +71,12 @@ fn certainty_escalate_on_failures() {
     assert_eq!(r.decision, LoopDecision::EscalateToHuman);
 }
 
-// ── SeedDisposition ───────────────────────────────────────────
 
 #[test]
-fn disposition_fact_resists_modification() {
-    let d = SeedDisposition::for_nature(&SeedNature::Fact);
-    assert!(d.consolidation_inertia > 0.5);
-    assert!(d.retrieval_threshold < 0.5);
-}
 
 #[test]
-fn disposition_ren_soul_polarized() {
-    let d = SeedDisposition::for_source(&SeedSource::RenSoul).unwrap();
-    assert!(d.consolidation_inertia > 0.9);
-    assert!(d.retrieval_threshold < 0.1);
-}
 
 #[test]
-fn disposition_source_overrides_nature() {
-    let d = SeedDisposition::resolve(&SeedNature::Inference, &SeedSource::RenSoul);
-    assert!(d.consolidation_inertia > 0.9);
-}
 
 // ── CoActivationMatrix ────────────────────────────────────────
 
@@ -183,24 +167,3 @@ fn manas_certainty_trend_adjusts() {
     );
 }
 
-// ── Seed with disposition ─────────────────────────────────────
-
-#[test]
-fn seed_new_includes_disposition() {
-    let s = Seed::new(
-        "s1".into(),
-        "p1".into(),
-        SeedNature::Fact,
-        SeedSource::Consolidation,
-        SeedContent::FreeText {
-            text: "test".into(),
-        },
-        Palace::Gen,
-        Stem::Gui,
-        "test_key".into(),
-    );
-    assert!(
-        s.disposition.consolidation_inertia > 0.5,
-        "Fact should have high inertia"
-    );
-}

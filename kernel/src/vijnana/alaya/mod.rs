@@ -4,8 +4,6 @@ use crate::error::JiaError;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-pub mod disposition;
-pub use disposition::SeedDisposition;
 
 use crate::palaces::Palace;
 use crate::palaces::gen_store::Store;
@@ -50,10 +48,6 @@ pub struct Seed {
     pub strength: f32,
     #[serde(default)] // 现有种子 JSON 无 "tier" → 回退到 SeedTier::default() = OnDemand
     pub tier: SeedTier,
-    /// 可变响应习性（势力）——区别于固定的 SeedNature"性"。
-    /// 控制种子如何被熏习修改和检索激活。
-    #[serde(default)]
-    pub disposition: SeedDisposition,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -109,7 +103,6 @@ impl Seed {
         geju_key: String,
     ) -> Self {
         let now = crate::utils::unix_now();
-        let disposition = SeedDisposition::resolve(&nature, &source);
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             session_id,
@@ -125,7 +118,6 @@ impl Seed {
             last_accessed_at: now,
             strength: 1.0,
             tier: SeedTier::OnDemand,
-            disposition,
         }
     }
 

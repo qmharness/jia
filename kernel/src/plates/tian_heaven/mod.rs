@@ -312,7 +312,7 @@ Be attentive, truthful, and serve with sincerity.";
             use crate::palaces::Palace;
             use crate::stems::Stem;
             use crate::vijnana::alaya::{
-                Seed, SeedContent, SeedDisposition, SeedNature, SeedSource, SeedTier,
+                Seed, SeedContent, SeedNature, SeedSource, SeedTier,
             };
 
             let seed = Seed {
@@ -330,7 +330,6 @@ Be attentive, truthful, and serve with sincerity.";
                 last_accessed_at: crate::utils::unix_now(),
                 strength: 1.0,
                 tier: SeedTier::Always,
-                disposition: SeedDisposition::default(),
             };
             if let Ok(json) = serde_json::to_string(&seed) {
                 let _ = self
@@ -503,7 +502,7 @@ mod tests {
     use crate::palaces::zhong_core::JiaCore;
     use crate::plates::di_earth::EarthPlate;
     use crate::plates::shen_spirit::SpiritPlate;
-    use crate::vijnana::alaya::{Seed, SeedDisposition, SeedNature, SeedSource, SeedTier};
+    use crate::vijnana::alaya::{Seed, SeedNature, SeedSource, SeedTier};
 
     fn temp_earth(tmp: &std::path::Path) -> Arc<EarthPlate> {
         let security = SecuritySection {

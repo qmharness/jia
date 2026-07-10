@@ -4,7 +4,7 @@ use crate::palaces::Palace;
 use crate::palaces::gen_store::Store;
 use crate::stems::Stem;
 use crate::vijnana::alaya::{
-    Seed, SeedContent, SeedDisposition, SeedNature, SeedSource, SeedStore, SeedTier,
+    Seed, SeedContent, SeedNature, SeedSource, SeedStore, SeedTier,
 };
 
 /// Manages the user profile — preference seeds that are dissolution-immune and
@@ -98,7 +98,6 @@ impl UserProfileManager {
             last_accessed_at: now,
             strength: 1.0,
             tier: SeedTier::OnDemand,
-            disposition: SeedDisposition::default(),
         };
 
         if seed_store.insert(&seed).is_ok() {
@@ -181,7 +180,6 @@ mod tests {
                 last_accessed_at: ts,
                 strength: 1.0,
                 tier: SeedTier::OnDemand,
-                disposition: SeedDisposition::default(),
             };
             seed_store.insert(&seed).unwrap();
         }
