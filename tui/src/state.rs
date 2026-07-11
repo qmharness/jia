@@ -524,32 +524,33 @@ impl App {
                 // OpenAI-compatible providers stream tool_call JSON as Delta text.
                 // Skip fragments that look like raw tool_call JSON.
                 let is_tool_json = content.contains("\"name\":") || content.contains("\"function\":");
-                if is_tool_json { continue; }
-                // Skip whitespace-only deltas when last line is blank or a
-                // non-assistant line (user message / tool card) — prevents
-                // double blank lines above tool cards.
-                let whitespace_only = content.chars().all(|c| c.is_whitespace());
-                let last = self.lines.last();
-                let last_blank = last.map(|l| l.text.is_empty()).unwrap_or(true);
-                let last_non_assistant = last.map(|l| l.style != Style::default()).unwrap_or(false);
-                let skip = whitespace_only && (last_blank || last_non_assistant);
-                if !skip {
-                    // Append to last line if it's an assistant (default style) line
-                    if let Some(last) = self.lines.last_mut()
-                        && last.style == Style::default()
-                    {
-                        last.text.push_str(&content);
-                    } else {
-                        // Blank line above assistant response
-                        self.lines.push(ChatLine {
-                            text: String::new(),
-                            style: Style::default(),
-                        });
-                        if !whitespace_only {
+                if !is_tool_json {
+                    // Skip whitespace-only deltas when last line is blank or a
+                    // non-assistant line (user message / tool card) — prevents
+                    // double blank lines above tool cards.
+                    let whitespace_only = content.chars().all(|c| c.is_whitespace());
+                    let last = self.lines.last();
+                    let last_blank = last.map(|l| l.text.is_empty()).unwrap_or(true);
+                    let last_non_assistant = last.map(|l| l.style != Style::default()).unwrap_or(false);
+                    let skip = whitespace_only && (last_blank || last_non_assistant);
+                    if !skip {
+                        // Append to last line if it's an assistant (default style) line
+                        if let Some(last) = self.lines.last_mut()
+                            && last.style == Style::default()
+                        {
+                            last.text.push_str(&content);
+                        } else {
+                            // Blank line above assistant response
                             self.lines.push(ChatLine {
-                                text: content,
+                                text: String::new(),
                                 style: Style::default(),
                             });
+                            if !whitespace_only {
+                                self.lines.push(ChatLine {
+                                    text: content,
+                                    style: Style::default(),
+                                });
+                            }
                         }
                     }
                 }
