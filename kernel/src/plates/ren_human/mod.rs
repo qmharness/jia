@@ -421,7 +421,7 @@ impl Default for HumanPlate {
 /// 八门 — Eight human interaction gates.
 /// ShangMen/DuMen/JingXiangMen active in production; remainder reserved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
+// SiMen + JingJueMen reserved for future wiring
 pub enum HumanGate {
     XiuMen,       // 休门 — Rest/idle/listen
     ShengMen,     // 生门 — Skill injection/growth

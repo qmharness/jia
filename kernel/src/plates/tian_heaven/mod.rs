@@ -25,7 +25,6 @@ use crate::vijnana::user_profile::UserProfileManager;
 /// 天盘 (Heaven Plate) — The dynamic agent execution loop.
 ///
 /// Each turn: Environment capture → Seed retrieval → LLM infer → GeJu evaluate → Dispatch.
-pub struct HeavenPlate;
 
 /// An agent instance. One per session/conversation.
 pub struct Agent {
