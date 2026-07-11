@@ -1,8 +1,75 @@
 # Changelog
 
-All notable changes to Jia (甲) will be documented in this file.
+## [Unreleased] — 2026-07-11
 
-## [Unreleased]
+### Cognitive Architecture (Stages A-F)
+- **TurnCertainty**: behavior-based confidence signals drive adaptive termination (ConfidentStop / EscalateToHuman / HardLimitReached)
+- **SeedDisposition** (removed): philosophically valid but functionally unused; replaced by nature_weight in Zuowang
+- **CoActivationMatrix** (Vasana): sparse temporal seed co-occurrence with exponential decay (俱有因)
+- **Eight Spirits** full activation: TaiYin (certainty), BaiHu (anomaly, 4-level gate), XuanWu (memory loss), JiuTian (strategy) — plus Zhifu/TengShe/LiuHe/JiuDi extracted to individual files with pinyin naming
+- **CompletionChecklist**: deterministic completion signals (exit codes, file existence), zero LLM cost
+- **ContextReset**: session handoff for long-running conversations with anti-thrashing cooldown
+- **VasanaScheduler** (熏习调度): orchestrates Zuowang dissolution → tier budgets → dormancy detection
+- **SSE forwarding**: all 16 RuntimeEvent variants streamable via `/events`
+- **Feature flags**: `[cognition]` config section loaded from config.toml
+
+### Security Hardening (P0/P1)
+- Telegram allowlist inverted logic fixed (empty = deny all, fail-closed)
+- Sandbox mode check inverted logic fixed (was downgrading when enabled)
+- Shell metacharacter rejection on both parse success and fallback paths
+- `MAX_LLM_RETRIES=3` cap preventing infinite retry loops
+- Cancel token respected in main loop (stops orphaned agent after disconnect)
+- AuthFailed added to `is_retryable` (failover on key expiry)
+- MCP `rpc_request` 60s timeout (prevents permanent hang)
+- SSRF hardening: web_fetch disables redirects
+- UTF-8 safe: `truncate_chars()` replaces byte-index slicing
+- Subagent destructive tool gate (Explore subagent blocks shell/write/patch)
+- IO consumer Semaphore(8) concurrency limit + same-source dedup
+- `PendingConfirmation` TTL cleanup (prune >30min)
+- Connection pool transaction RAII for `enforce_tier_budgets`
+- Gateway auth: loopback-only when no API key configured (fail-closed)
+- GeJu Layer 3: Geng(Exec) requires UserConfirmation by default
+- Gemini `inline_data` image support
+- `grep` walkdir blocked_prefixes check per file
+- `glob` canonicalize bypass fix
+- `browser_snapshot` root filter fix + depth limit + cycle detection
+- `web_fetch` Content-Length header check (max 10MB)
+- Agent loop empty-tool-calls infinite loop fix
+- IO session 600s timeout
+
+### Architecture Refinement
+- **Eight Gates** (八门): all 8 now actively wired
+  - JingXiangMen: Direct→Guarded downgrade
+  - ShangMen: destructive operation interception + Denied escalation
+  - DuMen: Sandbox→Guarded downgrade
+  - XiuMen: agent loop pause
+  - ShengMen: skill injection gate
+  - KaiMen: external communication gate
+  - SiMen: irreversible operation gate (session-scoped)
+  - JingJueMen: alert escalation gate (bound to InteractionMode)
+- **Session-scoped gate closing**: `AtomicU8` bit flags, Layer 4 principles autonomously close gates based on failure patterns, reset per session
+- **SandboxMode** enum: Required (default) / BestEffort / Disabled replaces boolean `sandbox_disabled`
+- Default workspace changed to `~/Documents/jia-workspace/`
+- Per-project backups at `<project_root>/.jia/backups/`
+- `xunxi` module renamed to `vasana` (Sanskrit: vāsanā)
+
+### Frontend
+- Frontend extracted to standalone `jia-frontend/` project
+- `web_dir` configurable via `[server]` section in config.toml
+- SpiritObserver panel (八神 SSE event stream) on Vijnana page
+
+### Philosophy Documentation
+- `PHILOSOPHY-ARCHITECTURE.md` (en): comprehensive system philosophy architecture
+- `PHILOSOPHY-ARCHITECTURE.zh-CN.md` (zh): 系统哲学架构
+- Architecture-Cognition Fusion axiom: Qimen as skeleton, Vijnana-Zuowang as flesh-and-blood, Confucian Ren as soul
+
+### Developer Experience
+- `config.example.toml` updated with `[cognition]` section
+- `QUICKSTART.md` with Rust install instructions (macOS/Linux/Windows) + `cargo install --git`
+- Migration version management: `PRAGMA user_version` tracking
+- History TTL cleanup (90-day retention for manas/dissolution history)
+- `tests/cognition.rs`: 15 integration tests for new components
+- CI removed (local `cargo build + test + clippy + fmt` workflow)
 
 ### CLI
 - `jia` (bare, no subcommand) now launches TUI directly; `jia tui` still works for compatibility
