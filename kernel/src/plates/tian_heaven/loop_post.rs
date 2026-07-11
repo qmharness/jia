@@ -97,7 +97,7 @@ impl super::Agent {
         // ── VasanaScheduler (熏习调度) ──
         // Orchestrates: zuowang dissolution → tier budgets → dormancy detection.
         // Replaces the separate dissolve + enforce_tier_budgets calls.
-        match VasanaScheduler::schedule(store.clone(), Some(&self.coactivation), human_plate) {
+        match VasanaScheduler::schedule(store.clone(), Some(&self.coactivation), human_plate).await {
             Ok(report) => {
                 // Zuowang dissolution results
                 if let Some(ref zw) = report.zuowang {

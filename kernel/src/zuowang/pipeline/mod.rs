@@ -408,6 +408,16 @@ impl ZuowangPipeline {
 
         Ok(report)
     }
+
+    /// Async wrapper: runs dissolve() in spawn_blocking to avoid blocking the tokio runtime.
+    pub async fn dissolve_async(
+        store: Arc<crate::palaces::gen_store::Store>,
+        threshold: f32,
+    ) -> Result<ZuowangReport, crate::error::JiaError> {
+        tokio::task::spawn_blocking(move || Self::dissolve(store, threshold))
+            .await
+            .map_err(|e| crate::error::JiaError::Internal(e.to_string()))?
+    }
 }
 
 // ── VasanaScheduler (熏习调度) ─────────────────────────────────
@@ -431,15 +441,15 @@ impl VasanaScheduler {
     /// 2. 层级预算（数量淘汰）
     /// 3. 沉寂检测（附条件输入——仅 relevance_score < 中位数时加重）
     /// 4. 全局上限（总种子数 > 5000 时强制删除最弱 Archive 种子）
-    pub fn schedule(
+    pub async fn schedule(
         store: Arc<crate::palaces::gen_store::Store>,
         coactivation: Option<&crate::vijnana::vasana::coactivation::SeedCoActivationMatrix>,
         human_plate: &crate::plates::ren_human::HumanPlate,
     ) -> Result<VasanaReport, crate::error::JiaError> {
         let mut report = VasanaReport::default();
 
-        // 1. 坐忘消解（质量淘汰）
-        let zw = ZuowangPipeline::dissolve(store.clone(), 0.75)?;
+        // 1. 坐忘消解（质量淘汰）— runs in spawn_blocking
+        let zw = ZuowangPipeline::dissolve_async(store.clone(), 0.75).await?;
         report.zuowang = Some(zw);
 
         // 2. 层级预算（数量淘汰——Handoff 保护已在 step 1 中修复对齐）

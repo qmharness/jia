@@ -46,10 +46,18 @@ impl super::Agent {
             session_id: self.id.clone(),
         });
 
-        // L1 perfuming: detect explicit user signals before appending to history (zero-LLM)
+        // L1 perfuming: detect explicit user signals before appending to history (zero-LLM).
+        // Runs in spawn_blocking to avoid SQLite I/O on the tokio worker thread.
         for msg in &messages {
             if matches!(msg.role, Role::User) {
-                SignalDetector::process(&self.earth.store, &self.id, &msg.content);
+                let store = self.earth.store.clone();
+                let session_id = self.id.clone();
+                let content = msg.content.clone();
+                tokio::task::spawn_blocking(move || {
+                    SignalDetector::process(&store, &session_id, &content);
+                })
+                .await
+                .ok();
             }
         }
 
