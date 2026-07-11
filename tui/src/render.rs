@@ -285,10 +285,6 @@ pub fn format_tool_result(
     execution_mode: Option<&str>,
     error: Option<&str>,
 ) -> Vec<ChatLine> {
-    // ask_user results are shown locally by the TUI ("Selected:" / "Answered:")
-    if tool == "ask_user" {
-        return vec![];
-    }
     let (mode_style, mode_icon) = match execution_mode {
         Some("direct") => (Style::default().fg(Color::Green), "✓"),
         Some("guarded") => (Style::default().fg(Color::Yellow), "⚠"),
@@ -305,16 +301,15 @@ pub fn format_tool_result(
 
     let mut lines = if let Some(err) = error && !err.is_empty() {
         vec![ChatLine {
-            text: format!("  └ {tool} ({geju_str} · {mode_str}) — {mode_icon} ERROR: {err}"),
+            text: format!("  └ ({geju_str} · {mode_str}) — {mode_icon} ERROR: {err}"),
             style: Style::default().fg(Color::Red),
         }]
     } else {
         vec![ChatLine {
-            text: format!("  └ {tool} ({geju_str} · {mode_str}) — {mode_icon}"),
+            text: format!("  └ ({geju_str} · {mode_str}) — {mode_icon}"),
             style: mode_style,
         }]
     };
-    // Show output only for errors (useful diagnostics), suppress raw JSON otherwise
     if error.is_some() && !output.is_empty() {
         lines.push(ChatLine { text: output.to_string(), style: Style::default() });
     }
