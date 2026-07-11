@@ -15,6 +15,7 @@ impl super::Agent {
         store: Arc<crate::palaces::gen_store::Store>,
         main_core: &JiaCore,
         aux_core: Option<&JiaCore>,
+        human_plate: &crate::plates::ren_human::HumanPlate,
     ) {
         // Final flush: touch any remaining seed IDs from the last round
         let ids: Vec<String> = self.touched_seed_ids.drain(..).collect();
@@ -96,7 +97,7 @@ impl super::Agent {
         // ── VasanaScheduler (熏习调度) ──
         // Orchestrates: zuowang dissolution → tier budgets → dormancy detection.
         // Replaces the separate dissolve + enforce_tier_budgets calls.
-        match VasanaScheduler::schedule(store.clone(), Some(&self.coactivation)) {
+        match VasanaScheduler::schedule(store.clone(), Some(&self.coactivation), human_plate) {
             Ok(report) => {
                 // Zuowang dissolution results
                 if let Some(ref zw) = report.zuowang {

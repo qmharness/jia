@@ -566,7 +566,7 @@ async fn handle_rin_connection(
                                 cancel_token: &agent_token,
                             };
                             agent.run(messages, &ctx).await;
-                            agent.post_loop(store, &main_core, aux_core.as_deref()).await;
+                            agent.post_loop(store, &main_core, aux_core.as_deref(), ctx.human_plate).await;
                             session_tokens_clone.remove(&sid);
                         }
                     }

@@ -614,7 +614,7 @@ impl EarthPlate {
             tokio::select! {
                 _ = agent.run(messages, &ctx) => {
                     agent
-                        .post_loop(store, &earth.main_core, earth.aux_core.as_deref())
+                        .post_loop(store, &earth.main_core, earth.aux_core.as_deref(), ctx.human_plate)
                         .await;
 
                     match collect_handle.await {
@@ -838,6 +838,7 @@ async fn run_io_agent(earth: Arc<EarthPlate>, input: crate::palaces::kan_io::Cha
             earth.store.clone(),
             &earth.main_core,
             earth.aux_core.as_deref(),
+            &human_plate,
         )
         .await;
 

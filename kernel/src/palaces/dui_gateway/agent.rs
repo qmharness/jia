@@ -272,7 +272,7 @@ pub async fn handle_agent(
                             cancel_token: &agent_token,
                         };
                         agent.run(req.messages, &ctx).await;
-                        agent.post_loop(store, &main_core, aux_core.as_ref()).await;
+                        agent.post_loop(store, &main_core, aux_core.as_ref(), ctx.human_plate).await;
                         JIA_REQUEST_DURATION_SECONDS.observe(_start.elapsed().as_secs_f64());
                         session_tokens.remove(&sid);
                     }

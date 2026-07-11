@@ -434,6 +434,7 @@ impl VasanaScheduler {
     pub fn schedule(
         store: Arc<crate::palaces::gen_store::Store>,
         coactivation: Option<&crate::vijnana::vasana::coactivation::SeedCoActivationMatrix>,
+        human_plate: &crate::plates::ren_human::HumanPlate,
     ) -> Result<VasanaReport, crate::error::JiaError> {
         let mut report = VasanaReport::default();
 
@@ -442,8 +443,15 @@ impl VasanaScheduler {
         report.zuowang = Some(zw);
 
         // 2. 层级预算（数量淘汰——Handoff 保护已在 step 1 中修复对齐）
-        let budget = store.enforce_tier_budgets()?;
-        report.budget = Some(budget);
+        // SiMen (死门) gate — skip tier_budget enforcement when closed
+        if human_plate.gate_is_open(
+            crate::plates::ren_human::HumanGate::SiMen,
+        ) {
+            let budget = store.enforce_tier_budgets()?;
+            report.budget = Some(budget);
+        } else {
+            tracing::info!("VasanaScheduler: SiMen closed, skipping tier budget enforcement");
+        }
 
         // 3. 沉寂检测（附条件输入——仅 relevance_score < 中位数时作为加重因子）
         if let Some(coact) = coactivation {
