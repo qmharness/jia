@@ -303,79 +303,45 @@ pub fn format_tool_result(
     let geju_str = geju.unwrap_or("");
     let mode_str = execution_mode.unwrap_or("");
 
-    if let Some(err) = error
-        && !err.is_empty()
-    {
-        let mut lines = vec![ChatLine {
+    let mut lines = if let Some(err) = error && !err.is_empty() {
+        vec![ChatLine {
             text: format!("  └ {tool} ({geju_str} · {mode_str}) — {mode_icon} ERROR: {err}"),
             style: Style::default().fg(Color::Red),
-        }];
-        // Show truncated output even on error
-        if !output.is_empty() {
-            let preview = if output.len() > 500 {
-                format!("{}...", &output[..500])
-            } else {
-                output.to_string()
-            };
-            lines.push(ChatLine {
-                text: preview,
-                style: Style::default(),
-            });
-        }
-        lines
+        }]
     } else {
-        let mut lines = vec![ChatLine {
+        vec![ChatLine {
             text: format!("  └ {tool} ({geju_str} · {mode_str}) — {mode_icon}"),
             style: mode_style,
-        }];
-        if !output.is_empty() {
-            lines.push(ChatLine {
-                text: output.to_string(),
-                style: Style::default(),
-            });
-        }
-        lines
+        }]
+    };
+    // Show output only for errors (useful diagnostics), suppress raw JSON otherwise
+    if error.is_some() && !output.is_empty() {
+        lines.push(ChatLine { text: output.to_string(), style: Style::default() });
     }
+    lines
 }
 
 /// Build a ChatLine for a tool call.
 pub fn format_tool_call(tool: &str, input: &str) -> ChatLine {
     let display = if tool == "ask_user" {
-        // Extract just the question text from the JSON for readability
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(input) {
             if let Some(q) = v.get("question").and_then(|q| q.as_str()) {
                 let n_opts = v.get("options")
                     .and_then(|o| o.as_array())
                     .map(|a| a.len())
                     .unwrap_or(0);
-                if n_opts > 0 {
-                    format!("❓ {q} ({n_opts} options)")
-                } else {
-                    format!("❓ {q}")
-                }
-            } else {
-                format!("ask_user: (no question)")
-            }
-        } else {
-            format!("ask_user: (invalid input)")
-        }
+                if n_opts > 0 { format!("❓ {q} ({n_opts} options)") } else { format!("❓ {q}") }
+            } else { String::new() }
+        } else { String::new() }
     } else {
-        if input.len() > 200 {
-            let end = input
-                .char_indices()
-                .take(200)
-                .last()
-                .map(|(i, c)| i + c.len_utf8())
-                .unwrap_or(0);
-            format!("{}...", &input[..end])
-        } else {
-            input.to_string()
-        }
+        String::new() // hide raw JSON input — show only the tool name
     };
-    ChatLine {
-        text: format!("🔧 {tool} — {display}"),
-        style: Style::default().fg(Color::Yellow),
-    }
+    let text = if display.is_empty() {
+        format!("🔧 {tool}")
+    } else {
+        format!("🔧 {tool} — {display}")
+    };
+    ChatLine { text, style: Style::default().fg(Color::Yellow) }
 }
 
 /// Build a ChatLine for a confirmation request.
