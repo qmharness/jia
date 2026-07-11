@@ -300,6 +300,11 @@ impl PermissionMatrix {
                         return Err(format!("command matches blocked pattern '{pattern}'"));
                     }
                 }
+                // Reject shell metacharacters on the fallback path too
+                const METACHARS: &[char] = &[';', '&', '|', '$', '`'];
+                if let Some(c) = cmd.chars().find(|ch| METACHARS.contains(ch)) {
+                    return Err(format!("command contains disallowed metacharacter '{c}'"));
+                }
                 return Ok(());
             }
         };

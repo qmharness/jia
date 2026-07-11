@@ -16,6 +16,7 @@ use crate::stems::action::ToolResult;
 /// A pending user confirmation, stored until resolved or timed out.
 pub struct PendingConfirmation {
     pub sender: tokio::sync::oneshot::Sender<bool>,
+    pub created_at: i64,
     pub token: String,
 }
 
@@ -359,17 +360,25 @@ impl HumanPlate {
 
         let (oneshot_tx, oneshot_rx) = tokio::sync::oneshot::channel();
 
-        // Store the sender so /confirm endpoint can resolve it
-        self.pending_confirmations
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(
+        // Store the sender so /confirm endpoint can resolve it.
+        // Clean up stale entries (>30 min) before inserting.
+        let now = crate::utils::unix_now();
+        let stale_cutoff = now - 1800;
+        {
+            let mut map = self
+                .pending_confirmations
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            map.retain(|_, v| v.created_at > stale_cutoff);
+            map.insert(
                 id.clone(),
                 PendingConfirmation {
                     sender: oneshot_tx,
                     token: token.clone(),
+                    created_at: now,
                 },
             );
+        }
 
         // Emit to SSE channel so client shows the prompt
         let _ = tx.send(AgentEvent::ConfirmRequest {

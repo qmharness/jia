@@ -168,6 +168,7 @@ async fn resolve_project(
             crate::plates::ren_human::PendingConfirmation {
                 token: confirm_token.clone(),
                 sender: _sender,
+                created_at: crate::utils::unix_now(),
             },
         );
     }

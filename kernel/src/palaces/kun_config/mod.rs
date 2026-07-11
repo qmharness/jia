@@ -154,6 +154,9 @@ pub struct JiaToml {
     /// P4 · user-configurable hooks ([[hooks]] array)
     #[serde(default)]
     pub hooks: Vec<HookConfig>,
+    /// Cognitive architecture feature flags
+    #[serde(default)]
+    pub cognition: CognitionSection,
 }
 
 #[derive(Debug, Deserialize)]
@@ -680,7 +683,7 @@ impl AppConfig {
             mcp_servers: toml.mcp_servers,
             bots: toml.bots,
             hooks: toml.hooks,
-            cognition: CognitionSection::default(),
+            cognition: toml.cognition,
         })
     }
 
