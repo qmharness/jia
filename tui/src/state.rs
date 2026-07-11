@@ -320,8 +320,8 @@ impl App {
                             let answer = &opts[selected];
                             self.send_answer(id, token, answer);
                             // Remove question panel (question + blank + options)
-                            let opt_count = opts.len() + 2; // options + blank + ❓ line
-                            let start: usize = first_line.saturating_sub(2); // keep tool card
+                            let opt_count = opts.len() + 1; // options + blank separator
+                            let start: usize = first_line.saturating_sub(1); // keep tool card
                             self.lines.drain(start..start + opt_count);
                             self.composer.clear();
                             self.composer.set_placeholder("");
@@ -337,8 +337,8 @@ impl App {
                         // Remove question panel if options still visible
                         if has_options {
                             let opts = options.as_ref().unwrap();
-                            let opt_count = opts.len() + 2; // options + blank + ❓ line
-                            let start: usize = first_line.saturating_sub(2); // keep tool card
+                            let opt_count = opts.len() + 1; // options + blank separator
+                            let start: usize = first_line.saturating_sub(1); // keep tool card
                             self.lines.drain(start..start + opt_count);
                         }
                         self.lines.push(ChatLine {
@@ -615,8 +615,7 @@ impl App {
                 options,
             } => {
                 self.agent_phase = AgentPhase::AwaitingResult;
-                self.lines
-                    .push(render::format_user_question(&question, timeout_secs));
+                // Question is shown in the tool card (🔧 ask_user — ...)
                 let (opts_store, selected, first_opt_line) = if let Some(ref opts) = options {
                     // Track where option lines will start
                     let first_idx = self.lines.len();
