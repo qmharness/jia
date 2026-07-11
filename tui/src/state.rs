@@ -615,8 +615,7 @@ impl App {
                 options,
             } => {
                 self.agent_phase = AgentPhase::AwaitingResult;
-                self.lines
-                    .push(render::format_user_question(&question, timeout_secs));
+                // Question text is already shown in the tool card (🔧 ask_user — ❓ ...)
                 let (opts_store, selected, first_opt_line) = if let Some(ref opts) = options {
                     // Track where option lines will start
                     let first_idx = self.lines.len();
