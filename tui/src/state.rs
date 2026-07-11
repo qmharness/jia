@@ -647,19 +647,15 @@ impl App {
                 execution_mode,
             } => {
                 self.agent_phase = AgentPhase::Reasoning;
-                // ask_user results are shown locally as "Selected:" / "Answered:"
-                // — skip duplicate rendering of the tool result card.
-                if tool != "ask_user" {
-                    let event = StreamEvent::ToolResult {
-                        tool,
-                        output,
-                        error,
-                        geju,
-                        execution_mode,
-                    };
-                    let new_lines = render::stream_event_to_lines(&event);
-                    self.lines.extend(new_lines);
-                }
+                let event = StreamEvent::ToolResult {
+                    tool,
+                    output,
+                    error,
+                    geju,
+                    execution_mode,
+                };
+                let new_lines = render::stream_event_to_lines(&event);
+                self.lines.extend(new_lines);
             }
             // Delegate formatting to render module
             StreamEvent::ToolBatchStart => {

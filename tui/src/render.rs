@@ -285,6 +285,10 @@ pub fn format_tool_result(
     execution_mode: Option<&str>,
     error: Option<&str>,
 ) -> Vec<ChatLine> {
+    // ask_user results are shown locally by the TUI ("Selected:" / "Answered:")
+    if tool == "ask_user" {
+        return vec![];
+    }
     let (mode_style, mode_icon) = match execution_mode {
         Some("direct") => (Style::default().fg(Color::Green), "✓"),
         Some("guarded") => (Style::default().fg(Color::Yellow), "⚠"),
