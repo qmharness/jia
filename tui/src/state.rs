@@ -521,6 +521,10 @@ impl App {
     fn handle_stream_event(&mut self, event: StreamEvent) {
         match event {
             StreamEvent::Delta { content } => {
+                // OpenAI-compatible providers stream tool_call JSON as Delta text.
+                // Skip fragments that look like raw tool_call JSON.
+                let is_tool_json = content.contains("\"name\":") || content.contains("\"function\":");
+                if is_tool_json { continue; }
                 // Skip whitespace-only deltas when last line is blank or a
                 // non-assistant line (user message / tool card) — prevents
                 // double blank lines above tool cards.
@@ -666,18 +670,6 @@ impl App {
             }
             StreamEvent::ToolCall { .. } => {
                 self.agent_phase = AgentPhase::ToolCalling;
-                // Clear raw tool_use JSON from streaming Delta text.
-                // Anthropic streams tool_use blocks as raw JSON characters —
-                // the TUI renders them as text before ToolCall arrives.
-                // Pop all non-blank lines back to the last blank separator.
-                while self
-                    .lines
-                    .last()
-                    .map(|l| !l.text.is_empty())
-                    .unwrap_or(false)
-                {
-                    self.lines.pop();
-                }
                 // Add blank separator
                 if self
                     .lines
