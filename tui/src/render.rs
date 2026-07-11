@@ -310,8 +310,14 @@ pub fn format_tool_result(
             style: mode_style,
         }]
     };
-    if error.is_some() && !output.is_empty() {
-        lines.push(ChatLine { text: output.to_string(), style: Style::default() });
+    // Show output text for all tools except ask_user (answer already shown locally)
+    if tool != "ask_user" && !output.is_empty() {
+        let preview = if output.len() > 500 {
+            format!("{}…", &output[..500])
+        } else {
+            output.to_string()
+        };
+        lines.push(ChatLine { text: preview, style: Style::default() });
     }
     lines
 }
