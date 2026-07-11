@@ -670,7 +670,17 @@ impl App {
             }
             StreamEvent::ToolCall { .. } => {
                 self.agent_phase = AgentPhase::ToolCalling;
-                // Add blank separator if last line isn't already blank
+                // Remove the raw streaming tool_use JSON that Delta events emitted
+                // before ToolCall arrived (Anthropic streams tool_use as text).
+                if self
+                    .lines
+                    .last()
+                    .map(|l| l.text.trim_start().starts_with('{'))
+                    .unwrap_or(false)
+                {
+                    self.lines.pop();
+                }
+                // Add blank separator
                 if self
                     .lines
                     .last()
