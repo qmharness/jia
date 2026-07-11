@@ -344,15 +344,10 @@ fn tool_summary(tool: &str, input: &str) -> String {
 /// Build a ChatLine for a tool call.
 pub fn format_tool_call(tool: &str, input: &str) -> ChatLine {
     let display = if tool == "ask_user" {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(input) {
-            if let Some(q) = v.get("question").and_then(|q| q.as_str()) {
-                let n_opts = v.get("options")
-                    .and_then(|o| o.as_array())
-                    .map(|a| a.len())
-                    .unwrap_or(0);
-                if n_opts > 0 { format!("❓ {q} ({n_opts} options)") } else { format!("❓ {q}") }
-            } else { String::new() }
-        } else { String::new() }
+        let n_opts = if let Ok(v) = serde_json::from_str::<serde_json::Value>(input) {
+            v.get("options").and_then(|o| o.as_array()).map(|a| a.len()).unwrap_or(0)
+        } else { 0 };
+        if n_opts > 0 { format!("{n_opts} options") } else { String::new() }
     } else {
         // Extract key fields for a meaningful one-line summary
         tool_summary(tool, input)
