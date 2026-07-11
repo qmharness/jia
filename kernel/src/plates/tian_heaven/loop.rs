@@ -689,6 +689,7 @@ impl super::Agent {
                 match tc.name.as_str() {
                     "enter_plan_mode" => {
                         self.interaction_mode = super::InteractionMode::Planning;
+                        ctx.human_plate.sync_jingjue_with_mode(true); // Planning → suppress alerts
                         tracing::info!(session = %self.id, "entered planning mode");
                         let _ = ctx
                             .tx
@@ -696,6 +697,7 @@ impl super::Agent {
                     }
                     "exit_plan_mode" => {
                         self.interaction_mode = super::InteractionMode::Normal;
+                        ctx.human_plate.sync_jingjue_with_mode(false); // Normal → resume alerts
                         tracing::info!(session = %self.id, "exited planning mode");
                         let _ = ctx
                             .tx

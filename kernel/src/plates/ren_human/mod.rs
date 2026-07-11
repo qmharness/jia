@@ -73,6 +73,23 @@ impl HumanPlate {
         }
     }
 
+    /// Check if an alert should be escalated to the user.
+    /// JingJueMen (惊门) closed → suppress alerts (e.g. during Planning mode).
+    pub fn should_escalate_alert(&self) -> bool {
+        self.gate_is_open(HumanGate::JingJueMen)
+    }
+
+    /// Sync JingJueMen with InteractionMode.
+    /// Planning → Closed (suppress noise), Normal → Open (notify user).
+    pub fn sync_jingjue_with_mode(&self, planning: bool) {
+        let bit = 1u8 << (HumanGate::JingJueMen as u8);
+        if planning {
+            self.closed_by_principle.fetch_or(bit, Ordering::Relaxed);
+        } else {
+            self.closed_by_principle.fetch_and(!bit, Ordering::Relaxed);
+        }
+    }
+
     /// Close a gate for the remainder of this session (not persisted).
     /// Called by the agent loop when Layer 4 principles detect anomaly patterns.
     pub fn close_gate(&self, gate: HumanGate) {
