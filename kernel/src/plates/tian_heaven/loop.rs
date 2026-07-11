@@ -7,7 +7,7 @@ use crate::geju::GeJu;
 use crate::palaces::Palace;
 use crate::palaces::xun_context::ContextWindow;
 use crate::palaces::zhong_core::JiaCore;
-use crate::plates::ren_human::HumanPlate;
+use crate::plates::ren_human::{HumanGate, HumanPlate};
 use crate::plates::shen_spirit::hook::{HookEvent, HookRegistry, SpiritType, fire_void_hooks};
 use crate::plates::shen_spirit::{EventBus, RuntimeEvent};
 use crate::stems::Stem;
@@ -645,6 +645,25 @@ impl super::Agent {
                     atma_graha: self.manas.atma_graha,
                     epochs: self.manas.stable_epochs(),
                 });
+            }
+
+            // Layer 4 · session-scoped gate closing — detect anomaly patterns
+            // and autonomously close gates for the remainder of this session.
+            const GATE_CLOSE_THRESHOLD: u32 = 5;
+            for (tool_name, &fail_count) in self.tool_failure_count.iter() {
+                if fail_count < GATE_CLOSE_THRESHOLD { continue; }
+                match tool_name.as_str() {
+                    "web_fetch" | "web_search" => {
+                        ctx.human_plate.close_gate(HumanGate::KaiMen);
+                    }
+                    "shell" | "write_file" | "patch_file" => {
+                        ctx.human_plate.close_gate(HumanGate::ShangMen);
+                    }
+                    "skill" => {
+                        ctx.human_plate.close_gate(HumanGate::ShengMen);
+                    }
+                    _ => {}
+                }
             }
 
             // Track skill tool invocations (Phase 2)

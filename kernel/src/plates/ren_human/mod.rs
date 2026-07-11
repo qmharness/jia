@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use crate::geju::{ApprovalGate, ExecutionMode, GeJuResult};
 use crate::palaces::qian_permission::PermissionMatrix;
@@ -22,14 +23,28 @@ pub struct PendingConfirmation {
 ///
 /// Implements 八门 (8 Gates) for operational decision-making.
 /// GeJu evaluation determines which gates open or close.
-#[derive(Clone)]
 pub struct HumanPlate {
     pub gates: [GateState; 8],
+    /// Session-scoped gate closings by Layer 4 principles (not persisted).
+    /// Bit N = gate N is force-closed. Reset on new session.
+    pub closed_by_principle: AtomicU8,
     pub permissions: Arc<PermissionMatrix>,
     pub pending_confirmations: Arc<Mutex<HashMap<String, PendingConfirmation>>>,
     /// Test-only: when set, `request_confirmation` returns this value immediately.
     #[doc(hidden)]
     pub confirmation_override: Option<bool>,
+}
+
+impl Clone for HumanPlate {
+    fn clone(&self) -> Self {
+        Self {
+            gates: self.gates,
+            closed_by_principle: AtomicU8::new(self.closed_by_principle.load(Ordering::Relaxed)),
+            permissions: self.permissions.clone(),
+            pending_confirmations: self.pending_confirmations.clone(),
+            confirmation_override: self.confirmation_override,
+        }
+    }
 }
 
 pub use crate::error::DispatchError;
@@ -38,6 +53,7 @@ impl HumanPlate {
     pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
         Self {
             gates: [GateState::Open; 8],
+            closed_by_principle: AtomicU8::new(0),
             permissions,
             pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
             confirmation_override: None,
@@ -50,14 +66,28 @@ impl HumanPlate {
     ) -> Self {
         Self {
             gates: [GateState::Open; 8],
+            closed_by_principle: AtomicU8::new(0),
             permissions,
             pending_confirmations,
             confirmation_override: None,
         }
     }
 
+    /// Close a gate for the remainder of this session (not persisted).
+    /// Called by the agent loop when Layer 4 principles detect anomaly patterns.
+    pub fn close_gate(&self, gate: HumanGate) {
+        let bit = 1u8 << (gate as u8);
+        let prev = self.closed_by_principle.fetch_or(bit, Ordering::Relaxed);
+        if prev & bit == 0 {
+            tracing::warn!(gate = ?gate, "HumanPlate: gate force-closed by principle (session-scoped)");
+        }
+    }
+
+    /// Check if a gate is open, considering both config state and session-closed state.
     fn gate_is_open(&self, gate: HumanGate) -> bool {
+        let bit = 1u8 << (gate as u8);
         self.gates[gate as usize] == GateState::Open
+            && (self.closed_by_principle.load(Ordering::Relaxed) & bit) == 0
     }
 
     /// 分发 (dispatch) — Execute a tool call through the permission boundary.
