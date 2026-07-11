@@ -84,7 +84,7 @@ impl HumanPlate {
     }
 
     /// Check if a gate is open, considering both config state and session-closed state.
-    fn gate_is_open(&self, gate: HumanGate) -> bool {
+    pub fn gate_is_open(&self, gate: HumanGate) -> bool {
         let bit = 1u8 << (gate as u8);
         self.gates[gate as usize] == GateState::Open
             && (self.closed_by_principle.load(Ordering::Relaxed) & bit) == 0
@@ -176,16 +176,25 @@ impl HumanPlate {
         tx: &tokio::sync::mpsc::UnboundedSender<AgentEvent>,
         exec_ctx: &ExecContext,
     ) -> Result<ToolResult, DispatchError> {
-        // Check ShangMen gate for destructive actions
+        // Check ShangMen for destructive actions
         if !self.gate_is_open(HumanGate::ShangMen) && tool.is_destructive() {
-            tracing::warn!(
-                "HumanPlate: ShangMen closed, blocking destructive tool {}",
-                tool.name()
-            );
+            tracing::warn!("HumanPlate: ShangMen closed, blocking destructive tool {}", tool.name());
             return Err(DispatchError::Denied(format!(
-                "Destructive tool '{}' blocked: ShangMen is closed",
-                tool.name()
-            )));
+                "Destructive tool '{}' blocked: ShangMen is closed", tool.name())));
+        }
+        // Check KaiMen for external communication tools
+        if !self.gate_is_open(HumanGate::KaiMen)
+            && matches!(tool.ceremony(), crate::stems::CeremoniesIntent::Ren(_))
+        {
+            tracing::warn!("HumanPlate: KaiMen closed, blocking communication tool {}", tool.name());
+            return Err(DispatchError::Denied(format!(
+                "Communication tool '{}' blocked: KaiMen is closed", tool.name())));
+        }
+        // Check ShengMen for skill injection
+        if !self.gate_is_open(HumanGate::ShengMen) && tool.name() == "skill" {
+            tracing::warn!("HumanPlate: ShengMen closed, blocking skill tool");
+            return Err(DispatchError::Denied(
+                "Skill tool blocked: ShengMen is closed".into()));
         }
 
         for gate in &geju.approval_chain {

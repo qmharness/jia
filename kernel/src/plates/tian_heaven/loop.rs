@@ -75,6 +75,11 @@ impl super::Agent {
 
         loop {
             self.turn_count += 1;
+            // XiuMen (休门) — agent pause. When closed, loop sleeps and retries.
+            if !ctx.human_plate.gate_is_open(HumanGate::XiuMen) {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                continue;
+            }
             if self.turn_count > self.max_turns {
                 tracing::warn!(
                     session = %self.id,
