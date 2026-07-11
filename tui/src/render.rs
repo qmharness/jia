@@ -321,6 +321,26 @@ pub fn format_tool_result(
     lines
 }
 
+/// Extract a human-readable summary from tool call JSON input.
+fn tool_summary(tool: &str, input: &str) -> String {
+    let v: serde_json::Value = match serde_json::from_str(input) {
+        Ok(v) => v,
+        Err(_) => return String::new(),
+    };
+    // Common fields across tools — try each in priority order
+    for key in &["command", "url", "path", "query", "pattern", "action", "subagent_type", "task"] {
+        if let Some(val) = v.get(key).and_then(|v| v.as_str()) {
+            let val = if val.len() > 80 {
+                format!("{}…", &val[..80])
+            } else {
+                val.to_string()
+            };
+            return val;
+        }
+    }
+    String::new()
+}
+
 /// Build a ChatLine for a tool call.
 pub fn format_tool_call(tool: &str, input: &str) -> ChatLine {
     let display = if tool == "ask_user" {
@@ -334,7 +354,8 @@ pub fn format_tool_call(tool: &str, input: &str) -> ChatLine {
             } else { String::new() }
         } else { String::new() }
     } else {
-        String::new() // hide raw JSON input — show only the tool name
+        // Extract key fields for a meaningful one-line summary
+        tool_summary(tool, input)
     };
     let text = if display.is_empty() {
         format!("🔧 {tool}")
