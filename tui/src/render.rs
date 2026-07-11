@@ -336,22 +336,40 @@ pub fn format_tool_result(
 
 /// Build a ChatLine for a tool call.
 pub fn format_tool_call(tool: &str, input: &str) -> ChatLine {
-    let truncated = if input.len() > 200 {
-        // Truncate at 200 chars (not bytes) to avoid splitting multi-byte UTF-8
-        // codepoints (e.g. Chinese, emoji). char_indices gives byte offsets; the
-        // last take(200) item's byte end is a valid char boundary.
-        let end = input
-            .char_indices()
-            .take(200)
-            .last()
-            .map(|(i, c)| i + c.len_utf8())
-            .unwrap_or(0);
-        format!("{}...", &input[..end])
+    let display = if tool == "ask_user" {
+        // Extract just the question text from the JSON for readability
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(input) {
+            if let Some(q) = v.get("question").and_then(|q| q.as_str()) {
+                let n_opts = v.get("options")
+                    .and_then(|o| o.as_array())
+                    .map(|a| a.len())
+                    .unwrap_or(0);
+                if n_opts > 0 {
+                    format!("❓ {q} ({n_opts} options)")
+                } else {
+                    format!("❓ {q}")
+                }
+            } else {
+                format!("ask_user: (no question)")
+            }
+        } else {
+            format!("ask_user: (invalid input)")
+        }
     } else {
-        input.to_string()
+        if input.len() > 200 {
+            let end = input
+                .char_indices()
+                .take(200)
+                .last()
+                .map(|(i, c)| i + c.len_utf8())
+                .unwrap_or(0);
+            format!("{}...", &input[..end])
+        } else {
+            input.to_string()
+        }
     };
     ChatLine {
-        text: format!("🔧 {tool} — {truncated}"),
+        text: format!("🔧 {tool} — {display}"),
         style: Style::default().fg(Color::Yellow),
     }
 }
