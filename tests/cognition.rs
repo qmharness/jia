@@ -167,3 +167,95 @@ fn manas_certainty_trend_adjusts() {
     );
 }
 
+
+// ── Gate Tests ───────────────────────────────────────────────
+
+use kernel::plates::ren_human::{HumanGate, HumanPlate};
+use kernel::palaces::qian_permission::PermissionMatrix;
+use kernel::palaces::kun_config::{SecuritySection, SandboxMode};
+
+fn test_human_plate() -> HumanPlate {
+    let security = SecuritySection::default();
+    let root = std::env::current_dir().unwrap();
+    let perms = Arc::new(PermissionMatrix::from_config(
+        &security,
+        &root,
+        std::path::PathBuf::from("/tmp/backups"),
+    ));
+    HumanPlate::new(perms)
+}
+
+#[test]
+fn gate_close_by_principle_is_session_scoped() {
+    let hp1 = test_human_plate();
+    let hp2 = test_human_plate();
+    
+    hp1.close_gate(HumanGate::KaiMen);
+    assert!(!hp1.gate_is_open(HumanGate::KaiMen), "KaiMen should be closed on hp1");
+    assert!(hp2.gate_is_open(HumanGate::KaiMen), "KaiMen should be open on hp2 (different session)");
+}
+
+#[test]
+fn gate_close_then_all_others_stay_open() {
+    let hp = test_human_plate();
+    hp.close_gate(HumanGate::ShengMen);
+    
+    assert!(!hp.gate_is_open(HumanGate::ShengMen));
+    assert!(hp.gate_is_open(HumanGate::JingXiangMen));
+    assert!(hp.gate_is_open(HumanGate::ShangMen));
+    assert!(hp.gate_is_open(HumanGate::DuMen));
+    assert!(hp.gate_is_open(HumanGate::XiuMen));
+    assert!(hp.gate_is_open(HumanGate::KaiMen));
+    assert!(hp.gate_is_open(HumanGate::SiMen));
+    assert!(hp.gate_is_open(HumanGate::JingJueMen));
+}
+
+#[test]
+fn jingjue_sync_with_planning_mode() {
+    let hp = test_human_plate();
+    assert!(hp.should_escalate_alert(), "JingJueMen should start open");
+    
+    hp.sync_jingjue_with_mode(true);  // enter planning
+    assert!(!hp.should_escalate_alert(), "JingJueMen should close in planning mode");
+    
+    hp.sync_jingjue_with_mode(false); // exit planning
+    assert!(hp.should_escalate_alert(), "JingJueMen should reopen in normal mode");
+}
+
+#[test]
+fn gate_close_preserves_other_gate_states() {
+    let hp = test_human_plate();
+    hp.close_gate(HumanGate::KaiMen);
+    hp.close_gate(HumanGate::ShengMen);
+    
+    assert!(!hp.gate_is_open(HumanGate::KaiMen));
+    assert!(!hp.gate_is_open(HumanGate::ShengMen));
+    assert!(hp.gate_is_open(HumanGate::ShangMen)); // should be unaffected
+    assert!(hp.gate_is_open(HumanGate::XiuMen));    // should be unaffected
+}
+
+#[test]
+fn all_eight_gates_initially_open() {
+    let hp = test_human_plate();
+    for gate in &[
+        HumanGate::XiuMen, HumanGate::ShengMen, HumanGate::ShangMen,
+        HumanGate::DuMen, HumanGate::JingXiangMen, HumanGate::SiMen,
+        HumanGate::JingJueMen, HumanGate::KaiMen,
+    ] {
+        assert!(hp.gate_is_open(*gate), "Gate {gate:?} should start open");
+    }
+}
+
+#[test]
+fn gate_close_multiple_sessions_independent() {
+    let hp_a = test_human_plate();
+    let hp_b = test_human_plate();
+    
+    hp_a.close_gate(HumanGate::KaiMen);
+    hp_b.close_gate(HumanGate::ShengMen);
+    
+    assert!(!hp_a.gate_is_open(HumanGate::KaiMen));
+    assert!(hp_a.gate_is_open(HumanGate::ShengMen));
+    assert!(hp_b.gate_is_open(HumanGate::KaiMen));
+    assert!(!hp_b.gate_is_open(HumanGate::ShengMen));
+}
