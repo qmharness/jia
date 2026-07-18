@@ -332,6 +332,9 @@ impl super::Agent {
             // re-issue, so it never enters history; `record_llm_success`
             // runs only after a stream that ended normally (None).
             const MAX_LLM_RETRIES: u32 = 3;
+            // Retry budget is per-turn: reset on turn entry so a previous
+            // turn's exhaustion doesn't leave the next turn with zero budget.
+            self.retry_count = 0;
             let mut full_response = String::new();
             let mut native_tool_calls: Vec<crate::stems::action::ToolCall> = Vec::new();
 
@@ -396,6 +399,10 @@ impl super::Agent {
                                 && self.retry_count < MAX_LLM_RETRIES
                                 && ctx.core.try_llm_failover()
                             {
+                                if ctx.cancel_token.is_cancelled() {
+                                    tracing::info!(session = %self.id, "Agent loop cancelled");
+                                    return;
+                                }
                                 tracing::warn!(session = %self.id, error = %e, retry = self.retry_count + 1, "LLM error, re-issuing request with next provider");
                                 self.retry_count += 1;
                                 continue 'llm_retry;
@@ -1164,6 +1171,80 @@ Done."#;
             "failed turn must not push assistant history: {:?}",
             assistant_texts(&agent)
         );
+    }
+
+    #[tokio::test]
+    async fn llm_retry_budget_resets_each_turn() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = temp_earth(tmp.path());
+        let calls = Arc::new(AtomicUsize::new(0));
+        // Four failures per provider: enough for two fully-exhausted turns.
+        let mk = |calls: &Arc<AtomicUsize>| -> Box<dyn LlmProvider> {
+            Box::new(ScriptedProvider::new(
+                (0..4)
+                    .map(|_| MockStep::FailAfter {
+                        partial: "junk",
+                        err: ProviderError::ServerError {
+                            status: 500,
+                            body: "boom".into(),
+                        },
+                    })
+                    .collect(),
+                calls.clone(),
+            ))
+        };
+        let core = router_core(vec![mk(&calls), mk(&calls)]);
+
+        let human_plate = HumanPlate::with_state(
+            earth.permissions.clone(),
+            earth.pending_confirmations.clone(),
+        );
+        let cancel = CancellationToken::new();
+        let mut agent = super::super::Agent::new("retry-test".into(), earth.clone());
+
+        // Turn 1: exhausts the budget (1 initial + 3 retries).
+        {
+            let (tx, _rx) = mpsc::unbounded_channel::<AgentEvent>();
+            let ctx = RunContext {
+                core: &core,
+                human_plate: &human_plate,
+                event_bus: &earth.spirit.event_bus,
+                hook_registry: &earth.spirit.hook_registry,
+                tx,
+                cancel_token: &cancel,
+            };
+            agent.run(vec![Message::text(Role::User, "hi")], &ctx).await;
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 4);
+        assert_eq!(agent.retry_count, 3);
+
+        // Turn 2: a stuck per-agent budget (review Issue 1) would allow zero
+        // retries (1 request); the per-turn reset must grant a full 1+3 again.
+        {
+            let (tx, _rx) = mpsc::unbounded_channel::<AgentEvent>();
+            let ctx = RunContext {
+                core: &core,
+                human_plate: &human_plate,
+                event_bus: &earth.spirit.event_bus,
+                hook_registry: &earth.spirit.hook_registry,
+                tx,
+                cancel_token: &cancel,
+            };
+            agent
+                .run(vec![Message::text(Role::User, "again")], &ctx)
+                .await;
+        }
+        // Note: not exactly 4 — the circuit breaker legitimately opens after
+        // the providers' repeated consecutive failures across both turns and
+        // cuts turn 2 short (failover finds no closed breaker). The per-turn
+        // reset is proven by turn 2 making ANY retry at all: a stuck budget
+        // (review Issue 1) would allow exactly 1 request and zero retries.
+        let turn2_calls = calls.load(Ordering::SeqCst) - 4;
+        assert!(
+            turn2_calls >= 2,
+            "turn 2 must get a fresh retry budget (stuck budget allows only 1 request, got {turn2_calls})"
+        );
+        assert_eq!(agent.retry_count, 2);
     }
 
     #[tokio::test]
