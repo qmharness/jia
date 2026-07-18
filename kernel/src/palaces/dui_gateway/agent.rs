@@ -376,6 +376,8 @@ mod tests {
     use crate::palaces::zhong_core::JiaCore;
     use crate::plates::di_earth::EarthPlate;
     use crate::plates::shen_spirit::SpiritPlate;
+    use crate::plates::shen_spirit::completion_check::CompletionChecklist;
+    use crate::config::CognitionSection;
     use crate::stems::action::ExecContext;
     use std::collections::HashMap;
     use std::sync::Mutex;
@@ -396,6 +398,7 @@ mod tests {
             config: Arc::new(ConfigLoader::from_app_config(AppConfig {
                 host: "127.0.0.1".into(),
                 port: 3000,
+                web_dir: None,
                 providers: HashMap::new(),
                 default_main_model_provider: None,
                 default_aux_model_provider: None,
@@ -415,6 +418,7 @@ mod tests {
             store_async: crate::palaces::gen_store::async_store::StoreAsync::new(store.clone()),
             store: store.clone(),
             spirit: Arc::new(SpiritPlate::new()),
+            completion_checklist: Arc::new(CompletionChecklist::new()),
             user_hooks: Arc::new(Vec::new()),
             pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
             pending_questions: Arc::new(Mutex::new(HashMap::new())),

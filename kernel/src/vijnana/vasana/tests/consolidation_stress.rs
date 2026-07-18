@@ -22,7 +22,7 @@ mod integration_tests {
                 tool_name: "read_file".into(),
                 tool_input: serde_json::json!({"path": "src/main.rs"}),
                 tool_output: "120 lines, fn main() entry point, imports tokio and serde".into(),
-                tool_error: None, timestamp: base_ts,
+                tool_error: None, timestamp: base_ts, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 2, intent_stem: Stem::Wu, target_palace: Palace::Kan,
@@ -30,7 +30,7 @@ mod integration_tests {
                 tool_name: "grep".into(),
                 tool_input: serde_json::json!({"pattern": "Config", "path": "src/"}),
                 tool_output: "Found 8 matches in 3 files: src/config.rs (5), src/main.rs (2), src/lib.rs (1)".into(),
-                tool_error: None, timestamp: base_ts + 1,
+                tool_error: None, timestamp: base_ts + 1, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 3, intent_stem: Stem::Ji, target_palace: Palace::Kun,
@@ -38,7 +38,7 @@ mod integration_tests {
                 tool_name: "edit".into(),
                 tool_input: serde_json::json!({"path": "src/config.rs", "old_string": "port: 8080", "new_string": "port: 3000"}),
                 tool_output: "Replaced 1 occurrence in src/config.rs".into(),
-                tool_error: None, timestamp: base_ts + 2,
+                tool_error: None, timestamp: base_ts + 2, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 4, intent_stem: Stem::Geng, target_palace: Palace::Zhen,
@@ -47,7 +47,7 @@ mod integration_tests {
                 tool_input: serde_json::json!({"command": "cargo build 2>&1"}),
                 tool_output: "".into(),
                 tool_error: Some("error[E0308]: mismatched types in src/config.rs:42: expected String, found &str".into()),
-                timestamp: base_ts + 3,
+                timestamp: base_ts + 3, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 5, intent_stem: Stem::Wu, target_palace: Palace::Kan,
@@ -55,7 +55,7 @@ mod integration_tests {
                 tool_name: "read_file".into(),
                 tool_input: serde_json::json!({"path": "src/config.rs", "offset": 38, "limit": 10}),
                 tool_output: "Line 42: let host: String = \"localhost\"; // type mismatch here".into(),
-                tool_error: None, timestamp: base_ts + 4,
+                tool_error: None, timestamp: base_ts + 4, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 6, intent_stem: Stem::Ji, target_palace: Palace::Kun,
@@ -63,7 +63,7 @@ mod integration_tests {
                 tool_name: "edit".into(),
                 tool_input: serde_json::json!({"path": "src/config.rs", "old_string": "let host: String = \"localhost\"", "new_string": "let host: String = \"localhost\".to_string()"}),
                 tool_output: "Replaced 1 occurrence in src/config.rs".into(),
-                tool_error: None, timestamp: base_ts + 5,
+                tool_error: None, timestamp: base_ts + 5, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 7, intent_stem: Stem::Geng, target_palace: Palace::Zhen,
@@ -71,7 +71,7 @@ mod integration_tests {
                 tool_name: "shell".into(),
                 tool_input: serde_json::json!({"command": "cargo build 2>&1"}),
                 tool_output: "Compiling jia v0.1.0\nFinished dev [unoptimized] target(s) in 2.34s".into(),
-                tool_error: None, timestamp: base_ts + 6,
+                tool_error: None, timestamp: base_ts + 6, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 8, intent_stem: Stem::Wu, target_palace: Palace::Kan,
@@ -79,7 +79,7 @@ mod integration_tests {
                 tool_name: "grep".into(),
                 tool_input: serde_json::json!({"pattern": "use tokio|use serde", "path": "src/"}),
                 tool_output: "src/main.rs: use tokio; src/config.rs: use serde::Deserialize; src/lib.rs: use tokio::sync".into(),
-                tool_error: None, timestamp: base_ts + 7,
+                tool_error: None, timestamp: base_ts + 7, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
         ]
     }
@@ -273,7 +273,7 @@ mod integration_tests {
                 tool_input: serde_json::json!({"command": "cargo test 2>&1"}),
                 tool_output: "running 120 tests\nall passed".into(),
                 tool_error: None,
-                timestamp: base_ts,
+                timestamp: base_ts, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 2,
@@ -285,7 +285,7 @@ mod integration_tests {
                 tool_input: serde_json::json!({"path": "src/config.rs", "old_string": "port: 3000", "new_string": "port: 8080"}),
                 tool_output: "Replaced 1 occurrence in src/config.rs".into(),
                 tool_error: None,
-                timestamp: base_ts + 1,
+                timestamp: base_ts + 1, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 3,
@@ -298,7 +298,7 @@ mod integration_tests {
                 tool_output:
                     "Compiling jia v0.2.0\nFinished release [optimized] target(s) in 12.34s".into(),
                 tool_error: None,
-                timestamp: base_ts + 2,
+                timestamp: base_ts + 2, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
         ]
     }
@@ -929,7 +929,7 @@ mod integration_tests {
                     "[package]\nname = \"jia\"\ndependencies:\n  tokio = \"1\"\n  serde = \"1\""
                         .into(),
                 tool_error: None,
-                timestamp: base_ts,
+                timestamp: base_ts, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 2,
@@ -943,7 +943,7 @@ mod integration_tests {
                 tool_error: Some(
                     "error[E0432]: unresolved import `serde_json`\n  --> src/main.rs:3:5".into(),
                 ),
-                timestamp: base_ts + 1,
+                timestamp: base_ts + 1, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 3,
@@ -955,7 +955,7 @@ mod integration_tests {
                 tool_input: serde_json::json!({"path": "Cargo.toml", "old_string": "serde = \"1\"", "new_string": "serde = { version = \"1\", features = [\"derive\"] }\nserde_json = \"1\""}),
                 tool_output: "Replaced 1 occurrence in Cargo.toml".into(),
                 tool_error: None,
-                timestamp: base_ts + 2,
+                timestamp: base_ts + 2, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 4,
@@ -967,7 +967,7 @@ mod integration_tests {
                 tool_input: serde_json::json!({"command": "cargo build 2>&1"}),
                 tool_output: "Compiling jia v0.1.0\nFinished dev target(s) in 2.34s".into(),
                 tool_error: None,
-                timestamp: base_ts + 3,
+                timestamp: base_ts + 3, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
         ];
 
@@ -1194,7 +1194,7 @@ mod integration_tests {
                 tool_name: "read_file".into(),
                 tool_input: serde_json::json!({"path": "Cargo.toml"}),
                 tool_output: "[package]\nname = \"alpha-gateway\"\ndependencies:\n  tokio = \"1\"\n  axum = \"0.7\"\n  sqlx = { version = \"0.7\", features = [\"postgres\"] }".into(),
-                tool_error: None, timestamp: base_ts,
+                tool_error: None, timestamp: base_ts, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 2, intent_stem: Stem::Geng, target_palace: Palace::Zhen,
@@ -1203,7 +1203,7 @@ mod integration_tests {
                 tool_input: serde_json::json!({"command": "cargo build 2>&1"}),
                 tool_output: "".into(),
                 tool_error: Some("error[E0432]: unresolved import `axum::Router`\n  --> src/main.rs:3:5".into()),
-                timestamp: base_ts + 1,
+                timestamp: base_ts + 1, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 3, intent_stem: Stem::Ji, target_palace: Palace::Kun,
@@ -1211,7 +1211,7 @@ mod integration_tests {
                 tool_name: "edit".into(),
                 tool_input: serde_json::json!({"path": "src/main.rs", "old_string": "use axum::Router;", "new_string": "use axum::{Router, routing::get};"}),
                 tool_output: "Replaced 1 occurrence in src/main.rs".into(),
-                tool_error: None, timestamp: base_ts + 2,
+                tool_error: None, timestamp: base_ts + 2, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 4, intent_stem: Stem::Geng, target_palace: Palace::Zhen,
@@ -1219,7 +1219,7 @@ mod integration_tests {
                 tool_name: "shell".into(),
                 tool_input: serde_json::json!({"command": "cargo build 2>&1"}),
                 tool_output: "Compiling alpha-gateway v0.1.0\nFinished dev target(s) in 3.12s".into(),
-                tool_error: None, timestamp: base_ts + 3,
+                tool_error: None, timestamp: base_ts + 3, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
         ];
 
@@ -1312,7 +1312,7 @@ mod integration_tests {
                 tool_name: "read_file".into(),
                 tool_input: serde_json::json!({"path": "package.json"}),
                 tool_output: "{\"name\":\"alpha-ui\",\"dependencies\":{\"react\":\"^18.2\",\"typescript\":\"^5.3\"}}".into(),
-                tool_error: None, timestamp: base_ts + 1000,
+                tool_error: None, timestamp: base_ts + 1000, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 2, intent_stem: Stem::Geng, target_palace: Palace::Zhen,
@@ -1321,7 +1321,7 @@ mod integration_tests {
                 tool_input: serde_json::json!({"command": "npm run build 2>&1"}),
                 tool_output: "".into(),
                 tool_error: Some("TS2345: Argument of type 'string' is not assignable to parameter of type 'number'".into()),
-                timestamp: base_ts + 1001,
+                timestamp: base_ts + 1001, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 3, intent_stem: Stem::Ji, target_palace: Palace::Kun,
@@ -1329,7 +1329,7 @@ mod integration_tests {
                 tool_name: "edit".into(),
                 tool_input: serde_json::json!({"path": "src/App.tsx", "old_string": "const count: string = \"0\"", "new_string": "const count: number = 0"}),
                 tool_output: "Replaced 1 occurrence in src/App.tsx".into(),
-                tool_error: None, timestamp: base_ts + 1002,
+                tool_error: None, timestamp: base_ts + 1002, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 4, intent_stem: Stem::Geng, target_palace: Palace::Zhen,
@@ -1337,7 +1337,7 @@ mod integration_tests {
                 tool_name: "shell".into(),
                 tool_input: serde_json::json!({"command": "npm run build 2>&1"}),
                 tool_output: "webpack compiled with 2 warnings\nBuild succeeded".into(),
-                tool_error: None, timestamp: base_ts + 1003,
+                tool_error: None, timestamp: base_ts + 1003, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
         ];
 
@@ -1420,7 +1420,7 @@ mod integration_tests {
                 tool_name: "read_file".into(),
                 tool_input: serde_json::json!({"path": "src/db.rs"}),
                 tool_output: "use sqlx::postgres::PgPoolOptions;\npub async fn create_pool() -> PgPool { PgPoolOptions::new().connect(\"postgres://localhost/alpha\").await.unwrap() }".into(),
-                tool_error: None, timestamp: base_ts + 2000,
+                tool_error: None, timestamp: base_ts + 2000, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 2, intent_stem: Stem::Geng, target_palace: Palace::Zhen,
@@ -1428,7 +1428,7 @@ mod integration_tests {
                 tool_name: "shell".into(),
                 tool_input: serde_json::json!({"command": "cargo test 2>&1"}),
                 tool_output: "running 45 tests\nall passed".into(),
-                tool_error: None, timestamp: base_ts + 2001,
+                tool_error: None, timestamp: base_ts + 2001, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 3, intent_stem: Stem::Ji, target_palace: Palace::Kun,
@@ -1436,7 +1436,7 @@ mod integration_tests {
                 tool_name: "edit".into(),
                 tool_input: serde_json::json!({"path": "src/main.rs", "old_string": "let pool = create_pool().await;", "new_string": "let pool = create_pool().await;\n    // Run migrations\n    sqlx::migrate!().run(&pool).await?;"}),
                 tool_output: "Replaced 1 occurrence in src/main.rs".into(),
-                tool_error: None, timestamp: base_ts + 2002,
+                tool_error: None, timestamp: base_ts + 2002, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 4, intent_stem: Stem::Geng, target_palace: Palace::Zhen,
@@ -1444,7 +1444,7 @@ mod integration_tests {
                 tool_name: "shell".into(),
                 tool_input: serde_json::json!({"command": "cargo build 2>&1"}),
                 tool_output: "Compiling alpha-gateway v0.1.0\nFinished dev target(s) in 2.87s".into(),
-                tool_error: None, timestamp: base_ts + 2003,
+                tool_error: None, timestamp: base_ts + 2003, certainty: None, active_seed_ids: vec![], tool_count: 1,
             },
         ];
 

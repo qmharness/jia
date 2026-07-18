@@ -80,6 +80,9 @@ mod tests {
             tool_output: "ok".into(),
             tool_error: None,
             timestamp: turn as i64,
+            certainty: None,
+            active_seed_ids: vec![],
+            tool_count: 1,
         }
     }
 
@@ -138,6 +141,9 @@ mod tests {
             tool_output: "edited".into(),
             tool_error: Some("permission denied".into()),
             timestamp: 999,
+            certainty: None,
+            active_seed_ids: vec![],
+            tool_count: 1,
         };
         wm.record(snap);
         assert_eq!(wm.len(), 1);

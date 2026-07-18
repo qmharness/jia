@@ -491,7 +491,7 @@ mod tests {
     use super::*;
     use crate::palaces::gen_store::Store;
     use crate::palaces::kan_io::ChannelManager;
-    use crate::palaces::kun_config::{AppConfig, SecuritySection};
+    use crate::palaces::kun_config::{AppConfig, CognitionSection, SecuritySection};
     use crate::palaces::li_skill::SkillRegistry;
     use crate::palaces::qian_permission::PermissionMatrix;
     use crate::palaces::zhen_tool::ToolRegistry;
@@ -501,6 +501,7 @@ mod tests {
     use crate::palaces::zhong_core::JiaCore;
     use crate::plates::di_earth::EarthPlate;
     use crate::plates::shen_spirit::SpiritPlate;
+    use crate::plates::shen_spirit::completion_check::CompletionChecklist;
     use crate::vijnana::alaya::{Seed, SeedNature, SeedSource, SeedTier};
 
     fn temp_earth(tmp: &std::path::Path) -> Arc<EarthPlate> {
@@ -513,6 +514,7 @@ mod tests {
         let config = AppConfig {
             host: "127.0.0.1".into(),
             port: 8080,
+            web_dir: None,
             providers: std::collections::HashMap::new(),
             default_main_model_provider: None,
             default_aux_model_provider: None,
@@ -562,6 +564,7 @@ mod tests {
             store_async: crate::palaces::gen_store::async_store::StoreAsync::new(store.clone()),
             store,
             spirit: Arc::new(SpiritPlate::new()),
+            completion_checklist: Arc::new(CompletionChecklist::new()),
             user_hooks: Arc::new(Vec::new()),
             pending_confirmations: Arc::new(
                 std::sync::Mutex::new(std::collections::HashMap::new()),
