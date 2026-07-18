@@ -232,7 +232,10 @@ impl App {
                 }
                 KeyCode::Char('2') | KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
                     self.send_confirm(&id, &token, false);
-                    self.quit = true;
+                    // P0-5: 拒绝确认只返回 Normal,不退出应用(审计 H1 / 07-14 P0-4)。
+                    self.mode = Mode::Normal;
+                    self.confirm_selected = 0;
+                    self.composer.set_placeholder("");
                 }
                 _ => {}
             },
@@ -794,3 +797,77 @@ impl App {
 }
 
 // ── Frame Render ───────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    fn test_app() -> App {
+        App {
+            mode: Mode::Normal,
+            lines: Vec::new(),
+            history: Vec::new(),
+            needs_finalize: false,
+            inserted_rows: 0,
+            resize_pending: None,
+            resize_deadline: None,
+            composer: Composer::new(),
+            session_id: None,
+            status: StatusIcon::Done,
+            planning: false,
+            start_time: Instant::now(),
+            last_elapsed: 0,
+            connection: None,
+            reconnect_attempts: 0,
+            sending_allowed: true,
+            llm: LlmInfo {
+                model_id: "test".into(),
+                provider: "test".into(),
+            },
+            spinner_idx: 0,
+            agent_phase: AgentPhase::Reasoning,
+            quit: false,
+            confirm_selected: 0,
+            project_name: String::new(),
+            project_id: String::new(),
+        }
+    }
+
+    /// P0-5: 拒绝工具确认只返回 Normal,不退出应用(审计 H1 / 07-14 P0-4)。
+    #[test]
+    fn confirm_deny_returns_to_normal_without_quitting() {
+        let mut app = test_app();
+        app.mode = Mode::Confirm {
+            id: "c1".into(),
+            token: "t1".into(),
+        };
+        for code in [KeyCode::Char('n'), KeyCode::Char('2'), KeyCode::Esc] {
+            app.mode = Mode::Confirm {
+                id: "c1".into(),
+                token: "t1".into(),
+            };
+            app.dispatch_event(Event::Key(KeyEvent::new(code, KeyModifiers::NONE)));
+            assert!(!app.quit, "deny via {code:?} must not quit the app");
+            assert!(
+                matches!(app.mode, Mode::Normal),
+                "deny via {code:?} must return to Normal mode"
+            );
+        }
+    }
+
+    #[test]
+    fn confirm_approve_also_returns_to_normal() {
+        let mut app = test_app();
+        app.mode = Mode::Confirm {
+            id: "c1".into(),
+            token: "t1".into(),
+        };
+        app.dispatch_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('y'),
+            KeyModifiers::NONE,
+        )));
+        assert!(!app.quit);
+        assert!(matches!(app.mode, Mode::Normal));
+    }
+}
