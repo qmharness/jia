@@ -141,7 +141,9 @@ async fn resolve_project(
         let id = project.get("id").and_then(|v| v.as_str()).unwrap_or("");
         let name = project.get("name").and_then(|v| v.as_str()).unwrap_or("");
         if !id.is_empty() {
-            let _ = earth.store.ensure_project(id, cwd, name, "", "[]");
+            if let Err(e) = earth.store.ensure_project(id, cwd, name, "", "[]") {
+                tracing::warn!(%id, cwd, ?e, "rin: ensure_project failed for existing project");
+            }
             return (cwd.to_string(), id.to_string());
         }
     }
@@ -162,7 +164,7 @@ async fn resolve_project(
 
     let (_sender, receiver) = tokio::sync::oneshot::channel::<bool>();
     {
-        let mut pending = earth.pending_confirmations.lock().unwrap();
+        let mut pending = earth.pending_confirmations.lock().unwrap_or_else(|e| e.into_inner());
         pending.insert(
             confirm_id.clone(),
             crate::plates::ren_human::PendingConfirmation {
@@ -183,12 +185,17 @@ async fn resolve_project(
         token: confirm_token,
     });
 
-    // Wait indefinitely for user response
-    let approved = matches!(receiver.await, Ok(true));
+    // Wait for user response with a generous timeout (project creation approval).
+    // Oneshot sender is dropped if TUI disconnects, so receiver completes with
+    // Err(Canceled). The timeout is a safety net against stalled confirmations.
+    let approved = matches!(
+        tokio::time::timeout(std::time::Duration::from_secs(120), receiver).await,
+        Ok(Ok(true))
+    );
 
     // Clean up pending confirmation
     {
-        let mut pending = earth.pending_confirmations.lock().unwrap();
+        let mut pending = earth.pending_confirmations.lock().unwrap_or_else(|e| e.into_inner());
         pending.remove(&confirm_id);
     }
 
@@ -201,9 +208,12 @@ async fn resolve_project(
             project_id, dir_name
         );
         let _ = std::fs::write(&config_path, &config_content);
-        let _ = earth
+        if let Err(e) = earth
             .store
-            .ensure_project(&project_id, cwd, &dir_name, "", "[]");
+            .ensure_project(&project_id, cwd, &dir_name, "", "[]")
+        {
+            tracing::warn!(%project_id, cwd, ?e, "rin: ensure_project failed for new project");
+        }
         tracing::info!(cwd = %cwd, project_id = %project_id, "rin: created new project");
         return (cwd.to_string(), project_id);
     }
@@ -490,7 +500,7 @@ async fn handle_rin_connection(
                 // loop stays unblocked — otherwise ask_user answers sent through
                 // this same socket connection deadlock.
                 let session_lock = {
-                    let mut map = earth.session_locks.lock().unwrap();
+                    let mut map = earth.session_locks.lock().unwrap_or_else(|e| e.into_inner());
                     map.retain(|_, v| Arc::strong_count(v) > 1);
                     map.entry(sid.clone())
                         .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
@@ -553,7 +563,7 @@ async fn handle_rin_connection(
                                 std::path::Path::new(&effective_cwd)
                             );
                             // P3 · apply user-set interaction mode (from /plan slash)
-                            if let Some(mode) = earth.session_modes.lock().unwrap().get(&sid).copied() {
+                            if let Some(mode) = earth.session_modes.lock().unwrap_or_else(|e| e.into_inner()).get(&sid).copied() {
                                 agent.interaction_mode = mode;
                             }
                             let human_plate = HumanPlate::with_state(permissions, pending_confirmations);
@@ -591,7 +601,7 @@ async fn handle_rin_connection(
                     } else {
                         InteractionMode::Normal
                     };
-                    earth.session_modes.lock().unwrap().insert(sid, mode);
+                    earth.session_modes.lock().unwrap_or_else(|e| e.into_inner()).insert(sid, mode);
                     let resp = serde_json::json!({
                         "type": "interaction_mode_changed",
                         "planning": planning,
@@ -611,7 +621,7 @@ async fn handle_rin_connection(
                 }
                 let approved = msg["approved"].as_bool().unwrap_or(false);
                 let resolved = {
-                    let mut map = earth.pending_confirmations.lock().unwrap();
+                    let mut map = earth.pending_confirmations.lock().unwrap_or_else(|e| e.into_inner());
                     if let Some(p) = map.remove(id) {
                         if p.token == token {
                             let _ = p.sender.send(approved);
@@ -642,7 +652,7 @@ async fn handle_rin_connection(
                     continue;
                 }
                 let resolved = {
-                    let mut map = earth.pending_questions.lock().unwrap();
+                    let mut map = earth.pending_questions.lock().unwrap_or_else(|e| e.into_inner());
                     let map_size = map.len();
                     if let Some(p) = map.remove(id) {
                         let token_ok = p.token == token;

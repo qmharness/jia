@@ -14,7 +14,13 @@ const ALLOWED_COMMANDS: &[&str] = &[
     "status", "diff", "log", "branch", "add", "commit", "checkout", "stash", "show", "blame", "tag",
 ];
 
-const DANGEROUS_PATTERNS: &[&str] = &["push --force", "reset --hard", "clean -f", "clean -d"];
+const DANGEROUS_PATTERNS: &[&str] = &[
+    "push --force",
+    "reset --hard",
+    "clean -f",
+    "clean -d",
+    "--no-index",
+];
 
 pub struct GitTool;
 

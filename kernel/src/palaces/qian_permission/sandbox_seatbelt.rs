@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -105,7 +106,8 @@ fn run_seatbelt(
         .arg(cmd)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .current_dir(cwd);
+        .current_dir(cwd)
+        .process_group(0);
     for (k, v) in env {
         cmd_builder.env(k, v);
     }

@@ -89,13 +89,22 @@ impl ExecutionSandbox for DockerSandbox {
         args.push("-c".into());
         args.push(cmd.to_string());
 
-        let output = tokio::process::Command::new("docker")
-            .args(&args)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .output()
-            .await
-            .map_err(|e| format!("Docker sandbox error: {e}"))?;
+        let output = tokio::time::timeout(
+            self.timeout,
+            tokio::process::Command::new("docker")
+                .args(&args)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .output(),
+        )
+        .await
+        .map_err(|_| {
+            format!(
+                "Docker sandbox timed out after {}s",
+                self.timeout.as_secs()
+            )
+        })?
+        .map_err(|e| format!("Docker sandbox error: {e}"))?;
 
         let exit_code = output.status.code().unwrap_or(-1);
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
