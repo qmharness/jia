@@ -15,35 +15,67 @@ impl Store {
         let now = crate::utils::unix_now();
         let tx = conn.transaction()?;
 
-        // We will change the project's primary key when the upstream id has
-        // drifted (same cwd, new id). sessions.project_id references it, so
+        // We may change the project's primary key when the upstream id has
+        // drifted (same cwd, new id), or change its cwd when the project has
+        // moved (same id, new cwd). sessions.project_id references it, so
         // defer foreign-key checks until commit; we manually cascade below.
         tx.execute("PRAGMA defer_foreign_keys = ON", [])?;
 
-        // Detect an existing project at the same cwd so we can cascade the new id
-        // to its sessions when the upstream project id has changed.
-        let old_id: Option<String> = match tx.query_row(
-            "SELECT id FROM projects WHERE cwd = ?1",
-            rusqlite::params![cwd],
-            |row| row.get::<_, String>(0),
-        ) {
-            Ok(old) => Some(old),
-            Err(rusqlite::Error::QueryReturnedNoRows) => None,
-            Err(e) => return Err(StoreError::Sqlite(e)),
-        };
-
-        tx.execute(
-            "INSERT INTO projects (id, cwd, name, description, tags_json, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
-             ON CONFLICT(cwd) DO UPDATE SET id = ?1, name = ?3, description = ?4, tags_json = ?5, updated_at = ?6",
-            rusqlite::params![id, cwd, name, description, tags_json, now],
+        let mut stmt = tx.prepare(
+            "SELECT id, cwd FROM projects WHERE id = ?1 OR cwd = ?2",
         )?;
+        let rows: Vec<(String, String)> = stmt
+            .query_map(rusqlite::params![id, cwd], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(stmt);
 
-        if let Some(old_id) = old_id {
-            if old_id != id {
+        let row_by_id = rows.iter().find(|(rid, _)| rid == id).cloned();
+        let row_by_cwd = rows.iter().find(|(_, rcwd)| rcwd == cwd).cloned();
+
+        match (&row_by_id, &row_by_cwd) {
+            // No existing project: create it.
+            (None, None) => {
+                tx.execute(
+                    "INSERT INTO projects (id, cwd, name, description, tags_json, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+                    rusqlite::params![id, cwd, name, description, tags_json, now],
+                )?;
+            }
+            // Existing project with the same id: follow directory moves.
+            (Some(_), _) => {
+                if let Some((stale_id, _)) = &row_by_cwd {
+                    if stale_id != id {
+                        // A different project currently occupies the new cwd.
+                        // Merge its sessions into the canonical project and
+                        // delete the stale row so the cwd UNIQUE constraint is
+                        // not violated when we update the canonical row.
+                        tx.execute(
+                            "UPDATE sessions SET project_id = ?1 WHERE project_id = ?2",
+                            rusqlite::params![id, stale_id],
+                        )?;
+                        tx.execute(
+                            "DELETE FROM projects WHERE id = ?1",
+                            rusqlite::params![stale_id],
+                        )?;
+                    }
+                }
+                tx.execute(
+                    "UPDATE projects SET cwd = ?2, name = ?3, description = ?4, tags_json = ?5, updated_at = ?6 WHERE id = ?1",
+                    rusqlite::params![id, cwd, name, description, tags_json, now],
+                )?;
+            }
+            // Same cwd with a different id: upstream id drifted. Update the
+            // existing row's id and cascade its sessions.
+            (None, Some((old_id, _))) => {
                 tx.execute(
                     "UPDATE sessions SET project_id = ?1 WHERE project_id = ?2",
                     rusqlite::params![id, old_id],
+                )?;
+                tx.execute(
+                    "UPDATE projects SET id = ?1, name = ?3, description = ?4, tags_json = ?5, updated_at = ?6 WHERE cwd = ?2",
+                    rusqlite::params![id, cwd, name, description, tags_json, now],
                 )?;
             }
         }
@@ -211,5 +243,73 @@ mod tests {
         assert_eq!(projects[0]["id"].as_str(), Some(id));
         assert_eq!(projects[0]["name"].as_str(), Some("First"));
         assert_eq!(projects[0]["sessionCount"].as_i64(), Some(0));
+    }
+
+    #[test]
+    fn ensure_project_follows_directory_move() {
+        let store = temp_store();
+        let id = "proj-id-move";
+        let old_cwd = "/tmp/jia-test-old";
+        let new_cwd = "/tmp/jia-test-new";
+
+        store.ensure_project(id, old_cwd, "Old", "", "[]").unwrap();
+        store.create_session("sess-1", "title", old_cwd, id).unwrap();
+
+        // Same project id, different cwd (directory moved/renamed).
+        store.ensure_project(id, new_cwd, "New", "desc", "[]").unwrap();
+
+        let proj = store
+            .get_project(id)
+            .unwrap()
+            .expect("project should exist after move");
+        assert_eq!(proj["cwd"].as_str(), Some(new_cwd));
+        assert_eq!(proj["name"].as_str(), Some("New"));
+        assert_eq!(proj["description"].as_str(), Some("desc"));
+
+        assert_eq!(store.session_project_id("sess-1").as_deref(), Some(id));
+
+        let projects = store.list_projects(false).unwrap();
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0]["cwd"].as_str(), Some(new_cwd));
+        assert_eq!(projects[0]["sessionCount"].as_i64(), Some(1));
+    }
+
+    #[test]
+    fn ensure_project_move_with_stale_cwd_row() {
+        let store = temp_store();
+        let canonical_id = "proj-canonical";
+        let stale_id = "proj-stale";
+        let old_cwd = "/tmp/jia-test-old";
+        let new_cwd = "/tmp/jia-test-new";
+
+        store.ensure_project(canonical_id, old_cwd, "Canonical", "", "[]").unwrap();
+        store.ensure_project(stale_id, new_cwd, "Stale", "", "[]").unwrap();
+        store.create_session("sess-old", "title", old_cwd, canonical_id).unwrap();
+        store.create_session("sess-stale", "title", new_cwd, stale_id).unwrap();
+
+        // Directory moved to a cwd already occupied by a stale project row.
+        store.ensure_project(canonical_id, new_cwd, "Canonical", "", "[]").unwrap();
+
+        let proj = store
+            .get_project(canonical_id)
+            .unwrap()
+            .expect("canonical project should exist");
+        assert_eq!(proj["cwd"].as_str(), Some(new_cwd));
+
+        assert!(store.get_project(stale_id).unwrap().is_none());
+
+        assert_eq!(
+            store.session_project_id("sess-old").as_deref(),
+            Some(canonical_id)
+        );
+        assert_eq!(
+            store.session_project_id("sess-stale").as_deref(),
+            Some(canonical_id)
+        );
+
+        let projects = store.list_projects(false).unwrap();
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0]["id"].as_str(), Some(canonical_id));
+        assert_eq!(projects[0]["sessionCount"].as_i64(), Some(2));
     }
 }
