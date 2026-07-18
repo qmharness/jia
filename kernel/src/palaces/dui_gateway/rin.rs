@@ -16,6 +16,43 @@ use std::sync::Arc;
 
 use super::SessionTokens;
 
+/// P0-4 · 断连清扫:连接结束(EOF/读失败)时,移除属于本连接所启动会话的
+/// pending_questions / pending_confirmations 条目。remove 使 oneshot sender
+/// drop,等待中的 ask_user / 确认立即醒为 Err → "(user disconnected)" / 拒绝,
+/// agent 得以继续并释放 session_lock(消除断连死锁,审计 F2+L5)。
+/// 无 session 字段可判定时,只能按"插入时打上 session_id"实现按 sid 清扫。
+fn sweep_pending_for_sessions(earth: &EarthPlate, sids: &[String]) {
+    if sids.is_empty() {
+        return;
+    }
+    let removed_questions = {
+        let mut map = earth
+            .pending_questions
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let before = map.len();
+        map.retain(|_, p| !sids.contains(&p.session_id));
+        before - map.len()
+    };
+    let removed_confirmations = {
+        let mut map = earth
+            .pending_confirmations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let before = map.len();
+        map.retain(|_, p| !sids.contains(&p.session_id));
+        before - map.len()
+    };
+    if removed_questions + removed_confirmations > 0 {
+        tracing::info!(
+            removed_questions,
+            removed_confirmations,
+            sessions = ?sids,
+            "rin: swept pending questions/confirmations on disconnect"
+        );
+    }
+}
+
 /// Spawn the Unix Socket listener for jia-rin.
 pub fn spawn_rin_listener(
     earth: Arc<EarthPlate>,
@@ -171,6 +208,8 @@ async fn resolve_project(
                 token: confirm_token.clone(),
                 sender: _sender,
                 created_at: crate::utils::unix_now(),
+                // 建项确认尚无会话归属;断连时靠 120s 超时兜底。
+                session_id: String::new(),
             },
         );
     }
@@ -251,9 +290,18 @@ async fn handle_rin_connection(
     let mut line = String::new();
     let earth = &earth; // borrow Arc, don't move — each agent spawn clones
 
+    // P0-4 · 本连接上启动过 agent run 的会话 id(断连清扫的归属依据)。
+    let mut conn_sessions: Vec<String> = Vec::new();
+
     loop {
         line.clear();
-        let n = reader.read_line(&mut line).await?;
+        let n = match reader.read_line(&mut line).await {
+            Ok(n) => n,
+            Err(e) => {
+                sweep_pending_for_sessions(earth, &conn_sessions);
+                return Err(e);
+            }
+        };
         if n == 0 {
             break; // EOF
         }
@@ -345,6 +393,11 @@ async fn handle_rin_connection(
                     .map(String::from)
                     .filter(|s| !s.is_empty())
                     .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+                // P0-4 · 登记到本连接会话集,供断连清扫。
+                if !conn_sessions.contains(&session_id) {
+                    conn_sessions.push(session_id.clone());
+                }
 
                 let is_new = msg["session_id"].as_str().is_none_or(|s| s.is_empty());
 
@@ -560,7 +613,9 @@ async fn handle_rin_connection(
 
                             let mut agent = Agent::with_session(sid.clone(), earth.clone(), history, manas, distilled_hashes);
                             agent.exec_ctx = earth.build_worktree_exec_ctx(
-                                std::path::Path::new(&effective_cwd)
+                                std::path::Path::new(&effective_cwd),
+                                &sid,
+                                agent_token.clone(),
                             );
                             // P3 · apply user-set interaction mode (from /plan slash)
                             if let Some(mode) = earth.session_modes.lock().unwrap_or_else(|e| e.into_inner()).get(&sid).copied() {
@@ -745,6 +800,9 @@ async fn handle_rin_connection(
             }
         }
     }
+
+    // P0-4 · 断连清扫(EOF 路径;读失败路径已在循环内清扫)。
+    sweep_pending_for_sessions(earth, &conn_sessions);
 
     Ok(())
 }

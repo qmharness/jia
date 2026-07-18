@@ -538,7 +538,14 @@ impl EarthPlate {
     /// Build an ExecContext scoped to `root` (worktree or project workspace).
     /// Tools are stateless singletons on `self.tools` (六仪不动); only the
     /// ExecContext is replaced — O(1) instead of O(n) tool rebuild.
-    pub fn build_worktree_exec_ctx(&self, root: &std::path::Path) -> ExecContext {
+    /// `session_id`/`cancel_token` 归属该次 run：断连清扫按 session_id 匹配,
+    /// 长等待工具(ask_user/delegate/确认)经 cancel_token 响应取消。
+    pub fn build_worktree_exec_ctx(
+        &self,
+        root: &std::path::Path,
+        session_id: &str,
+        cancel_token: tokio_util::sync::CancellationToken,
+    ) -> ExecContext {
         let mut sec = self.config.app_config.security.clone();
         sec.project_root = Some(root.to_string_lossy().to_string());
         // Per-project backup dir: <project_root>/.jia/backups/
@@ -549,6 +556,8 @@ impl EarthPlate {
         );
         ExecContext {
             permissions: matrix,
+            session_id: session_id.to_string(),
+            cancel_token,
         }
     }
 
@@ -567,6 +576,7 @@ impl EarthPlate {
             );
             let distilled_hashes = earth.store.load_distilled_hashes(&session_id);
             let workspace = default_workspace_dir();
+            let cancel = CancellationToken::new();
             let mut agent = Agent::with_session(
                 session_id.clone(),
                 earth.clone(),
@@ -574,7 +584,8 @@ impl EarthPlate {
                 Manas::default(),
                 distilled_hashes,
             );
-            agent.exec_ctx = earth.build_worktree_exec_ctx(&workspace);
+            agent.exec_ctx =
+                earth.build_worktree_exec_ctx(&workspace, &session_id, cancel.clone());
             let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
 
             let messages = vec![Message::text(Role::User, prompt.clone())];
@@ -602,7 +613,6 @@ impl EarthPlate {
                 (response, tool_calls)
             });
 
-            let cancel = CancellationToken::new();
             let ctx = RunContext {
                 core: &earth.main_core,
                 human_plate: &human_plate,
@@ -775,6 +785,7 @@ async fn run_io_agent(earth: Arc<EarthPlate>, input: crate::palaces::kan_io::Cha
     );
     let distilled_hashes = earth.store.load_distilled_hashes(&session_id);
     let workspace = default_workspace_dir();
+    let cancel = tokio_util::sync::CancellationToken::new();
     let mut agent = Agent::with_session(
         session_id.clone(),
         earth.clone(),
@@ -782,7 +793,7 @@ async fn run_io_agent(earth: Arc<EarthPlate>, input: crate::palaces::kan_io::Cha
         manas,
         distilled_hashes,
     );
-    agent.exec_ctx = earth.build_worktree_exec_ctx(&workspace);
+    agent.exec_ctx = earth.build_worktree_exec_ctx(&workspace, &session_id, cancel.clone());
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
 
     let messages = vec![Message::text(Role::User, text.clone())];
@@ -808,7 +819,6 @@ async fn run_io_agent(earth: Arc<EarthPlate>, input: crate::palaces::kan_io::Cha
         (response, tool_calls)
     });
 
-    let cancel = tokio_util::sync::CancellationToken::new();
     let ctx = RunContext {
         core: &earth.main_core,
         human_plate: &human_plate,

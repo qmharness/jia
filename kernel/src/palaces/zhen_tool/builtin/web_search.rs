@@ -165,9 +165,7 @@ mod tests {
     fn test_ctx() -> crate::stems::action::ExecContext {
         use crate::palaces::qian_permission::PermissionMatrix;
         use std::sync::Arc;
-        crate::stems::action::ExecContext {
-            permissions: Arc::new(PermissionMatrix::default()),
-        }
+        crate::stems::action::ExecContext::new(Arc::new(PermissionMatrix::default()))
     }
 
     use super::*;

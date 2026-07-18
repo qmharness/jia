@@ -258,7 +258,9 @@ pub async fn handle_agent(
 
                         let mut agent = Agent::with_session(sid.clone(), earth_for_spawn.clone(), history, manas, distilled_hashes);
                         agent.exec_ctx = earth_for_spawn.build_worktree_exec_ctx(
-                            std::path::Path::new(&effective_cwd)
+                            std::path::Path::new(&effective_cwd),
+                            &sid,
+                            agent_token.clone(),
                         );
                         let human_plate = HumanPlate::with_state(permissions, pending_confirmations);
 

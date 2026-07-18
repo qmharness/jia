@@ -188,9 +188,7 @@ mod tests {
     fn test_ctx() -> crate::stems::action::ExecContext {
         use crate::palaces::qian_permission::PermissionMatrix;
         use std::sync::Arc;
-        crate::stems::action::ExecContext {
-            permissions: Arc::new(PermissionMatrix::default()),
-        }
+        crate::stems::action::ExecContext::new(Arc::new(PermissionMatrix::default()))
     }
 
     use super::*;
@@ -219,9 +217,7 @@ mod tests {
     async fn scratchpad_write_read_roundtrip() {
         let dir = tempfile::TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
         let perms = test_perms_at(dir.path());
-        let ctx = ExecContext {
-            permissions: perms.clone(),
-        };
+        let ctx = ExecContext::new(perms.clone());
         let w = ScratchpadWriteTool::new();
         let r = ScratchpadReadTool::new();
 
@@ -244,7 +240,7 @@ mod tests {
     async fn scratchpad_rejects_bad_key() {
         let dir = tempfile::TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
         let perms = test_perms_at(dir.path());
-        let ctx = ExecContext { permissions: perms };
+        let ctx = ExecContext::new(perms);
         let w = ScratchpadWriteTool::new();
         let res = w
             .execute(

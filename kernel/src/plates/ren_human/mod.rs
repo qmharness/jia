@@ -18,6 +18,9 @@ pub struct PendingConfirmation {
     pub sender: tokio::sync::oneshot::Sender<bool>,
     pub created_at: i64,
     pub token: String,
+    /// 所属会话 — 断连时按会话清扫(rin 连接结束 → remove → sender drop)。
+    /// 空串 = 无会话归属(如 resolve_project 的建项确认,靠超时兜底)。
+    pub session_id: String,
 }
 
 /// 人盘 (Human Plate) — Permission boundary and human interaction gate.
@@ -236,7 +239,8 @@ impl HumanPlate {
                         "HumanPlate: requesting user confirmation for {}",
                         tool.name()
                     );
-                    let approved = self.request_confirmation(tool.name(), reason, tx).await;
+                    let approved =
+                        self.request_confirmation(tool.name(), reason, tx, exec_ctx).await;
                     if !approved {
                         event_bus.emit(RuntimeEvent::Error {
                             source: "human_plate".into(),
@@ -344,12 +348,13 @@ impl HumanPlate {
     }
 
     /// Request user confirmation via SSE and await response.
-    /// Returns true if approved, false if denied or timed out.
+    /// Returns true if approved, false if denied, cancelled or timed out.
     async fn request_confirmation(
         &self,
         tool_name: &str,
         reason: &str,
         tx: &tokio::sync::mpsc::UnboundedSender<AgentEvent>,
+        exec_ctx: &ExecContext,
     ) -> bool {
         if let Some(v) = self.confirmation_override {
             return v;
@@ -376,6 +381,7 @@ impl HumanPlate {
                     sender: oneshot_tx,
                     token: token.clone(),
                     created_at: now,
+                    session_id: exec_ctx.session_id.clone(),
                 },
             );
         }
@@ -389,23 +395,36 @@ impl HumanPlate {
             token,
         });
 
-        // Await response with timeout
-        match tokio::time::timeout(self.permissions.confirmation_timeout, oneshot_rx).await {
-            Ok(Ok(true)) => {
-                tracing::info!("HumanPlate: user approved {tool_name}");
-                true
+        // Await response with timeout; wake early on run cancellation
+        // (HTTP 取消 / SSE 断连 CancelOnDropStream / rin cancel)。
+        tokio::select! {
+            r = tokio::time::timeout(self.permissions.confirmation_timeout, oneshot_rx) => {
+                match r {
+                    Ok(Ok(true)) => {
+                        tracing::info!("HumanPlate: user approved {tool_name}");
+                        true
+                    }
+                    Ok(Ok(false)) | Ok(Err(_)) => {
+                        tracing::warn!("HumanPlate: user denied {tool_name}");
+                        false
+                    }
+                    Err(_elapsed) => {
+                        // Clean up the stale entry
+                        self.pending_confirmations
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .remove(&id);
+                        tracing::warn!("HumanPlate: confirmation timed out for {tool_name}");
+                        false
+                    }
+                }
             }
-            Ok(Ok(false)) | Ok(Err(_)) => {
-                tracing::warn!("HumanPlate: user denied {tool_name}");
-                false
-            }
-            Err(_elapsed) => {
-                // Clean up the stale entry
+            _ = exec_ctx.cancel_token.cancelled() => {
                 self.pending_confirmations
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .remove(&id);
-                tracing::warn!("HumanPlate: confirmation timed out for {tool_name}");
+                tracing::warn!("HumanPlate: confirmation cancelled for {tool_name}");
                 false
             }
         }
@@ -519,9 +538,7 @@ mod tests {
     }
 
     fn make_ctx() -> ExecContext {
-        ExecContext {
-            permissions: Arc::new(PermissionMatrix::default()),
-        }
+        ExecContext::new(Arc::new(PermissionMatrix::default()))
     }
 
     fn make_plate() -> (
@@ -584,6 +601,50 @@ mod tests {
             )
             .await;
         assert!(result.is_ok());
+    }
+
+    /// P0-4 · 确认等待中取消 → 立即按拒绝返回(不等 confirmation_timeout),
+    /// 且 pending_confirmations 无残留。
+    #[tokio::test]
+    async fn guarded_confirmation_cancelled_returns_denied() {
+        let (plate, eb, tx) = make_plate();
+        let pending = plate.pending_confirmations.clone();
+        let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
+        let mut geju = make_geju(ExecutionMode::Guarded);
+        geju.approval_chain = vec![ApprovalGate::UserConfirmation("sure?".into())];
+        let token = tokio_util::sync::CancellationToken::new();
+        let mut ctx = make_ctx();
+        ctx.cancel_token = token.clone();
+
+        let handle = tokio::spawn(async move {
+            plate
+                .dispatch(&geju, &tool, serde_json::json!({}), &eb, &tx, &ctx)
+                .await
+        });
+
+        // Wait until the confirmation is actually pending.
+        for _ in 0..100 {
+            if !pending.lock().unwrap_or_else(|e| e.into_inner()).is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(
+            !pending.lock().unwrap_or_else(|e| e.into_inner()).is_empty(),
+            "confirmation never became pending"
+        );
+
+        token.cancel();
+
+        let res = tokio::time::timeout(std::time::Duration::from_secs(5), handle)
+            .await
+            .expect("confirmation wait must wake on cancel (deadlock!)")
+            .unwrap();
+        assert!(res.is_err(), "cancelled confirmation must deny the tool");
+        assert!(
+            pending.lock().unwrap_or_else(|e| e.into_inner()).is_empty(),
+            "pending_confirmations must have no residue after cancel"
+        );
     }
 
     #[tokio::test]

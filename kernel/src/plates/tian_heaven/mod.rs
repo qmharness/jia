@@ -116,6 +116,8 @@ impl Agent {
         );
         let exec_ctx = ExecContext {
             permissions: earth.permissions.clone(),
+            session_id: id.clone(),
+            cancel_token: tokio_util::sync::CancellationToken::new(),
         };
         let principles = earth
             .store
@@ -172,6 +174,8 @@ impl Agent {
         );
         let exec_ctx = ExecContext {
             permissions: earth.permissions.clone(),
+            session_id: id.clone(),
+            cancel_token: tokio_util::sync::CancellationToken::new(),
         };
         let principles = earth
             .store

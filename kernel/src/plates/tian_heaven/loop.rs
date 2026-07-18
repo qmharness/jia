@@ -585,7 +585,11 @@ impl super::Agent {
                             let path = crate::palaces::zhen_tool::builtin::worktree::worktree_path(
                                 &main_root, name,
                             );
-                            self.exec_ctx = self.earth.build_worktree_exec_ctx(&path);
+                            self.exec_ctx = self.earth.build_worktree_exec_ctx(
+                                &path,
+                                &self.id,
+                                ctx.cancel_token.clone(),
+                            );
                             self.worktree_root = Some(path.clone());
                             tracing::info!(
                                 session = %self.id,
@@ -599,6 +603,8 @@ impl super::Agent {
                         if let Some(wt) = self.worktree_root.take() {
                             self.exec_ctx = ExecContext {
                                 permissions: self.earth.permissions.clone(),
+                                session_id: self.id.clone(),
+                                cancel_token: ctx.cancel_token.clone(),
                             };
                             let action = tc
                                 .parameters

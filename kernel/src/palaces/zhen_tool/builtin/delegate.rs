@@ -269,9 +269,18 @@ async fn run_subagent_loop(
     );
 
     for turn in 0..max_turns {
+        // P0-4 · 子代理响应父级取消:每轮 LLM 调用前检查。
+        if exec_ctx.cancel_token.is_cancelled() {
+            tracing::info!(turn, "Sub-agent cancelled by parent run");
+            return Err("Sub-agent cancelled".into());
+        }
         tracing::debug!(turn = turn + 1, max = max_turns, "Sub-agent turn");
 
-        let mut stream = core.infer(messages.clone(), None, None);
+        let mut stream = core.infer(
+            messages.clone(),
+            None,
+            Some(exec_ctx.cancel_token.clone()),
+        );
         let mut full_response = String::new();
         while let Some(chunk) = stream.next().await {
             match chunk {
@@ -480,10 +489,7 @@ mod tests {
     use crate::palaces::qian_permission::PermissionMatrix;
     use std::sync::Arc;
     fn test_ctx() -> crate::stems::action::ExecContext {
-        use std::sync::Arc;
-        crate::stems::action::ExecContext {
-            permissions: Arc::new(PermissionMatrix::default()),
-        }
+        crate::stems::action::ExecContext::new(Arc::new(PermissionMatrix::default()))
     }
 
     use super::*;
@@ -666,5 +672,84 @@ mod tests {
             .await;
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().contains("Unknown subagent_id"));
+    }
+
+    // ── P0-4 · 子代理可取消 ────────────────────────────────────
+
+    use crate::error::ProviderError;
+    use crate::palaces::zhong_core::{LlmProvider, StreamChunk};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// Provider that always answers with a read_file tool_call (so the
+    /// sub-agent loop would otherwise run to max_turns), and cancels the
+    /// given token on the Nth invocation.
+    struct CancellingProvider {
+        calls: Arc<AtomicUsize>,
+        cancel_on_call: usize,
+        token: tokio_util::sync::CancellationToken,
+    }
+
+    impl LlmProvider for CancellingProvider {
+        fn infer_stream(
+            &self,
+            _messages: Vec<Message>,
+            _tools: Option<&[crate::stems::action::ToolSchema]>,
+            _cancel_token: Option<tokio_util::sync::CancellationToken>,
+        ) -> std::pin::Pin<
+            Box<dyn futures::Stream<Item = Result<StreamChunk, ProviderError>> + Send>,
+        > {
+            let n = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+            if n == self.cancel_on_call {
+                self.token.cancel();
+            }
+            let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+            tokio::spawn(async move {
+                let text = r#"<tool_call>
+{"name": "read_file", "parameters": {"file_path": "/nonexistent-p0-4"}}
+</tool_call>"#;
+                let _ = tx.send(Ok(StreamChunk::Delta(text.to_string())));
+            });
+            Box::pin(tokio_stream::wrappers::UnboundedReceiverStream::new(rx))
+        }
+    }
+
+    /// P0-4 · 子代理运行中取消 → 提前退出(轮数远小于 50),返回取消错误。
+    #[tokio::test]
+    async fn delegate_cancel_stops_subagent_early() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let token = tokio_util::sync::CancellationToken::new();
+        let provider: Box<dyn LlmProvider> = Box::new(CancellingProvider {
+            calls: calls.clone(),
+            cancel_on_call: 2,
+            token: token.clone(),
+        });
+        let router = crate::palaces::zhong_core::router::ProviderRouter::new(vec![(0u32, provider)]);
+        let core = Arc::new(JiaCore::with_router(router, "mock".into(), "mock".into(), 8192));
+
+        let tool = DelegateTool::new(core, test_subtools(), test_store(), test_sessions());
+        let mut ctx = test_ctx();
+        ctx.cancel_token = token;
+
+        let res = tool
+            .execute(
+                serde_json::json!({
+                    "subagent_type": "Explore",
+                    "prompt": "loop forever",
+                    "max_turns": 50
+                }),
+                &ctx,
+            )
+            .await;
+
+        let n = calls.load(Ordering::SeqCst);
+        assert!(
+            n < 50,
+            "cancelled sub-agent must exit early, not run to max_turns (calls={n})"
+        );
+        assert!(res.is_err(), "cancelled sub-agent must return an error");
+        assert!(
+            res.unwrap_err().to_string().contains("cancel"),
+            "error should mention cancellation"
+        );
     }
 }

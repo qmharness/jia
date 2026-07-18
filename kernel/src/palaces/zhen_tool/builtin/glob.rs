@@ -150,9 +150,7 @@ mod tests {
     use std::sync::Arc;
 
     fn test_ctx() -> ExecContext {
-        ExecContext {
-            permissions: Arc::new(PermissionMatrix::default()),
-        }
+        ExecContext::new(Arc::new(PermissionMatrix::default()))
     }
 
     #[tokio::test]
