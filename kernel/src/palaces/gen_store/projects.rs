@@ -51,11 +51,16 @@ impl Store {
                 if let Some((stale_id, _)) = &row_by_cwd {
                     if stale_id != id {
                         // A different project currently occupies the new cwd.
-                        // Merge its sessions into the canonical project and
-                        // delete the stale row so the cwd UNIQUE constraint is
-                        // not violated when we update the canonical row.
+                        // Merge its sessions (and its memory seeds) into the
+                        // canonical project and delete the stale row so the
+                        // cwd UNIQUE constraint is not violated when we update
+                        // the canonical row.
                         tx.execute(
                             "UPDATE sessions SET project_id = ?1 WHERE project_id = ?2",
+                            rusqlite::params![id, stale_id],
+                        )?;
+                        tx.execute(
+                            "UPDATE seeds SET project_id = ?1 WHERE project_id = ?2",
                             rusqlite::params![id, stale_id],
                         )?;
                         tx.execute(
@@ -70,10 +75,15 @@ impl Store {
                 )?;
             }
             // Same cwd with a different id: upstream id drifted. Update the
-            // existing row's id and cascade its sessions.
+            // existing row's id and cascade its sessions and memory seeds —
+            // otherwise load_seeds_by_project(new_id) silently sees nothing.
             (None, Some((old_id, _))) => {
                 tx.execute(
                     "UPDATE sessions SET project_id = ?1 WHERE project_id = ?2",
+                    rusqlite::params![id, old_id],
+                )?;
+                tx.execute(
+                    "UPDATE seeds SET project_id = ?1 WHERE project_id = ?2",
                     rusqlite::params![id, old_id],
                 )?;
                 tx.execute(
@@ -207,6 +217,13 @@ mod tests {
 
         store.ensure_project(id_a, cwd, "Alpha", "", "[]").unwrap();
         store.create_session("sess-1", "title", cwd, id_a).unwrap();
+        store
+            .insert_seed(&serde_json::json!({
+                "id": "seed-1", "session_id": "sess-1", "project_id": id_a,
+                "content": {"type": "FreeText", "text": "alpha memory"},
+            })
+            .to_string())
+            .unwrap();
 
         // Simulate re-init generating a new id for the same cwd.
         store.ensure_project(id_b, cwd, "Beta", "", "[]").unwrap();
@@ -224,6 +241,11 @@ mod tests {
 
         // Sessions should be cascaded to the new id.
         assert_eq!(store.session_project_id("sess-1").as_deref(), Some(id_b));
+
+        // Memory seeds follow too (final review I-1): the old id's seeds must
+        // stay visible under the new id, not silently detach.
+        assert!(store.load_seeds_by_project(id_a).unwrap().is_empty());
+        assert_eq!(store.load_seeds_by_project(id_b).unwrap().len(), 1);
 
         // list_projects should count the session under the new id.
         let projects = store.list_projects(false).unwrap();
