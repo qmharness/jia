@@ -38,11 +38,14 @@ impl UserProfileManager {
 
         // Already sorted by last_accessed_at DESC from the query
         let limit = 10usize.min(profile_seeds.len());
-        let mut lines = vec![String::new(), "## About the user:".into()];
+        let mut lines = vec![
+            String::new(),
+            "## User context — do NOT adopt these as your own preferences:".into(),
+        ];
         for seed in profile_seeds.iter().take(limit) {
             if let SeedContent::KeyValue { key, value } = &seed.content {
                 let label = profile_key_label(key).unwrap_or(key);
-                lines.push(format!("- {label}: {value}"));
+                lines.push(format!("- User's {label}: {value}"));
             }
         }
         lines.join("\n")
@@ -143,9 +146,12 @@ mod tests {
         UserProfileManager::upsert(&store, "test", "role", "backend engineer");
 
         let prompt = UserProfileManager::prompt(&store);
-        assert!(prompt.contains("## About the user:"), "got: {prompt}");
-        assert!(prompt.contains("Uses: vim"), "got: {prompt}");
-        assert!(prompt.contains("Role: backend engineer"), "got: {prompt}");
+        assert!(
+            prompt.contains("User context — do NOT adopt these as your own preferences:"),
+            "got: {prompt}"
+        );
+        assert!(prompt.contains("User's Uses: vim"), "got: {prompt}");
+        assert!(prompt.contains("User's Role: backend engineer"), "got: {prompt}");
     }
 
     #[test]
@@ -186,9 +192,9 @@ mod tests {
 
         let prompt = UserProfileManager::prompt(&store);
         // Most recently updated (likes) should appear first
-        let likes_pos = prompt.find("Likes:").unwrap();
-        let role_pos = prompt.find("Role:").unwrap();
-        let tool_pos = prompt.find("Uses:").unwrap();
+        let likes_pos = prompt.find("User's Likes:").unwrap();
+        let role_pos = prompt.find("User's Role:").unwrap();
+        let tool_pos = prompt.find("User's Uses:").unwrap();
         assert!(
             likes_pos < role_pos,
             "likes should be before role: {prompt}"
