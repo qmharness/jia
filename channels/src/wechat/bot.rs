@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use futures::FutureExt;
 use serde_json::json;
 
 use kernel::config::WeChatBotConfig;
@@ -247,45 +246,26 @@ impl WeChatAdapter {
         let typing_base = self.config.base_url.clone();
         let typing_token = self.config.token.clone();
         let typing_user = from_user.clone();
-        let to_user_for_log = to_user.clone();
         tokio::spawn(async move {
-            let result: Result<(), Box<dyn std::any::Any + Send>> =
-                std::panic::AssertUnwindSafe(async {
-                    // Fire typing indicator so the user sees "typing..." in chat
-                    send_wechat_typing(&typing_client, &typing_base, &typing_token, &typing_user)
-                        .await;
-                    while let Some(reply) = reply_rx.recv().await {
-                        match send_wechat_message(
-                            &client,
-                            &base_url,
-                            &token,
-                            &to_user,
-                            &reply.text,
-                            context_token.as_deref(),
-                        )
-                        .await
-                        {
-                            Ok(()) => tracing::info!(user = %to_user, "WeChat reply sent"),
-                            Err(e) => {
-                                tracing::warn!(user = %to_user, error = %e, "WeChat reply failed")
-                            }
-                        }
-                    }
-                })
-                .catch_unwind()
+            // Fire typing indicator so the user sees "typing..." in chat
+            send_wechat_typing(&typing_client, &typing_base, &typing_token, &typing_user)
                 .await;
-
-            if let Err(panic_err) = result {
-                let payload = panic_err
-                    .downcast_ref::<&str>()
-                    .copied()
-                    .or_else(|| panic_err.downcast_ref::<String>().map(|s| s.as_str()))
-                    .unwrap_or("<unknown panic payload>");
-                tracing::error!(
-                    user = %to_user_for_log,
-                    panic.payload = %payload,
-                    "WeChat reply dispatcher panicked"
-                );
+            while let Some(reply) = reply_rx.recv().await {
+                match send_wechat_message(
+                    &client,
+                    &base_url,
+                    &token,
+                    &to_user,
+                    &reply.text,
+                    context_token.as_deref(),
+                )
+                .await
+                {
+                    Ok(()) => tracing::info!(user = %to_user, "WeChat reply sent"),
+                    Err(e) => {
+                        tracing::warn!(user = %to_user, error = %e, "WeChat reply failed")
+                    }
+                }
             }
         });
 
@@ -317,62 +297,17 @@ impl WeChatAdapter {
 ///
 /// Follows the same signature as [`super::telegram::spawn_telegram_bot`].
 ///
-/// If the bot's main loop panics, it is automatically restarted with
-/// exponential backoff (up to 10 retries). After 10 consecutive panics,
-/// the bot gives up permanently.
+/// Panic policy: the workspace is built with `panic = "abort"` in release
+/// mode, so any panic in the bot task aborts the whole process. There is no
+/// in-process catch/restart; recovery is the responsibility of the external
+/// supervisor (launchd/systemd/etc.).
 pub fn spawn_wechat_bot(
     config: WeChatBotConfig,
     cm: Arc<kernel::palaces::kan_io::ChannelManager>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let mut restart_count = 0u32;
-        const MAX_RESTARTS: u32 = 10;
-
-        loop {
-            let adapter = WeChatAdapter::new(config.clone(), cm.clone());
-            let result: Result<(), Box<dyn std::any::Any + Send>> =
-                std::panic::AssertUnwindSafe(adapter.run())
-                    .catch_unwind()
-                    .await;
-
-            match result {
-                Ok(()) => {
-                    // run() loops forever under normal conditions;
-                    // a return means something unexpected happened.
-                    tracing::warn!("WeChat bot run() returned unexpectedly, restarting");
-                }
-                Err(panic_err) => {
-                    let payload = panic_err
-                        .downcast_ref::<&str>()
-                        .copied()
-                        .or_else(|| panic_err.downcast_ref::<String>().map(|s| s.as_str()))
-                        .unwrap_or("<unknown panic payload>");
-                    tracing::error!(
-                        panic.payload = %payload,
-                        restart_count,
-                        "WeChat bot panicked"
-                    );
-                }
-            }
-
-            restart_count += 1;
-            if restart_count > MAX_RESTARTS {
-                tracing::error!(
-                    restart_count,
-                    max_restarts = MAX_RESTARTS,
-                    "WeChat bot exceeded max restarts, giving up permanently"
-                );
-                break;
-            }
-
-            let delay = backoff_delay(restart_count);
-            tracing::info!(
-                restart_count,
-                delay_ms = delay.as_millis(),
-                "WeChat bot restarting"
-            );
-            tokio::time::sleep(delay).await;
-        }
+        let adapter = WeChatAdapter::new(config, cm);
+        adapter.run().await;
     })
 }
 

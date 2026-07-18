@@ -23,6 +23,12 @@ use super::SessionTokens;
 /// agent 得以继续并释放 session_lock(消除断连死锁,审计 F2+L5)。
 /// 无 session 字段可判定时,只能按"插入时打上 session_id"实现按 sid 清扫。
 /// (直接收两张表而非 EarthPlate,便于单元测试。)
+///
+/// 已知限制:断连清扫是一次性的且不 cancel session token(有意保留"TUI
+/// 断连后长任务续跑"语义,2026-07-19 裁决)。残留:断连后 agent 若再次调用
+/// ask_user,新 pending 条目无人清扫、无超时,会持 session_lock 永久等待;
+/// 缓解:确认类等待有 confirmation_timeout 兜底,ask_user 的彻底解法是断连
+/// 即 cancel 本连接 token(语义变更,未采纳)。
 fn sweep_pending_for_sessions(
     pending_questions: &Arc<Mutex<HashMap<String, crate::palaces::zhen_tool::builtin::ask_user::PendingQuestion>>>,
     pending_confirmations: &Arc<Mutex<HashMap<String, crate::plates::ren_human::PendingConfirmation>>>,

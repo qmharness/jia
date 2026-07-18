@@ -1,7 +1,6 @@
 use std::sync::Arc;
 // ── Telegram Bot (long-polling mode) ────────────────────────
 
-use futures::FutureExt;
 use serde::Deserialize;
 
 use kernel::config::TelegramBotConfig;
@@ -37,9 +36,10 @@ struct TgChat {
 /// Spawn a Telegram bot that polls `getUpdates` and pushes
 /// incoming text messages into the `ChannelManager`.
 ///
-/// If the bot's main loop panics, it is automatically restarted with
-/// exponential backoff (up to 10 retries). After 10 consecutive panics,
-/// the bot gives up permanently.
+/// Panic policy: the workspace is built with `panic = "abort"` in release
+/// mode, so any panic in the bot task aborts the whole process. There is no
+/// in-process catch/restart; recovery is the responsibility of the external
+/// supervisor (launchd/systemd/etc.).
 pub fn spawn_telegram_bot(
     config: TelegramBotConfig,
     cm: Arc<kernel::palaces::kan_io::ChannelManager>,
@@ -47,65 +47,14 @@ pub fn spawn_telegram_bot(
     let client = reqwest::Client::new();
     let token = config.token.clone();
     let base = format!("https://api.telegram.org/bot{token}");
+    let allowed_chat_ids = config.allowed_chat_ids;
 
     tokio::spawn(async move {
-        let allowed_chat_ids = config.allowed_chat_ids;
-        let mut restart_count = 0u32;
-        const MAX_RESTARTS: u32 = 10;
-
-        loop {
-            let token = token.clone();
-            let base = base.clone();
-            let client = client.clone();
-            let cm = cm.clone();
-            let allowed = allowed_chat_ids.clone();
-
-            let result: Result<(), Box<dyn std::any::Any + Send>> =
-                std::panic::AssertUnwindSafe(run_telegram_loop(client, token, base, cm, allowed))
-                    .catch_unwind()
-                    .await;
-
-            match result {
-                Ok(()) => {
-                    tracing::warn!("Telegram bot loop returned unexpectedly, restarting");
-                }
-                Err(panic_err) => {
-                    let payload = panic_err
-                        .downcast_ref::<&str>()
-                        .copied()
-                        .or_else(|| panic_err.downcast_ref::<String>().map(|s| s.as_str()))
-                        .unwrap_or("<unknown panic payload>");
-                    tracing::error!(
-                        panic.payload = %payload,
-                        restart_count,
-                        "Telegram bot panicked"
-                    );
-                }
-            }
-
-            restart_count += 1;
-            if restart_count > MAX_RESTARTS {
-                tracing::error!(
-                    restart_count,
-                    max_restarts = MAX_RESTARTS,
-                    "Telegram bot exceeded max restarts, giving up permanently"
-                );
-                break;
-            }
-
-            let delay = std::time::Duration::from_secs((1u64 << restart_count.min(10)).min(300));
-            tracing::info!(
-                restart_count,
-                delay_ms = delay.as_millis(),
-                "Telegram bot restarting"
-            );
-            tokio::time::sleep(delay).await;
-        }
+        run_telegram_loop(client, token, base, cm, allowed_chat_ids).await;
     })
 }
 
-/// Main Telegram long-poll loop. Extracted so we can catch panics
-/// and reconstruct state on restart.
+/// Main Telegram long-poll loop. Runs until the process aborts on panic.
 async fn run_telegram_loop(
     client: reqwest::Client,
     token: String,
@@ -186,39 +135,21 @@ async fn run_telegram_loop(
                 let reply_base = base.clone();
                 let chat_id = msg.chat.id;
                 tokio::spawn(async move {
-                    let result: Result<(), Box<dyn std::any::Any + Send>> =
-                        std::panic::AssertUnwindSafe(async {
-                            while let Some(reply) = reply_rx.recv().await {
-                                match send_telegram_message(
-                                    &reply_client,
-                                    &reply_token,
-                                    &reply_base,
-                                    chat_id,
-                                    &reply.text,
-                                )
-                                .await
-                                {
-                                    Ok(()) => tracing::info!(chat_id, "Telegram reply sent"),
-                                    Err(e) => {
-                                        tracing::warn!(chat_id, error = %e, "Telegram reply failed")
-                                    }
-                                }
-                            }
-                        })
-                        .catch_unwind()
-                        .await;
-
-                    if let Err(panic_err) = result {
-                        let payload = panic_err
-                            .downcast_ref::<&str>()
-                            .copied()
-                            .or_else(|| panic_err.downcast_ref::<String>().map(|s| s.as_str()))
-                            .unwrap_or("<unknown panic payload>");
-                        tracing::error!(
+                    while let Some(reply) = reply_rx.recv().await {
+                        match send_telegram_message(
+                            &reply_client,
+                            &reply_token,
+                            &reply_base,
                             chat_id,
-                            panic.payload = %payload,
-                            "Telegram reply dispatcher panicked"
-                        );
+                            &reply.text,
+                        )
+                        .await
+                        {
+                            Ok(()) => tracing::info!(chat_id, "Telegram reply sent"),
+                            Err(e) => {
+                                tracing::warn!(chat_id, error = %e, "Telegram reply failed")
+                            }
+                        }
                     }
                 });
 
