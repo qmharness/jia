@@ -13,7 +13,10 @@ impl Store {
     ) -> Result<(), StoreError> {
         let mut conn = self.pool.get()?;
         let now = crate::utils::unix_now();
-        let tx = conn.transaction()?;
+        // BEGIN IMMEDIATE: the SELECT-then-write below must be serialized
+        // against concurrent ensure_project calls (DEFERRED would allow two
+        // callers to both read empty and double-INSERT).
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
 
         // We may change the project's primary key when the upstream id has
         // drifted (same cwd, new id), or change its cwd when the project has
@@ -236,13 +239,23 @@ mod tests {
         let id = "proj-id-same";
 
         store.ensure_project(id, cwd, "First", "desc1", "[]").unwrap();
-        store.ensure_project(id, cwd, "First", "desc1", "[]").unwrap();
+        store.create_session("sess-same", "title", cwd, id).unwrap();
+        // Same id + same cwd with changed metadata: must update in place,
+        // keep one row, and not lose the session association.
+        store
+            .ensure_project(id, cwd, "Renamed", "desc2", "[\"a\"]")
+            .unwrap();
 
         let projects = store.list_projects(false).unwrap();
         assert_eq!(projects.len(), 1);
         assert_eq!(projects[0]["id"].as_str(), Some(id));
-        assert_eq!(projects[0]["name"].as_str(), Some("First"));
-        assert_eq!(projects[0]["sessionCount"].as_i64(), Some(0));
+        assert_eq!(projects[0]["name"].as_str(), Some("Renamed"));
+        assert_eq!(projects[0]["sessionCount"].as_i64(), Some(1));
+        assert_eq!(store.session_project_id("sess-same").as_deref(), Some(id));
+
+        let proj = store.get_project(id).unwrap().expect("project exists");
+        assert_eq!(proj["description"].as_str(), Some("desc2"));
+        assert_eq!(proj["tags"][0].as_str(), Some("a"));
     }
 
     #[test]
