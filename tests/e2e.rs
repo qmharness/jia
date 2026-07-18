@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use kernel::palaces::gen_store::Store;
-use kernel::palaces::kun_config::{AppConfig, ProviderProfile, SecuritySection};
+use kernel::palaces::kun_config::{AppConfig, CognitionSection, ProviderProfile, SandboxMode, SecuritySection};
 use kernel::palaces::li_skill::SkillRegistry;
 use kernel::palaces::qian_permission::PermissionMatrix;
 use kernel::palaces::zhen_tool::ToolRegistry;
@@ -21,7 +21,7 @@ use kernel::palaces::zhen_tool::builtin::{
 use kernel::palaces::zhong_core::JiaCore;
 use kernel::plates::di_earth::EarthPlate;
 use kernel::plates::ren_human::HumanPlate;
-use kernel::plates::shen_spirit::{EventBus, SpiritPlate};
+use kernel::plates::shen_spirit::{completion_check::CompletionChecklist, EventBus, SpiritPlate};
 use kernel::plates::tian_heaven::Agent;
 use kernel::plates::tian_heaven::r#loop::AgentEvent;
 use kernel::types::{Message, Role};
@@ -108,12 +108,13 @@ fn temp_store() -> Arc<Store> {
 fn temp_earth(store: Arc<Store>, temp_dir: &std::path::Path) -> Arc<EarthPlate> {
     let security = SecuritySection {
         project_root: Some(temp_dir.to_str().unwrap().to_string()),
-        sandbox_disabled: true, // allow direct tool execution in test
+        sandbox_mode: SandboxMode::Disabled, // allow direct tool execution in test
         ..SecuritySection::default()
     };
     let config = AppConfig {
         host: "127.0.0.1".into(),
         port: 8080,
+        web_dir: None,
         providers: std::collections::HashMap::new(), // unused — core is separate
         default_main_model_provider: None,
         default_aux_model_provider: None,
@@ -162,6 +163,7 @@ fn temp_earth(store: Arc<Store>, temp_dir: &std::path::Path) -> Arc<EarthPlate> 
         store_async: kernel::palaces::gen_store::async_store::StoreAsync::new(store.clone()),
         store,
         spirit: Arc::new(SpiritPlate::new()),
+        completion_checklist: Arc::new(CompletionChecklist::new()),
         user_hooks: Arc::new(Vec::new()),
         pending_confirmations: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         pending_questions: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
@@ -452,6 +454,9 @@ async fn e2e_post_loop_memory() {
                 tool_output: "ok".into(),
                 tool_error: None,
                 timestamp: 1700000000 + i as i64,
+                certainty: None,
+                active_seed_ids: vec![],
+                tool_count: 1,
             });
     }
 
@@ -469,7 +474,7 @@ async fn e2e_post_loop_memory() {
     assert!(events.iter().any(|e| matches!(e, AgentEvent::Done)));
 
     // Run post_loop to persist memory
-    agent.post_loop(store.clone(), &earth.main_core, None).await;
+    agent.post_loop(store.clone(), &earth.main_core, None, &human).await;
 
     // Verify seeds were persisted
     let seed_store = SeedStore::new(store.clone());
