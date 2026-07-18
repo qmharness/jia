@@ -227,7 +227,10 @@ mod tests {
         let ids2: Vec<String> = (3..6).map(|i| format!("s{}", i)).collect();
         matrix.record_coactivation(project, &ids2, 1);
 
-        let dormant = matrix.dormant_seeds(project, 0.05);
+        // dormant_seeds 按“共现总强度”过滤。孤立组 3 个种子只共现 1 次：
+        // 每对强度 = (1 - 0.95) * 1 = 0.05，每种子参与 2 对，总强度 = 0.10。
+        // 阈值需高于 0.10 才能把它识别为沉寂，同时远低于活跃组总强度 (~0.80)。
+        let dormant = matrix.dormant_seeds(project, 0.15);
         // The isolated group should have very low strength
         assert!(!dormant.is_empty(), "should detect dormant seeds");
     }
