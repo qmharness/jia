@@ -150,7 +150,11 @@ impl BaseTool for AskUserQuestionTool {
             r = orx => r,
             _ = ctx.cancel_token.cancelled() => {
                 // 取消语义:清理 pending 条目,返回错误让 loop 感知取消。
-                let _ = self.pending_questions.lock().map(|mut g| g.remove(&id));
+                // 锁中毒时取回内部值继续清理,不留残留(与 sweep/ren_human 一致)。
+                self.pending_questions
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(&id);
                 tracing::info!(%id, "ask_user: cancelled while waiting");
                 return Err("ask_user cancelled".into());
             }

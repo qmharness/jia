@@ -12,7 +12,8 @@ use crate::plates::tian_heaven::InteractionMode;
 use crate::plates::tian_heaven::r#loop::AgentEvent;
 use crate::types::{Message, Role, StreamEvent};
 use crate::vijnana::manas::Manas;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use super::SessionTokens;
 
@@ -21,13 +22,17 @@ use super::SessionTokens;
 /// drop,等待中的 ask_user / 确认立即醒为 Err → "(user disconnected)" / 拒绝,
 /// agent 得以继续并释放 session_lock(消除断连死锁,审计 F2+L5)。
 /// 无 session 字段可判定时,只能按"插入时打上 session_id"实现按 sid 清扫。
-fn sweep_pending_for_sessions(earth: &EarthPlate, sids: &[String]) {
+/// (直接收两张表而非 EarthPlate,便于单元测试。)
+fn sweep_pending_for_sessions(
+    pending_questions: &Arc<Mutex<HashMap<String, crate::palaces::zhen_tool::builtin::ask_user::PendingQuestion>>>,
+    pending_confirmations: &Arc<Mutex<HashMap<String, crate::plates::ren_human::PendingConfirmation>>>,
+    sids: &[String],
+) {
     if sids.is_empty() {
         return;
     }
     let removed_questions = {
-        let mut map = earth
-            .pending_questions
+        let mut map = pending_questions
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let before = map.len();
@@ -35,8 +40,7 @@ fn sweep_pending_for_sessions(earth: &EarthPlate, sids: &[String]) {
         before - map.len()
     };
     let removed_confirmations = {
-        let mut map = earth
-            .pending_confirmations
+        let mut map = pending_confirmations
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let before = map.len();
@@ -298,7 +302,11 @@ async fn handle_rin_connection(
         let n = match reader.read_line(&mut line).await {
             Ok(n) => n,
             Err(e) => {
-                sweep_pending_for_sessions(earth, &conn_sessions);
+                sweep_pending_for_sessions(
+                    &earth.pending_questions,
+                    &earth.pending_confirmations,
+                    &conn_sessions,
+                );
                 return Err(e);
             }
         };
@@ -802,7 +810,11 @@ async fn handle_rin_connection(
     }
 
     // P0-4 · 断连清扫(EOF 路径;读失败路径已在循环内清扫)。
-    sweep_pending_for_sessions(earth, &conn_sessions);
+    sweep_pending_for_sessions(
+        &earth.pending_questions,
+        &earth.pending_confirmations,
+        &conn_sessions,
+    );
 
     Ok(())
 }
@@ -838,5 +850,64 @@ mod tests {
         let json = serde_json::to_string(&StreamEvent::Done).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["type"], "done");
+    }
+
+    /// P0-4 quality: sweep 只移除归属给定 sid 的条目——其他会话与空 sid
+    /// (resolve_project 建项确认,靠超时兜底)的条目必须存活。
+    #[test]
+    fn sweep_removes_only_target_sessions() {
+        use crate::palaces::zhen_tool::builtin::ask_user::PendingQuestion;
+        use crate::plates::ren_human::PendingConfirmation;
+
+        let questions: Arc<Mutex<HashMap<String, PendingQuestion>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let confirmations: Arc<Mutex<HashMap<String, PendingConfirmation>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+
+        let mk_q = |sid: &str| {
+            let (tx, _rx) = tokio::sync::oneshot::channel::<String>();
+            PendingQuestion {
+                sender: tx,
+                token: "t".into(),
+                created_at: 0,
+                session_id: sid.into(),
+            }
+        };
+        let mk_c = |sid: &str| {
+            let (tx, _rx) = tokio::sync::oneshot::channel::<bool>();
+            PendingConfirmation {
+                sender: tx,
+                created_at: 0,
+                token: "t".into(),
+                session_id: sid.into(),
+            }
+        };
+
+        {
+            let mut q = questions.lock().unwrap();
+            q.insert("q-mine".into(), mk_q("s1"));
+            q.insert("q-other".into(), mk_q("s2"));
+            q.insert("q-anon".into(), mk_q(""));
+            let mut c = confirmations.lock().unwrap();
+            c.insert("c-mine".into(), mk_c("s1"));
+            c.insert("c-other".into(), mk_c("s2"));
+            c.insert("c-anon".into(), mk_c(""));
+        }
+
+        sweep_pending_for_sessions(&questions, &confirmations, &["s1".to_string()]);
+
+        let q = questions.lock().unwrap();
+        assert!(!q.contains_key("q-mine"), "own session entry must be swept");
+        assert!(q.contains_key("q-other"), "other session must survive");
+        assert!(q.contains_key("q-anon"), "anonymous entry must survive");
+        let c = confirmations.lock().unwrap();
+        assert!(!c.contains_key("c-mine"));
+        assert!(c.contains_key("c-other"));
+        assert!(c.contains_key("c-anon"));
+
+        // 空 sids 是 no-op。
+        sweep_pending_for_sessions(&questions, &confirmations, &[]);
+        assert_eq!(q.len(), 2);
+        assert_eq!(c.len(), 2);
     }
 }
