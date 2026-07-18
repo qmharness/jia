@@ -504,7 +504,7 @@ mod tests {
     use crate::plates::shen_spirit::completion_check::CompletionChecklist;
     use crate::vijnana::alaya::{Seed, SeedNature, SeedSource, SeedTier};
 
-    fn temp_earth(tmp: &std::path::Path) -> Arc<EarthPlate> {
+    pub(super) fn temp_earth(tmp: &std::path::Path) -> Arc<EarthPlate> {
         let security = SecuritySection {
             project_root: Some(tmp.to_str().unwrap().to_string()),
             sandbox_mode: crate::palaces::kun_config::SandboxMode::Disabled,

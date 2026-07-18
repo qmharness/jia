@@ -325,84 +325,101 @@ impl super::Agent {
             };
             let tools_ref: Option<&[crate::stems::action::ToolSchema]> = tool_schemas.as_deref();
 
-            let mut stream = ctx.core.infer_with_system(
-                infer_messages,
-                system_prompt,
-                tools_ref,
-                Some(ctx.cancel_token.clone()),
-            );
+            // P0-3: LLM retry loop. A retryable mid-stream error with a
+            // successful failover RE-ISSUES the request against the new
+            // provider (fresh stream) instead of polling the dead stream.
+            // Partial output from a failed attempt is discarded before the
+            // re-issue, so it never enters history; `record_llm_success`
+            // runs only after a stream that ended normally (None).
+            const MAX_LLM_RETRIES: u32 = 3;
             let mut full_response = String::new();
             let mut native_tool_calls: Vec<crate::stems::action::ToolCall> = Vec::new();
 
-            loop {
-                match stream.next().await {
-                    Some(Ok(crate::palaces::zhong_core::StreamChunk::NativeToolCall {
-                        id,
-                        name,
-                        arguments,
-                    })) => {
-                        let params: serde_json::Value =
-                            serde_json::from_str(&arguments).unwrap_or_default();
-                        native_tool_calls.push(crate::stems::action::ToolCall {
+            'llm_retry: loop {
+                let mut stream = ctx.core.infer_with_system(
+                    infer_messages.clone(),
+                    system_prompt.clone(),
+                    tools_ref,
+                    Some(ctx.cancel_token.clone()),
+                );
+                // Drop partial output from any previous failed attempt.
+                full_response.clear();
+                native_tool_calls.clear();
+
+                loop {
+                    match stream.next().await {
+                        Some(Ok(crate::palaces::zhong_core::StreamChunk::NativeToolCall {
                             id,
                             name,
-                            parameters: params,
-                        });
-                    }
-                    Some(Ok(crate::palaces::zhong_core::StreamChunk::Delta(delta))) => {
-                        full_response.push_str(&delta);
-                        let _ = ctx.tx.send(AgentEvent::Delta(delta));
-                    }
-                    Some(Ok(crate::palaces::zhong_core::StreamChunk::Usage {
-                        input_tokens,
-                        output_tokens,
-                    })) => {
-                        ctx.event_bus.emit(RuntimeEvent::LlmUsage {
+                            arguments,
+                        })) => {
+                            let params: serde_json::Value =
+                                serde_json::from_str(&arguments).unwrap_or_default();
+                            native_tool_calls.push(crate::stems::action::ToolCall {
+                                id,
+                                name,
+                                parameters: params,
+                            });
+                        }
+                        Some(Ok(crate::palaces::zhong_core::StreamChunk::Delta(delta))) => {
+                            full_response.push_str(&delta);
+                            let _ = ctx.tx.send(AgentEvent::Delta(delta));
+                        }
+                        Some(Ok(crate::palaces::zhong_core::StreamChunk::Usage {
                             input_tokens,
                             output_tokens,
-                        });
-                    }
-                    Some(Ok(crate::palaces::zhong_core::StreamChunk::CacheHit {
-                        cache_read,
-                        cache_creation,
-                        ..
-                    })) => {
-                        // P2 prompt-cache telemetry (Anthropic). cache_read > 0
-                        // means the stable system prefix was served from cache.
-                        tracing::info!(
-                            session = %self.id,
+                        })) => {
+                            ctx.event_bus.emit(RuntimeEvent::LlmUsage {
+                                input_tokens,
+                                output_tokens,
+                            });
+                        }
+                        Some(Ok(crate::palaces::zhong_core::StreamChunk::CacheHit {
                             cache_read,
                             cache_creation,
-                            "prompt cache hit"
-                        );
-                    }
-                    Some(Err(e)) => {
-                        const MAX_LLM_RETRIES: u32 = 3;
-                        if e.is_retryable()
-                            && ctx.core.try_llm_failover()
-                            && self.retry_count < MAX_LLM_RETRIES
-                        {
-                            tracing::warn!(session = %self.id, error = %e, retry = self.retry_count + 1, "LLM error, retrying with next provider");
-                            self.retry_count += 1;
-                            continue;
+                            ..
+                        })) => {
+                            // P2 prompt-cache telemetry (Anthropic). cache_read > 0
+                            // means the stable system prefix was served from cache.
+                            tracing::info!(
+                                session = %self.id,
+                                cache_read,
+                                cache_creation,
+                                "prompt cache hit"
+                            );
                         }
-                        if self.retry_count >= MAX_LLM_RETRIES {
-                            tracing::error!(session = %self.id, retries = self.retry_count, "LLM retry limit exhausted");
-                        }
-                        tracing::error!(session = %self.id, error = %e, "LLM inference error");
-                        let _ = ctx.tx.send(AgentEvent::Error(format!("{e}")));
-                        return;
-                    }
-                    None => {
-                        if ctx.cancel_token.is_cancelled() {
-                            tracing::info!(session = %self.id, "Agent loop cancelled");
+                        Some(Err(e)) => {
+                            // Check the retry budget BEFORE failover so the
+                            // final failure doesn't pointlessly flip the
+                            // router's active provider.
+                            if e.is_retryable()
+                                && self.retry_count < MAX_LLM_RETRIES
+                                && ctx.core.try_llm_failover()
+                            {
+                                tracing::warn!(session = %self.id, error = %e, retry = self.retry_count + 1, "LLM error, re-issuing request with next provider");
+                                self.retry_count += 1;
+                                continue 'llm_retry;
+                            }
+                            if self.retry_count >= MAX_LLM_RETRIES {
+                                tracing::error!(session = %self.id, retries = self.retry_count, "LLM retry limit exhausted");
+                            }
+                            tracing::error!(session = %self.id, error = %e, "LLM inference error");
+                            let _ = ctx.tx.send(AgentEvent::Error(format!("{e}")));
                             return;
                         }
-                        break;
+                        None => {
+                            if ctx.cancel_token.is_cancelled() {
+                                tracing::info!(session = %self.id, "Agent loop cancelled");
+                                return;
+                            }
+                            break 'llm_retry;
+                        }
                     }
                 }
             }
 
+            // Reached only after a stream ended normally: record success on
+            // the provider that actually served the completed stream.
             JIA_LLM_DURATION_SECONDS.observe(llm_start.elapsed().as_secs_f64());
             ctx.core.record_llm_success();
             self.retry_count = 0;
@@ -923,5 +940,258 @@ Done."#;
         let hooks = vec![CompiledHook::compile(&cfg).unwrap()];
         let res = run_pre_tool_hooks(&hooks, "shell", &serde_json::json!({})).await;
         assert!(res.is_ok(), "non-matching tool must not be blocked");
+    }
+
+    // ── P0-3: LLM retry must re-issue the request ───────────────
+
+    use super::super::tests::temp_earth;
+    use crate::error::ProviderError;
+    use crate::palaces::zhong_core::{JiaCore, LlmProvider, StreamChunk};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// One scripted response for [`ScriptedProvider`].
+    enum MockStep {
+        /// Stream `partial` as deltas, then fail mid-stream with `err`.
+        FailAfter {
+            partial: &'static str,
+            err: ProviderError,
+        },
+        /// Stream the text and end the stream normally.
+        Complete(&'static str),
+    }
+
+    /// A mock provider that plays a per-call script and counts invocations.
+    struct ScriptedProvider {
+        steps: std::sync::Mutex<std::collections::VecDeque<MockStep>>,
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl ScriptedProvider {
+        fn new(steps: Vec<MockStep>, calls: Arc<AtomicUsize>) -> Self {
+            Self {
+                steps: std::sync::Mutex::new(steps.into()),
+                calls,
+            }
+        }
+    }
+
+    impl LlmProvider for ScriptedProvider {
+        fn infer_stream(
+            &self,
+            _messages: Vec<Message>,
+            _tools: Option<&[crate::stems::action::ToolSchema]>,
+            _cancel_token: Option<CancellationToken>,
+        ) -> std::pin::Pin<Box<dyn futures::Stream<Item = Result<StreamChunk, ProviderError>> + Send>>
+        {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            let step = self
+                .steps
+                .lock()
+                .unwrap()
+                .pop_front()
+                .expect("ScriptedProvider: script exhausted — test bug");
+            let (tx, rx) = mpsc::unbounded_channel();
+            tokio::spawn(async move {
+                let (text, err) = match step {
+                    MockStep::FailAfter { partial, err } => (partial, Some(err)),
+                    MockStep::Complete(text) => (text, None),
+                };
+                for ch in text.chars() {
+                    let _ = tx.send(Ok(StreamChunk::Delta(ch.to_string())));
+                }
+                if let Some(err) = err {
+                    let _ = tx.send(Err(err));
+                }
+            });
+            Box::pin(tokio_stream::wrappers::UnboundedReceiverStream::new(rx))
+        }
+    }
+
+    fn router_core(providers: Vec<Box<dyn LlmProvider>>) -> JiaCore {
+        let router = crate::palaces::zhong_core::router::ProviderRouter::new(
+            providers
+                .into_iter()
+                .enumerate()
+                .map(|(i, p)| (i as u32, p))
+                .collect(),
+        );
+        JiaCore::with_router(router, "mock".into(), "mock".into(), 8192)
+    }
+
+    /// Run a fresh agent to completion against `core`; collect all events.
+    async fn run_agent(
+        earth: Arc<crate::plates::di_earth::EarthPlate>,
+        core: &JiaCore,
+    ) -> (super::super::Agent, Vec<AgentEvent>) {
+        let human_plate = HumanPlate::with_state(
+            earth.permissions.clone(),
+            earth.pending_confirmations.clone(),
+        );
+        let (tx, mut rx) = mpsc::unbounded_channel::<AgentEvent>();
+        let cancel = CancellationToken::new();
+        let mut agent = super::super::Agent::new("retry-test".into(), earth.clone());
+        let ctx = RunContext {
+            core,
+            human_plate: &human_plate,
+            event_bus: &earth.spirit.event_bus,
+            hook_registry: &earth.spirit.hook_registry,
+            tx,
+            cancel_token: &cancel,
+        };
+        agent.run(vec![Message::text(Role::User, "hi")], &ctx).await;
+        let mut events = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            events.push(ev);
+        }
+        (agent, events)
+    }
+
+    fn assistant_texts(agent: &super::super::Agent) -> Vec<&str> {
+        agent
+            .history
+            .iter()
+            .filter_map(|e| match e {
+                HistoryEntry::Assistant { content } => Some(content.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn llm_retry_reissues_request_and_drops_partial_response() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = temp_earth(tmp.path());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let flaky: Box<dyn LlmProvider> = Box::new(ScriptedProvider::new(
+            vec![MockStep::FailAfter {
+                partial: "TRUNCATED_JUNK",
+                err: ProviderError::RateLimited { body: "429".into() },
+            }],
+            calls.clone(),
+        ));
+        let healthy: Box<dyn LlmProvider> = Box::new(ScriptedProvider::new(
+            vec![MockStep::Complete("final answer")],
+            calls.clone(),
+        ));
+        let core = router_core(vec![flaky, healthy]);
+
+        let (agent, events) = run_agent(earth, &core).await;
+
+        // (1) the failed request was actually re-issued (failover → new stream)
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            2,
+            "failed request must be re-issued against the next provider"
+        );
+        // (2) history carries the retried response, not the truncated partial
+        assert_eq!(
+            assistant_texts(&agent),
+            ["final answer"],
+            "partial response from the failed attempt must not enter history"
+        );
+        // retry succeeded → no Error, exactly one StreamEnd, run completed
+        assert!(
+            !events.iter().any(|e| matches!(e, AgentEvent::Error(_))),
+            "successful retry must not emit Error: {events:?}"
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| matches!(e, AgentEvent::StreamEnd))
+                .count(),
+            1,
+            "StreamEnd exactly once (never for a failed attempt): {events:?}"
+        );
+        assert!(events.iter().any(|e| matches!(e, AgentEvent::Done)));
+        assert_eq!(agent.retry_count, 0, "retry_count reset after success");
+    }
+
+    #[tokio::test]
+    async fn llm_retry_exhaustion_emits_error_and_skips_history() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = temp_earth(tmp.path());
+        let calls = Arc::new(AtomicUsize::new(0));
+        // Two always-failing providers: failover ping-pongs until retry_count
+        // hits MAX_LLM_RETRIES (3) → 1 initial + 3 retries = 4 requests.
+        let mk = |calls: &Arc<AtomicUsize>| -> Box<dyn LlmProvider> {
+            Box::new(ScriptedProvider::new(
+                vec![
+                    MockStep::FailAfter {
+                        partial: "junk",
+                        err: ProviderError::ServerError {
+                            status: 500,
+                            body: "boom".into(),
+                        },
+                    },
+                    MockStep::FailAfter {
+                        partial: "junk",
+                        err: ProviderError::ServerError {
+                            status: 500,
+                            body: "boom".into(),
+                        },
+                    },
+                ],
+                calls.clone(),
+            ))
+        };
+        let core = router_core(vec![mk(&calls), mk(&calls)]);
+
+        let (agent, events) = run_agent(earth, &core).await;
+
+        // (4) retry_count reaches MAX → exhausted branch (formerly dead code)
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            4,
+            "1 initial + 3 re-issued retries"
+        );
+        assert_eq!(
+            agent.retry_count, 3,
+            "retry_count must reach MAX_LLM_RETRIES"
+        );
+        // (3) frontend receives an Error event
+        assert!(
+            events.iter().any(|e| matches!(e, AgentEvent::Error(_))),
+            "exhausted retries must emit Error: {events:?}"
+        );
+        // no StreamEnd / Done for a failed turn; no半截 assistant entry
+        assert!(
+            !events.iter().any(|e| matches!(e, AgentEvent::StreamEnd)),
+            "failed turn must not emit StreamEnd: {events:?}"
+        );
+        assert!(
+            assistant_texts(&agent).is_empty(),
+            "failed turn must not push assistant history: {:?}",
+            assistant_texts(&agent)
+        );
+    }
+
+    #[tokio::test]
+    async fn llm_non_retryable_error_fails_immediately() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = temp_earth(tmp.path());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let bad: Box<dyn LlmProvider> = Box::new(ScriptedProvider::new(
+            vec![MockStep::FailAfter {
+                partial: "junk",
+                err: ProviderError::ClientError {
+                    status: 400,
+                    body: "bad request".into(),
+                },
+            }],
+            calls.clone(),
+        ));
+        let core = router_core(vec![bad]);
+
+        let (agent, events) = run_agent(earth, &core).await;
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "non-retryable must not retry"
+        );
+        assert!(events.iter().any(|e| matches!(e, AgentEvent::Error(_))));
+        assert!(!events.iter().any(|e| matches!(e, AgentEvent::StreamEnd)));
+        assert!(assistant_texts(&agent).is_empty());
     }
 }
