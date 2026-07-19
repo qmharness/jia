@@ -198,7 +198,7 @@ Heaven Plate (天盘) — "What wants to be done?"
 └─ Invariant: every turn produces a TurnSnapshot; every Heaven Plate intent stem must pass through GeJu evaluation
 ```
 
-The Heaven Plate is the system's "runtime." It is the only perspective that can invoke LLM inference (through the `pub(crate)`-encapsulated `JiaCore::infer`). Each Heaven Plate turn corresponds to one "temporal hour" (时辰) in Qimen Dunjia—the stems rotate by one palace.
+The Heaven Plate is the system's "runtime." It is the only perspective that runs main-turn inference (main_core, through the `pub(crate)`-encapsulated `JiaCore::infer`). Auxiliary LLM calls (aux_core) — vijnana/vasana distillation, li_skill reflection and revision, delegate subagents, xun_context compression — live outside the Heaven Plate as the documented exceptions recorded in §9. Each Heaven Plate turn corresponds to one "temporal hour" (时辰) in Qimen Dunjia—the stems rotate by one palace.
 
 #### Human Plate — Permission Boundary
 
@@ -303,7 +303,7 @@ External code (Human Plate, Spirit Plate, gateway handlers)
     Six Ceremonies (tool calls) → GeJu evaluation → Human Plate dispatch
 ```
 
-Jia (the LLM) is only indirectly accessible through the Six Ceremonies (tool classification) and GeJu (safety evaluation). No code path anywhere provides direct LLM invocation. This ensures every LLM call passes through safety policy evaluation.
+Jia (the LLM) is only indirectly accessible through the Six Ceremonies (tool classification) and GeJu (safety evaluation). Main-turn inference runs only in the Heaven Plate loop (main_core); the auxiliary LLM call sites (aux_core: vijnana/vasana distillation, li_skill reflection and revision, delegate subagents, xun_context compression) are the documented exceptions recorded in §9. This ensures every main-turn LLM call passes through safety policy evaluation.
 
 ---
 
