@@ -258,9 +258,8 @@ impl super::Agent {
                                     // F5: if the session was cancelled, summarize
                                     // already refused the partial checkpoint — do
                                     // NOT rewrite history at all (not even via the
-                                    // fit fallback) while winding down. The cancel
-                                    // check after stream finalization ends the turn
-                                    // with history intact.
+                                    // fit fallback). This arm returns directly
+                                    // (winding down with history intact).
                                     if ctx.cancel_token.is_cancelled() {
                                         tracing::info!(
                                             session = %self.id,
@@ -524,7 +523,16 @@ impl super::Agent {
                 calls
             };
 
-            self.history.push(HistoryEntry::assistant(full_response));
+            // Guard (review Important #1): a cancel that arrived during tool
+            // execution makes the next infer return None immediately with an
+            // EMPTY response — don't record an empty assistant entry
+            // (some providers reject empty assistant messages).
+            let empty_cancel = ctx.cancel_token.is_cancelled()
+                && full_response.is_empty()
+                && tool_calls.is_empty();
+            if !empty_cancel {
+                self.history.push(HistoryEntry::assistant(full_response));
+            }
 
             // F6: cancellation is honored only AFTER a normally-ended stream
             // has been finalized (StreamEnd sent, response in history) — a
