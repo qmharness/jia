@@ -92,7 +92,8 @@ fn run_sandboxed(
 
     // SAFETY: pre_exec closure runs in the child process between fork and exec.
     // Invalid pointer dereference or panic in this closure are undefined behavior per POSIX.
-    // Our closure only calls setrlimit (safe FFI) and returns Ok(()), never panics.
+    // Our closure only calls setrlimit (safe FFI) and, on failure, child_warn
+    // (write(2), async-signal-safe — no allocation, no locks), then returns Ok(()).
     unsafe {
         cmd_builder.pre_exec(move || {
             apply_child_rlimits(mem_limit, fsize_limit, nproc_limit);
@@ -169,12 +170,29 @@ fn run_sandboxed(
     })
 }
 
+/// Async-signal-safe report from the forked child (pre-exec): tracing/format!
+/// allocate and take subscriber locks, which can deadlock the child when
+/// another thread held them at fork (same hazard as landlock's pre_exec, U3).
+/// write(2) to the piped stderr is signal-safe and lands in SandboxOutput.stderr.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn child_warn(msg: &str) {
+    // SAFETY: write(2) on a valid fd with a valid buffer; no allocation.
+    unsafe {
+        libc::write(
+            libc::STDERR_FILENO,
+            msg.as_ptr() as *const libc::c_void,
+            msg.len(),
+        );
+    }
+}
+
 #[cfg(target_os = "linux")]
 fn apply_child_rlimits(mem_limit: u64, fsize_limit: u64, nproc_limit: u64) {
     // SAFETY: setrlimit is a POSIX syscall that takes a valid resource type
     // and a pointer to a properly initialized rlimit struct. Both preconditions
     // are met — rlim_cur/rlim_max are set to the configured values. Called
-    // only from pre_exec (child process, no threads).
+    // only from pre_exec (child process, no threads); failures are reported
+    // via child_warn (write(2), async-signal-safe), never tracing/alloc.
     if mem_limit > 0 {
         let lim = ::libc::rlimit {
             rlim_cur: mem_limit,
@@ -182,12 +200,7 @@ fn apply_child_rlimits(mem_limit: u64, fsize_limit: u64, nproc_limit: u64) {
         };
         let ret = unsafe { ::libc::setrlimit(libc::RLIMIT_AS, &lim) };
         if ret != 0 {
-            tracing::warn!(
-                resource = "RLIMIT_AS",
-                limit = mem_limit,
-                error = %std::io::Error::last_os_error(),
-                "setrlimit failed; memory limit not enforced"
-            );
+            child_warn("jia-sandbox: setrlimit(RLIMIT_AS) failed; memory limit not enforced\n");
         }
     }
     if fsize_limit > 0 {
@@ -197,12 +210,7 @@ fn apply_child_rlimits(mem_limit: u64, fsize_limit: u64, nproc_limit: u64) {
         };
         let ret = unsafe { ::libc::setrlimit(libc::RLIMIT_FSIZE, &lim) };
         if ret != 0 {
-            tracing::warn!(
-                resource = "RLIMIT_FSIZE",
-                limit = fsize_limit,
-                error = %std::io::Error::last_os_error(),
-                "setrlimit failed; file size limit not enforced"
-            );
+            child_warn("jia-sandbox: setrlimit(RLIMIT_FSIZE) failed; file size limit not enforced\n");
         }
     }
     if nproc_limit > 0 {
@@ -212,12 +220,7 @@ fn apply_child_rlimits(mem_limit: u64, fsize_limit: u64, nproc_limit: u64) {
         };
         let ret = unsafe { ::libc::setrlimit(libc::RLIMIT_NPROC, &lim) };
         if ret != 0 {
-            tracing::warn!(
-                resource = "RLIMIT_NPROC",
-                limit = nproc_limit,
-                error = %std::io::Error::last_os_error(),
-                "setrlimit failed; process count limit not enforced"
-            );
+            child_warn("jia-sandbox: setrlimit(RLIMIT_NPROC) failed; process count limit not enforced\n");
         }
     }
 }
@@ -233,12 +236,7 @@ fn apply_child_rlimits(mem_limit: u64, fsize_limit: u64, nproc_limit: u64) {
         };
         let ret = unsafe { ::libc::setrlimit(libc::RLIMIT_DATA, &lim) };
         if ret != 0 {
-            tracing::warn!(
-                resource = "RLIMIT_DATA",
-                limit = mem_limit,
-                error = %std::io::Error::last_os_error(),
-                "setrlimit failed; memory limit not enforced"
-            );
+            child_warn("jia-sandbox: setrlimit(RLIMIT_DATA) failed; memory limit not enforced\n");
         }
     }
     if fsize_limit > 0 {
@@ -248,12 +246,7 @@ fn apply_child_rlimits(mem_limit: u64, fsize_limit: u64, nproc_limit: u64) {
         };
         let ret = unsafe { ::libc::setrlimit(libc::RLIMIT_FSIZE, &lim) };
         if ret != 0 {
-            tracing::warn!(
-                resource = "RLIMIT_FSIZE",
-                limit = fsize_limit,
-                error = %std::io::Error::last_os_error(),
-                "setrlimit failed; file size limit not enforced"
-            );
+            child_warn("jia-sandbox: setrlimit(RLIMIT_FSIZE) failed; file size limit not enforced\n");
         }
     }
     if nproc_limit > 0 {
@@ -263,12 +256,7 @@ fn apply_child_rlimits(mem_limit: u64, fsize_limit: u64, nproc_limit: u64) {
         };
         let ret = unsafe { ::libc::setrlimit(libc::RLIMIT_NPROC, &lim) };
         if ret != 0 {
-            tracing::warn!(
-                resource = "RLIMIT_NPROC",
-                limit = nproc_limit,
-                error = %std::io::Error::last_os_error(),
-                "setrlimit failed; process count limit not enforced"
-            );
+            child_warn("jia-sandbox: setrlimit(RLIMIT_NPROC) failed; process count limit not enforced\n");
         }
     }
 }
