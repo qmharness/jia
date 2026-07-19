@@ -245,7 +245,13 @@ pub fn create_app(config: &AppConfig, web_dir: String) -> Router {
     build_router(state, web_dir)
 }
 
-pub fn create_app_with_earth(web_dir: String, earth: Arc<EarthPlate>) -> Router {
+/// P1-3 · `session_tokens` 由调用方注入,与 rin(UDS)监听器共用同一份,
+/// 使 HTTP /agent/cancel 与 /sessions/active 能看到并取消 TUI 会话(审计 G2)。
+pub fn create_app_with_earth(
+    web_dir: String,
+    earth: Arc<EarthPlate>,
+    session_tokens: Arc<SessionTokens>,
+) -> Router {
     let providers = earth.config.app_config.providers.clone();
     let default_main_provider_name = earth
         .config
@@ -270,7 +276,7 @@ pub fn create_app_with_earth(web_dir: String, earth: Arc<EarthPlate>) -> Router 
         pending_questions,
         api_key,
         rate_limiter,
-        session_tokens: Arc::new(SessionTokens::new()),
+        session_tokens,
     });
 
     build_router(state, web_dir)

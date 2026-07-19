@@ -411,12 +411,18 @@ pub async fn run_start(
         let _ = std::io::Write::write_all(&mut f, pid_str.as_bytes());
     }
 
-    // Spawn Unix Socket listener for jia-rin before building the router
+    // Spawn Unix Socket listener for jia-rin before building the router.
+    // P1-3 · HTTP 与 rin(UDS)共用同一份 SessionTokens:/agent/cancel 与
+    // /sessions/active 可覆盖 TUI 会话(审计 G2)。
     let rin_sock = earth.data_dir.join("rin.sock");
-    let rin_tokens = Arc::new(kernel::palaces::dui_gateway::SessionTokens::new());
-    kernel::palaces::dui_gateway::rin::spawn_rin_listener(earth.clone(), rin_tokens, rin_sock);
+    let session_tokens = Arc::new(kernel::palaces::dui_gateway::SessionTokens::new());
+    kernel::palaces::dui_gateway::rin::spawn_rin_listener(
+        earth.clone(),
+        session_tokens.clone(),
+        rin_sock,
+    );
 
-    let app = kernel::palaces::dui_gateway::create_app_with_earth(web_dir, earth);
+    let app = kernel::palaces::dui_gateway::create_app_with_earth(web_dir, earth, session_tokens);
 
     let listener = tokio::net::TcpListener::bind(&addr)
         .await

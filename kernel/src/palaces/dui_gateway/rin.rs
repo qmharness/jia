@@ -22,7 +22,11 @@ use super::SessionTokens;
 /// drop,等待中的 ask_user / 确认立即醒为 Err → "(user disconnected)" / 拒绝,
 /// agent 得以继续并释放 session_lock(消除断连死锁,审计 F2+L5)。
 /// 无 session 字段可判定时,只能按"插入时打上 session_id"实现按 sid 清扫。
-/// (直接收两张表而非 EarthPlate,便于单元测试。)
+/// (直接收表而非 EarthPlate,便于单元测试。)
+///
+/// P1-2/L2 · 一并清扫 session_modes:该表此前只有 insert 无任何 remove,
+/// 每会话残留一条;断连时按 sid 移除(重连同 sid 会话会由
+/// InteractionModeChanged 事件重新同步,丢一条旧 mode 无副作用)。
 ///
 /// 已知限制:断连清扫是一次性的且不 cancel session token(有意保留"TUI
 /// 断连后长任务续跑"语义,2026-07-19 裁决)。残留:断连后 agent 若再次调用
@@ -32,6 +36,7 @@ use super::SessionTokens;
 fn sweep_pending_for_sessions(
     pending_questions: &Arc<Mutex<HashMap<String, crate::palaces::zhen_tool::builtin::ask_user::PendingQuestion>>>,
     pending_confirmations: &Arc<Mutex<HashMap<String, crate::plates::ren_human::PendingConfirmation>>>,
+    session_modes: &Arc<Mutex<HashMap<String, InteractionMode>>>,
     sids: &[String],
 ) {
     if sids.is_empty() {
@@ -53,14 +58,60 @@ fn sweep_pending_for_sessions(
         map.retain(|_, p| !sids.contains(&p.session_id));
         before - map.len()
     };
-    if removed_questions + removed_confirmations > 0 {
+    let removed_modes = {
+        let mut map = session_modes.lock().unwrap_or_else(|e| e.into_inner());
+        let before = map.len();
+        map.retain(|sid, _| !sids.contains(sid));
+        before - map.len()
+    };
+    if removed_questions + removed_confirmations + removed_modes > 0 {
         tracing::info!(
             removed_questions,
             removed_confirmations,
+            removed_modes,
             sessions = ?sids,
-            "rin: swept pending questions/confirmations on disconnect"
+            "rin: swept pending questions/confirmations/modes on disconnect"
         );
     }
+}
+
+/// P1-2/L6 · session_tokens 清扫守卫:任何退出路径(正常结束 / cancel /
+/// 提前 return / agent.run 在 dev 构建下 panic 展开)都在 Drop 时 remove,
+/// 消除幽灵会话(此前 remove 在 agent.run/post_loop 之后,panic 即跳过)。
+struct SessionTokenGuard {
+    tokens: Arc<SessionTokens>,
+    sid: String,
+}
+
+impl Drop for SessionTokenGuard {
+    fn drop(&mut self) {
+        self.tokens.remove(&self.sid);
+    }
+}
+
+/// P1-7 · UDS 单行帧长上限(审计 D2):与 HTTP 侧 1MB RequestBodyLimit
+/// (dui_gateway/mod.rs) 对齐。此前 read_line 无上限,同 UID 客户端发永不
+/// 换行的流可致 daemon 内存无界增长。
+const MAX_RIN_LINE_BYTES: u64 = 1_048_576;
+
+/// 带界行读取:单行超过 MAX_RIN_LINE_BYTES 时返回 Err(InvalidData)——
+/// 调用方据此断连。实现:`take(上限+1)` 限流后 read_line;读到上限+1 字节
+/// 且未见换行,即判定超限(恰好 上限+\n 的合法行不受影响)。
+async fn read_line_bounded<R: tokio::io::AsyncBufRead + Unpin>(
+    reader: &mut R,
+    line: &mut String,
+) -> std::io::Result<usize> {
+    use tokio::io::AsyncReadExt;
+    let mut limited = AsyncReadExt::take(reader, MAX_RIN_LINE_BYTES + 1);
+    let n = limited.read_line(line).await?;
+    if n as u64 > MAX_RIN_LINE_BYTES && !line.ends_with('\n') {
+        tracing::warn!(bytes = n, "rin: line exceeds 1MB limit, closing connection");
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "rin: line exceeds 1MB limit",
+        ));
+    }
+    Ok(n)
 }
 
 /// Spawn the Unix Socket listener for jia-rin.
@@ -270,6 +321,35 @@ async fn resolve_project(
     (cwd.to_string(), String::new())
 }
 
+/// P1-2/L1 · 每连接 cron 转发任务。写失败(客户端断连)即 break 退出——
+/// 此前 `let _ =` 吞掉写失败,任务只在 daemon 退出(broadcast Closed)时才
+/// 结束,客户端每连一次积一个永存任务。模式对齐下方 agent 事件转发器。
+fn spawn_conn_cron_forwarder<W>(
+    mut cron_rx: tokio::sync::broadcast::Receiver<String>,
+    writer: Arc<tokio::sync::Mutex<W>>,
+) -> tokio::task::JoinHandle<()>
+where
+    W: tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    tokio::spawn(async move {
+        loop {
+            match cron_rx.recv().await {
+                Ok(json) => {
+                    let mut w = writer.lock().await;
+                    if w.write_all(json.as_bytes()).await.is_err() {
+                        break;
+                    }
+                    if w.write_all(b"\n").await.is_err() {
+                        break;
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    })
+}
+
 async fn handle_rin_connection(
     stream: UnixStream,
     earth: Arc<EarthPlate>,
@@ -281,21 +361,8 @@ async fn handle_rin_connection(
     let writer = Arc::new(tokio::sync::Mutex::new(writer));
 
     // Spawn cron notification forwarder for this connection
-    let mut cron_rx = cron_tx.subscribe();
-    let cron_writer = writer.clone();
-    tokio::spawn(async move {
-        loop {
-            match cron_rx.recv().await {
-                Ok(json) => {
-                    let mut w = cron_writer.lock().await;
-                    let _ = w.write_all(json.as_bytes()).await;
-                    let _ = w.write_all(b"\n").await;
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-            }
-        }
-    });
+    let cron_rx = cron_tx.subscribe();
+    spawn_conn_cron_forwarder(cron_rx, writer.clone());
 
     let mut line = String::new();
     let earth = &earth; // borrow Arc, don't move — each agent spawn clones
@@ -305,12 +372,14 @@ async fn handle_rin_connection(
 
     loop {
         line.clear();
-        let n = match reader.read_line(&mut line).await {
+        // P1-7 · 带界读取:单行超 1MB 视为恶意/异常客户端,清扫后断连。
+        let n = match read_line_bounded(&mut reader, &mut line).await {
             Ok(n) => n,
             Err(e) => {
                 sweep_pending_for_sessions(
                     &earth.pending_questions,
                     &earth.pending_confirmations,
+                    &earth.session_modes,
                     &conn_sessions,
                 );
                 return Err(e);
@@ -582,17 +651,21 @@ async fn handle_rin_connection(
                 let permissions = earth.permissions.clone();
                 let pending_confirmations = earth.pending_confirmations.clone();
                 tokio::spawn(async move {
+                    // P1-2/L6 · 任何退出路径(cancel / 提前 return / panic
+                    // 展开)都 remove session token,消除幽灵会话。
+                    let _token_guard = SessionTokenGuard {
+                        tokens: session_tokens_clone,
+                        sid: sid.clone(),
+                    };
                     tokio::select! {
                         _ = agent_token.cancelled() => {
                             if is_new { let _ = store.delete_session(&sid); }
-                            session_tokens_clone.remove(&sid);
                         }
                         guard = session_lock.lock() => {
                             let _guard = guard;
 
                             // Re-check cancellation after acquiring lock to prevent race
                             if agent_token.is_cancelled() {
-                                session_tokens_clone.remove(&sid);
                                 return;
                             }
 
@@ -621,7 +694,6 @@ async fn handle_rin_connection(
                                     "No valid project directory. Create a Jia project first with `jia init`.".into()
                                 ));
                                 let _ = tx.send(AgentEvent::Done);
-                                session_tokens_clone.remove(&sid);
                                 return;
                             }
 
@@ -647,7 +719,6 @@ async fn handle_rin_connection(
                             };
                             agent.run(messages, &ctx).await;
                             agent.post_loop(store, &main_core, aux_core.as_deref(), ctx.human_plate).await;
-                            session_tokens_clone.remove(&sid);
                         }
                     }
                 });
@@ -819,6 +890,7 @@ async fn handle_rin_connection(
     sweep_pending_for_sessions(
         &earth.pending_questions,
         &earth.pending_confirmations,
+        &earth.session_modes,
         &conn_sessions,
     );
 
@@ -860,6 +932,7 @@ mod tests {
 
     /// P0-4 quality: sweep 只移除归属给定 sid 的条目——其他会话与空 sid
     /// (resolve_project 建项确认,靠超时兜底)的条目必须存活。
+    /// P1-2/L2: session_modes 一并按 sid 清扫。
     #[test]
     fn sweep_removes_only_target_sessions() {
         use crate::palaces::zhen_tool::builtin::ask_user::PendingQuestion;
@@ -868,6 +941,8 @@ mod tests {
         let questions: Arc<Mutex<HashMap<String, PendingQuestion>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let confirmations: Arc<Mutex<HashMap<String, PendingConfirmation>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let modes: Arc<Mutex<HashMap<String, InteractionMode>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
         let mk_q = |sid: &str| {
@@ -898,9 +973,12 @@ mod tests {
             c.insert("c-mine".into(), mk_c("s1"));
             c.insert("c-other".into(), mk_c("s2"));
             c.insert("c-anon".into(), mk_c(""));
+            let mut m = modes.lock().unwrap();
+            m.insert("s1".into(), InteractionMode::Planning);
+            m.insert("s2".into(), InteractionMode::Normal);
         }
 
-        sweep_pending_for_sessions(&questions, &confirmations, &["s1".to_string()]);
+        sweep_pending_for_sessions(&questions, &confirmations, &modes, &["s1".to_string()]);
 
         let q = questions.lock().unwrap();
         assert!(!q.contains_key("q-mine"), "own session entry must be swept");
@@ -910,10 +988,117 @@ mod tests {
         assert!(!c.contains_key("c-mine"));
         assert!(c.contains_key("c-other"));
         assert!(c.contains_key("c-anon"));
+        let m = modes.lock().unwrap();
+        assert!(!m.contains_key("s1"), "own session mode must be swept");
+        assert!(m.contains_key("s2"), "other session mode must survive");
 
         // 空 sids 是 no-op。
-        sweep_pending_for_sessions(&questions, &confirmations, &[]);
+        sweep_pending_for_sessions(&questions, &confirmations, &modes, &[]);
         assert_eq!(q.len(), 2);
         assert_eq!(c.len(), 2);
+        assert_eq!(m.len(), 1);
+    }
+
+    /// P1-2/L1 · 每连接 cron 转发器:对端断连(写失败)后任务必须退出,
+    /// 不得残留到 daemon 退出。
+    #[tokio::test]
+    async fn conn_cron_forwarder_exits_on_write_failure() {
+        let (tx, rx) = tokio::sync::broadcast::channel::<String>(4);
+        // duplex 一端作为 writer,另一端直接 drop → 写入立即 BrokenPipe。
+        let (writer, reader) = tokio::io::duplex(64);
+        drop(reader);
+        let handle = spawn_conn_cron_forwarder(rx, Arc::new(tokio::sync::Mutex::new(writer)));
+
+        let _ = tx.send("{\"type\":\"cron_notification\"}".to_string());
+        tokio::time::timeout(std::time::Duration::from_secs(2), handle)
+            .await
+            .expect("forwarder must exit on write failure")
+            .expect("forwarder task must not panic");
+    }
+
+    /// P1-2/L1 对照:写端存活时,转发器正常转发并在 channel 关闭后退出。
+    #[tokio::test]
+    async fn conn_cron_forwarder_forwards_and_exits_on_closed() {
+        let (tx, rx) = tokio::sync::broadcast::channel::<String>(4);
+        let (writer, mut reader) = tokio::io::duplex(64);
+        let handle = spawn_conn_cron_forwarder(rx, Arc::new(tokio::sync::Mutex::new(writer)));
+
+        let _ = tx.send("hello".to_string());
+        use tokio::io::AsyncReadExt;
+        let mut buf = vec![0u8; 6];
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            reader.read_exact(&mut buf),
+        )
+        .await
+        .expect("must receive forwarded bytes")
+        .expect("read must succeed");
+        assert_eq!(&buf, b"hello\n");
+
+        drop(tx);
+        tokio::time::timeout(std::time::Duration::from_secs(2), handle)
+            .await
+            .expect("forwarder must exit on channel close")
+            .expect("forwarder task must not panic");
+    }
+
+    /// P1-7 · 限内行(含接近 1MB 的大行)正常读取。
+    #[tokio::test]
+    async fn read_line_bounded_accepts_within_limit() {
+        // 短行
+        let data = b"{\"type\":\"hello\"}\nrest".to_vec();
+        let mut cursor = std::io::Cursor::new(data);
+        let mut line = String::new();
+        let n = read_line_bounded(&mut cursor, &mut line).await.unwrap();
+        assert_eq!(line, "{\"type\":\"hello\"}\n");
+        assert_eq!(n, line.len());
+
+        // 接近 1MB 的大行(正常大消息不得被破坏)
+        let big = "x".repeat(MAX_RIN_LINE_BYTES as usize - 1) + "\n";
+        let mut cursor = std::io::Cursor::new(big.clone().into_bytes());
+        let mut line = String::new();
+        let n = read_line_bounded(&mut cursor, &mut line).await.unwrap();
+        assert_eq!(n, big.len());
+        assert_eq!(line, big);
+
+        // 边界:恰好 上限字节内容 + 换行
+        let exact = "y".repeat(MAX_RIN_LINE_BYTES as usize) + "\n";
+        let mut cursor = std::io::Cursor::new(exact.into_bytes());
+        let mut line = String::new();
+        let n = read_line_bounded(&mut cursor, &mut line).await.unwrap();
+        assert_eq!(n as u64, MAX_RIN_LINE_BYTES + 1);
+    }
+
+    /// P1-7 · 超限行(超过 1MB 无换行)→ Err(InvalidData),调用方断连。
+    #[tokio::test]
+    async fn read_line_bounded_rejects_over_limit() {
+        let oversized = "z".repeat(MAX_RIN_LINE_BYTES as usize + 100);
+        let mut cursor = std::io::Cursor::new(oversized.into_bytes());
+        let mut line = String::new();
+        let err = read_line_bounded(&mut cursor, &mut line)
+            .await
+            .expect_err("over-limit line must be rejected");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    }
+
+    /// P1-2/L6 · SessionTokenGuard 在 Drop 时移除 token(覆盖 panic 展开等
+    /// 任何退出路径)。
+    #[test]
+    fn session_token_guard_removes_on_drop() {
+        let tokens = Arc::new(SessionTokens::new());
+        tokens.register(
+            "s1".into(),
+            tokio_util::sync::CancellationToken::new(),
+            "p".into(),
+            "m".into(),
+        );
+        assert_eq!(tokens.active_count(), 1);
+        {
+            let _guard = SessionTokenGuard {
+                tokens: tokens.clone(),
+                sid: "s1".into(),
+            };
+        }
+        assert_eq!(tokens.active_count(), 0, "guard drop must remove token");
     }
 }
