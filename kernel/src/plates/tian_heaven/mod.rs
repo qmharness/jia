@@ -314,9 +314,7 @@ Be attentive, truthful, and serve with sincerity.";
         if let Some(text) = content {
             use crate::palaces::Palace;
             use crate::stems::Stem;
-            use crate::vijnana::alaya::{
-                Seed, SeedContent, SeedNature, SeedSource, SeedTier,
-            };
+            use crate::vijnana::alaya::{Seed, SeedContent, SeedNature, SeedSource, SeedTier};
 
             let seed = Seed {
                 id: "ren_soul_root".to_string(),
@@ -570,13 +568,7 @@ mod tests {
             spirit: Arc::new(SpiritPlate::new()),
             completion_checklist: Arc::new(CompletionChecklist::new()),
             user_hooks: Arc::new(Vec::new()),
-            pending_confirmations: Arc::new(
-                std::sync::Mutex::new(std::collections::HashMap::new()),
-            ),
-            pending_questions: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-            subagent_sessions: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-            session_modes: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-            session_locks: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            session_bus: Arc::new(crate::plates::ren_human::SessionBus::new()),
             data_dir: tmp.to_path_buf(),
             pid_path: tmp.to_path_buf().join("gateway.pid"),
             backup_dir: tmp.to_path_buf().join("backups"),

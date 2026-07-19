@@ -44,7 +44,7 @@ use crate::palaces::zhong_core::{JiaCore, LlmProvider};
 use crate::stems::action::ExecContext;
 
 use crate::palaces::zhen_tool::ToolRegistry;
-use crate::palaces::zhen_tool::builtin::ask_user::{AskUserQuestionTool, PendingQuestion};
+use crate::palaces::zhen_tool::builtin::ask_user::AskUserQuestionTool;
 use crate::palaces::zhen_tool::builtin::cron::CronStore;
 #[cfg(feature = "cron")]
 use crate::palaces::zhen_tool::builtin::cron::CronTool;
@@ -60,7 +60,8 @@ use crate::palaces::zhen_tool::builtin::web_search::WebSearchTool;
 use crate::palaces::zhen_tool::mcp::McpManager;
 #[cfg(feature = "wasm-plugin")]
 use crate::palaces::zhen_tool::plugin_manager::PluginManager;
-use crate::plates::ren_human::{HumanPlate, PendingConfirmation};
+use crate::plates::ren_human::HumanPlate;
+use crate::plates::ren_human::session_bus::SessionBus;
 use crate::plates::shen_spirit::RuntimeEvent;
 use crate::plates::shen_spirit::SpiritPlate;
 use crate::plates::shen_spirit::baihu::{BaiHuConfig, BaiHuHook};
@@ -108,17 +109,9 @@ pub struct EarthPlate {
     /// P4 · compiled user-configurable hooks (人盘门规 / 神盘观测). Empty by
     /// default; regexes pre-compiled at assemble to avoid hot-path cost (O4).
     pub user_hooks: Arc<Vec<crate::plates::tian_heaven::r#loop::CompiledHook>>,
-    pub pending_confirmations: Arc<Mutex<HashMap<String, PendingConfirmation>>>,
-    pub pending_questions: Arc<Mutex<HashMap<String, PendingQuestion>>>,
-    /// P8 · persisted sub-agent sessions for continuation via send_message.
-    pub subagent_sessions: Arc<Mutex<HashMap<String, SubagentSession>>>,
-    /// P3 · per-session interaction mode (谋划态), set by user slash command
-    /// (/plan) and read when the next agent run starts. Kept in sync with the
-    /// agent's actual mode via InteractionModeChanged events.
-    pub session_modes: Arc<Mutex<HashMap<String, crate::plates::tian_heaven::InteractionMode>>>,
-    /// Per-session locks — serializes concurrent messages from the same source
-    /// so they don't race on history read/write in post_loop.
-    pub session_locks: Arc<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
+    /// P2-1 · 会话总线 — 可变会话状态五簇(pending 确认/提问、会话模式、
+    /// 会话锁、子代理会话)归人盘:人盘 = 人机交互边界。
+    pub session_bus: Arc<SessionBus>,
     /// Root data directory (`~/.jia/`).
     pub data_dir: PathBuf,
     /// Path to the PID file for gateway process management.
@@ -231,13 +224,9 @@ impl EarthPlate {
         subtool_registry.register(Arc::new(WebSearchTool::new()));
         let _subtools = Arc::new(subtool_registry);
 
-        // P8 · sub-agent session table (created early — DelegateTool below needs it)
-        let subagent_sessions: Arc<Mutex<HashMap<String, SubagentSession>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-        // P3 · per-session interaction modes (for /plan slash entry)
-        let session_modes: Arc<
-            Mutex<HashMap<String, crate::plates::tian_heaven::InteractionMode>>,
-        > = Arc::new(Mutex::new(HashMap::new()));
+        // P2-1 · 会话总线(人盘)——五簇可变会话状态,create early:
+        // DelegateTool/SendMessageTool/AskUserQuestionTool below hold clones.
+        let session_bus = Arc::new(SessionBus::new());
 
         let mut tool_registry = ToolRegistry::new();
         tool_registry.register(Arc::new(ReadFileTool::new()));
@@ -272,7 +261,7 @@ impl EarthPlate {
         tool_registry.register(Arc::new(SendMessageTool::new(
             main_core.clone(),
             _subtools.clone(),
-            subagent_sessions.clone(),
+            session_bus.subagent_sessions.clone(),
         )));
         tool_registry.register(Arc::new(ScratchpadWriteTool::new()));
         tool_registry.register(Arc::new(ScratchpadReadTool::new()));
@@ -289,10 +278,8 @@ impl EarthPlate {
         tool_registry.register(Arc::new(TaskTool::new(task_store.clone())));
 
         // Pending questions — shared between AskUserQuestionTool and REST /answer endpoint
-        let pending_questions: Arc<Mutex<HashMap<String, PendingQuestion>>> =
-            Arc::new(Mutex::new(HashMap::new()));
         tool_registry.register(Arc::new(AskUserQuestionTool::new(
-            pending_questions.clone(),
+            session_bus.pending_questions.clone(),
         )));
 
         // Connect MCP servers and register their tools
@@ -345,7 +332,10 @@ impl EarthPlate {
         // P8 · crash recovery: hydrate subagent sessions from SQLite
         if let Ok(rows) = store.load_all_subagent_sessions() {
             if !rows.is_empty() {
-                let mut guard = subagent_sessions.lock().unwrap_or_else(|e| e.into_inner());
+                let mut guard = session_bus
+                    .subagent_sessions
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
                 for (id, messages_json, subagent_type, created_at, last_used) in rows {
                     if let Ok(messages) =
                         serde_json::from_str::<Vec<crate::types::Message>>(&messages_json)
@@ -379,7 +369,7 @@ impl EarthPlate {
             main_core.clone(),
             _subtools.clone(),
             store.clone(),
-            subagent_sessions.clone(),
+            session_bus.subagent_sessions.clone(),
         )));
 
         // Load WASM plugins from plugins/ directory
@@ -405,9 +395,6 @@ impl EarthPlate {
                 ));
             }
         }
-
-        let pending_confirmations = Arc::new(Mutex::new(HashMap::new()));
-        let session_locks = Arc::new(Mutex::new(HashMap::new()));
 
         // P4 · compile user-configurable hooks (regex pre-compiled once).
         let user_hooks: Vec<crate::plates::tian_heaven::r#loop::CompiledHook> = config_loader
@@ -472,11 +459,7 @@ impl EarthPlate {
             spirit: Arc::new(spirit),
             completion_checklist,
             user_hooks,
-            pending_confirmations,
-            pending_questions,
-            subagent_sessions,
-            session_modes,
-            session_locks,
+            session_bus,
             data_dir,
             pid_path,
             backup_dir,
@@ -570,10 +553,8 @@ impl EarthPlate {
         let cron = self.cron.clone();
         tokio::spawn(async move {
             let session_id = uuid::Uuid::new_v4().to_string();
-            let human_plate = HumanPlate::with_state(
-                earth.permissions.clone(),
-                earth.pending_confirmations.clone(),
-            );
+            let human_plate =
+                HumanPlate::with_state(earth.permissions.clone(), earth.session_bus.clone());
             let distilled_hashes = earth.store.load_distilled_hashes(&session_id);
             let workspace = default_workspace_dir();
             let cancel = CancellationToken::new();
@@ -584,8 +565,7 @@ impl EarthPlate {
                 Manas::default(),
                 distilled_hashes,
             );
-            agent.exec_ctx =
-                earth.build_worktree_exec_ctx(&workspace, &session_id, cancel.clone());
+            agent.exec_ctx = earth.build_worktree_exec_ctx(&workspace, &session_id, cancel.clone());
             let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
 
             let messages = vec![Message::text(Role::User, prompt.clone())];
@@ -753,6 +733,7 @@ async fn run_io_agent(earth: Arc<EarthPlate>, input: crate::palaces::kan_io::Cha
     // source racing on history read/write in post_loop.
     let session_lock = {
         let mut map = earth
+            .session_bus
             .session_locks
             .lock()
             .unwrap_or_else(|e| e.into_inner());
@@ -779,10 +760,7 @@ async fn run_io_agent(earth: Arc<EarthPlate>, input: crate::palaces::kan_io::Cha
         .and_then(|json| serde_json::from_str(&json).ok())
         .unwrap_or_default();
 
-    let human_plate = HumanPlate::with_state(
-        earth.permissions.clone(),
-        earth.pending_confirmations.clone(),
-    );
+    let human_plate = HumanPlate::with_state(earth.permissions.clone(), earth.session_bus.clone());
     let distilled_hashes = earth.store.load_distilled_hashes(&session_id);
     let workspace = default_workspace_dir();
     let cancel = tokio_util::sync::CancellationToken::new();

@@ -20,9 +20,9 @@ pub mod principles;
 pub mod rin;
 
 use crate::config::{AppConfig, ProviderProfile};
-use crate::palaces::zhen_tool::builtin::ask_user::PendingQuestion;
 use crate::plates::di_earth::EarthPlate;
 use crate::plates::ren_human::PendingConfirmation;
+use crate::plates::ren_human::PendingQuestion;
 use crate::telemetry::metrics::JIA_ACTIVE_SESSIONS;
 
 /// Session metadata tracked alongside the cancellation token.
@@ -258,8 +258,8 @@ pub fn create_app_with_earth(
         .app_config
         .default_main_provider_name()
         .to_string();
-    let pending_confirmations = earth.pending_confirmations.clone();
-    let pending_questions = earth.pending_questions.clone();
+    let pending_confirmations = earth.session_bus.pending_confirmations.clone();
+    let pending_questions = earth.session_bus.pending_questions.clone();
     let api_key = earth.config.app_config.security.api_key.clone();
     let rate_limiter = Arc::new(RateLimiter::new(
         earth.config.app_config.security.rate_limit_per_minute,
@@ -329,6 +329,7 @@ pub use webhooks::*;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::CognitionSection;
     use crate::palaces::gen_store::Store;
     use crate::palaces::kan_io::ChannelManager;
     use crate::palaces::kun_config::{BotsSection, ConfigLoader, SecuritySection};
@@ -340,7 +341,6 @@ mod tests {
     use crate::palaces::zhen_tool::registry::ToolRegistry;
     use crate::plates::shen_spirit::SpiritPlate;
     use crate::plates::shen_spirit::completion_check::CompletionChecklist;
-    use crate::config::CognitionSection;
     use crate::stems::action::ExecContext;
     use axum::Json;
     use axum::extract::State;
@@ -448,11 +448,7 @@ mod tests {
             spirit: Arc::new(SpiritPlate::new()),
             completion_checklist: Arc::new(CompletionChecklist::new()),
             user_hooks: Arc::new(Vec::new()),
-            pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
-            pending_questions: Arc::new(Mutex::new(HashMap::new())),
-            subagent_sessions: Arc::new(Mutex::new(HashMap::new())),
-            session_locks: Arc::new(Mutex::new(HashMap::new())),
-            session_modes: Arc::new(Mutex::new(HashMap::new())),
+            session_bus: Arc::new(crate::plates::ren_human::SessionBus::new()),
             data_dir: dirs.data_path.clone(),
             pid_path: dirs.pid_path.clone(),
             backup_dir: dirs.backup_path.clone(),

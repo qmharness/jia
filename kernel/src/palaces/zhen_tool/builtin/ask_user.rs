@@ -10,20 +10,11 @@ use serde_json::Value;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::plates::ren_human::PendingQuestion;
 use crate::plates::tian_heaven::r#loop::AgentEvent;
 use crate::stems::CeremoniesIntent;
 use crate::stems::action::ExecContext;
 use crate::stems::intent::CommunicateAction;
-
-/// A pending question awaiting user answer.
-pub struct PendingQuestion {
-    pub sender: oneshot::Sender<String>,
-    pub token: String,
-    pub created_at: i64,
-    /// 所属会话 — 断连时按会话清扫（rin 连接结束 → 该连接会话的
-    /// pending 条目被 remove,sender drop,orx 醒为 Err)。
-    pub session_id: String,
-}
 
 pub struct AskUserQuestionTool {
     pending_questions: Arc<Mutex<HashMap<String, PendingQuestion>>>,
@@ -191,9 +182,7 @@ mod tests {
         }
     }
 
-    fn wait_until_inserted(
-        pending: &Arc<Mutex<HashMap<String, PendingQuestion>>>,
-    ) -> String {
+    fn wait_until_inserted(pending: &Arc<Mutex<HashMap<String, PendingQuestion>>>) -> String {
         for _ in 0..100 {
             if let Ok(g) = pending.lock()
                 && let Some(id) = g.keys().next()
@@ -214,8 +203,10 @@ mod tests {
         let token = tokio_util::sync::CancellationToken::new();
         let ctx = ctx_with_token(token.clone());
 
-        let handle =
-            tokio::spawn(async move { tool.execute_with_tx(serde_json::json!({"question": "q?"}), &tx, &ctx).await });
+        let handle = tokio::spawn(async move {
+            tool.execute_with_tx(serde_json::json!({"question": "q?"}), &tx, &ctx)
+                .await
+        });
 
         let id = tokio::task::spawn_blocking({
             let pending = pending.clone();
@@ -250,8 +241,10 @@ mod tests {
         let (tx, _rx) = mpsc::unbounded_channel();
         let ctx = ctx_with_token(tokio_util::sync::CancellationToken::new());
 
-        let handle =
-            tokio::spawn(async move { tool.execute_with_tx(serde_json::json!({"question": "q?"}), &tx, &ctx).await });
+        let handle = tokio::spawn(async move {
+            tool.execute_with_tx(serde_json::json!({"question": "q?"}), &tx, &ctx)
+                .await
+        });
 
         let id = tokio::task::spawn_blocking({
             let pending = pending.clone();
@@ -279,8 +272,10 @@ mod tests {
         let (tx, _rx) = mpsc::unbounded_channel();
         let ctx = ctx_with_token(tokio_util::sync::CancellationToken::new());
 
-        let handle =
-            tokio::spawn(async move { tool.execute_with_tx(serde_json::json!({"question": "q?"}), &tx, &ctx).await });
+        let handle = tokio::spawn(async move {
+            tool.execute_with_tx(serde_json::json!({"question": "q?"}), &tx, &ctx)
+                .await
+        });
 
         let id = tokio::task::spawn_blocking({
             let pending = pending.clone();

@@ -205,12 +205,12 @@ pub async fn handle_agent(
             let store = earth.store.clone();
             let permissions = earth.permissions.clone();
             let event_bus = earth.spirit.event_bus.clone();
-            let pending_confirmations = state.pending_confirmations.clone();
+            let session_bus = earth.session_bus.clone();
 
             tokio::spawn(async move {
                 // —— session_lock + cancel-aware wait ——
                 let session_lock = {
-                    let mut map = earth_for_spawn.session_locks.lock().unwrap();
+                    let mut map = earth_for_spawn.session_bus.session_locks.lock().unwrap();
                     map.retain(|_, v| Arc::strong_count(v) > 1);
                     map.entry(sid.clone())
                         .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
@@ -262,7 +262,7 @@ pub async fn handle_agent(
                             &sid,
                             agent_token.clone(),
                         );
-                        let human_plate = HumanPlate::with_state(permissions, pending_confirmations);
+                        let human_plate = HumanPlate::with_state(permissions, session_bus);
 
                         let _start = std::time::Instant::now();
                         let ctx = crate::plates::tian_heaven::r#loop::RunContext {
@@ -366,6 +366,7 @@ pub async fn handle_agent(
 mod tests {
     use super::super::SessionTokens;
     use super::*;
+    use crate::config::CognitionSection;
     use crate::palaces::dui_gateway::auth::RateLimiter;
     use crate::palaces::gen_store::Store;
     use crate::palaces::kan_io::ChannelManager;
@@ -379,7 +380,6 @@ mod tests {
     use crate::plates::di_earth::EarthPlate;
     use crate::plates::shen_spirit::SpiritPlate;
     use crate::plates::shen_spirit::completion_check::CompletionChecklist;
-    use crate::config::CognitionSection;
     use crate::stems::action::ExecContext;
     use std::collections::HashMap;
     use std::sync::Mutex;
@@ -422,11 +422,7 @@ mod tests {
             spirit: Arc::new(SpiritPlate::new()),
             completion_checklist: Arc::new(CompletionChecklist::new()),
             user_hooks: Arc::new(Vec::new()),
-            pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
-            pending_questions: Arc::new(Mutex::new(HashMap::new())),
-            subagent_sessions: Arc::new(Mutex::new(HashMap::new())),
-            session_locks: Arc::new(Mutex::new(HashMap::new())),
-            session_modes: Arc::new(Mutex::new(HashMap::new())),
+            session_bus: Arc::new(crate::plates::ren_human::SessionBus::new()),
             data_dir: dirs.path().to_path_buf(),
             pid_path: dirs.path().join("pid"),
             backup_dir: dirs.path().join("backups"),

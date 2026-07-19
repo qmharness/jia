@@ -13,6 +13,10 @@ use crate::plates::tian_heaven::r#loop::AgentEvent;
 use crate::stems::action::ExecContext;
 use crate::stems::action::ToolResult;
 
+pub mod session_bus;
+
+pub use session_bus::{PendingQuestion, SessionBus};
+
 /// A pending user confirmation, stored until resolved or timed out.
 pub struct PendingConfirmation {
     pub sender: tokio::sync::oneshot::Sender<bool>,
@@ -64,15 +68,14 @@ impl HumanPlate {
         }
     }
 
-    pub fn with_state(
-        permissions: Arc<PermissionMatrix>,
-        pending_confirmations: Arc<Mutex<HashMap<String, PendingConfirmation>>>,
-    ) -> Self {
+    /// 以共享会话总线构造 — 确认表取自 bus,与人盘内聚(P2-1:
+    /// pending_confirmations 已迁人盘 SessionBus)。
+    pub fn with_state(permissions: Arc<PermissionMatrix>, session_bus: Arc<SessionBus>) -> Self {
         Self {
             gates: [GateState::Open; 8],
             closed_by_principle: AtomicU8::new(0),
             permissions,
-            pending_confirmations,
+            pending_confirmations: session_bus.pending_confirmations.clone(),
             confirmation_override: None,
         }
     }
@@ -199,23 +202,34 @@ impl HumanPlate {
     ) -> Result<ToolResult, DispatchError> {
         // Check ShangMen for destructive actions
         if !self.gate_is_open(HumanGate::ShangMen) && tool.is_destructive() {
-            tracing::warn!("HumanPlate: ShangMen closed, blocking destructive tool {}", tool.name());
+            tracing::warn!(
+                "HumanPlate: ShangMen closed, blocking destructive tool {}",
+                tool.name()
+            );
             return Err(DispatchError::Denied(format!(
-                "Destructive tool '{}' blocked: ShangMen is closed", tool.name())));
+                "Destructive tool '{}' blocked: ShangMen is closed",
+                tool.name()
+            )));
         }
         // Check KaiMen for external communication tools
         if !self.gate_is_open(HumanGate::KaiMen)
             && matches!(tool.ceremony(), crate::stems::CeremoniesIntent::Ren(_))
         {
-            tracing::warn!("HumanPlate: KaiMen closed, blocking communication tool {}", tool.name());
+            tracing::warn!(
+                "HumanPlate: KaiMen closed, blocking communication tool {}",
+                tool.name()
+            );
             return Err(DispatchError::Denied(format!(
-                "Communication tool '{}' blocked: KaiMen is closed", tool.name())));
+                "Communication tool '{}' blocked: KaiMen is closed",
+                tool.name()
+            )));
         }
         // Check ShengMen for skill injection
         if !self.gate_is_open(HumanGate::ShengMen) && tool.name() == "skill" {
             tracing::warn!("HumanPlate: ShengMen closed, blocking skill tool");
             return Err(DispatchError::Denied(
-                "Skill tool blocked: ShengMen is closed".into()));
+                "Skill tool blocked: ShengMen is closed".into(),
+            ));
         }
 
         for gate in &geju.approval_chain {
@@ -239,8 +253,9 @@ impl HumanPlate {
                         "HumanPlate: requesting user confirmation for {}",
                         tool.name()
                     );
-                    let approved =
-                        self.request_confirmation(tool.name(), reason, tx, exec_ctx).await;
+                    let approved = self
+                        .request_confirmation(tool.name(), reason, tx, exec_ctx)
+                        .await;
                     if !approved {
                         event_bus.emit(RuntimeEvent::Error {
                             source: "human_plate".into(),

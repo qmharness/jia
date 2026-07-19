@@ -694,7 +694,9 @@ impl super::Agent {
             // and autonomously close gates for the remainder of this session.
             const GATE_CLOSE_THRESHOLD: u32 = 5;
             for (tool_name, &fail_count) in self.tool_failure_count.iter() {
-                if fail_count < GATE_CLOSE_THRESHOLD { continue; }
+                if fail_count < GATE_CLOSE_THRESHOLD {
+                    continue;
+                }
                 match tool_name.as_str() {
                     "web_fetch" | "web_search" => {
                         ctx.human_plate.close_gate(HumanGate::KaiMen);
@@ -1037,10 +1039,8 @@ Done."#;
         earth: Arc<crate::plates::di_earth::EarthPlate>,
         core: &JiaCore,
     ) -> (super::super::Agent, Vec<AgentEvent>) {
-        let human_plate = HumanPlate::with_state(
-            earth.permissions.clone(),
-            earth.pending_confirmations.clone(),
-        );
+        let human_plate =
+            HumanPlate::with_state(earth.permissions.clone(), earth.session_bus.clone());
         let (tx, mut rx) = mpsc::unbounded_channel::<AgentEvent>();
         let cancel = CancellationToken::new();
         let mut agent = super::super::Agent::new("retry-test".into(), earth.clone());
@@ -1201,10 +1201,8 @@ Done."#;
         };
         let core = router_core(vec![mk(&calls), mk(&calls)]);
 
-        let human_plate = HumanPlate::with_state(
-            earth.permissions.clone(),
-            earth.pending_confirmations.clone(),
-        );
+        let human_plate =
+            HumanPlate::with_state(earth.permissions.clone(), earth.session_bus.clone());
         let cancel = CancellationToken::new();
         let mut agent = super::super::Agent::new("retry-test".into(), earth.clone());
 

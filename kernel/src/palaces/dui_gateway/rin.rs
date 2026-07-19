@@ -34,8 +34,10 @@ use super::SessionTokens;
 /// 缓解:确认类等待有 confirmation_timeout 兜底,ask_user 的彻底解法是断连
 /// 即 cancel 本连接 token(语义变更,未采纳)。
 fn sweep_pending_for_sessions(
-    pending_questions: &Arc<Mutex<HashMap<String, crate::palaces::zhen_tool::builtin::ask_user::PendingQuestion>>>,
-    pending_confirmations: &Arc<Mutex<HashMap<String, crate::plates::ren_human::PendingConfirmation>>>,
+    pending_questions: &Arc<Mutex<HashMap<String, crate::plates::ren_human::PendingQuestion>>>,
+    pending_confirmations: &Arc<
+        Mutex<HashMap<String, crate::plates::ren_human::PendingConfirmation>>,
+    >,
     session_modes: &Arc<Mutex<HashMap<String, InteractionMode>>>,
     sids: &[String],
 ) {
@@ -43,9 +45,7 @@ fn sweep_pending_for_sessions(
         return;
     }
     let removed_questions = {
-        let mut map = pending_questions
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let mut map = pending_questions.lock().unwrap_or_else(|e| e.into_inner());
         let before = map.len();
         map.retain(|_, p| !sids.contains(&p.session_id));
         before - map.len()
@@ -262,7 +262,11 @@ async fn resolve_project(
 
     let (_sender, receiver) = tokio::sync::oneshot::channel::<bool>();
     {
-        let mut pending = earth.pending_confirmations.lock().unwrap_or_else(|e| e.into_inner());
+        let mut pending = earth
+            .session_bus
+            .pending_confirmations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         pending.insert(
             confirm_id.clone(),
             crate::plates::ren_human::PendingConfirmation {
@@ -295,7 +299,11 @@ async fn resolve_project(
 
     // Clean up pending confirmation
     {
-        let mut pending = earth.pending_confirmations.lock().unwrap_or_else(|e| e.into_inner());
+        let mut pending = earth
+            .session_bus
+            .pending_confirmations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         pending.remove(&confirm_id);
     }
 
@@ -377,9 +385,9 @@ async fn handle_rin_connection(
             Ok(n) => n,
             Err(e) => {
                 sweep_pending_for_sessions(
-                    &earth.pending_questions,
-                    &earth.pending_confirmations,
-                    &earth.session_modes,
+                    &earth.session_bus.pending_questions,
+                    &earth.session_bus.pending_confirmations,
+                    &earth.session_bus.session_modes,
                     &conn_sessions,
                 );
                 return Err(e);
@@ -540,7 +548,7 @@ async fn handle_rin_connection(
                 // Forward agent events to socket (runs independently, outside the lock).
                 let w = writer.clone();
                 let fwd_sid = sid.clone();
-                let fwd_modes = earth.session_modes.clone();
+                let fwd_modes = earth.session_bus.session_modes.clone();
                 tokio::spawn(async move {
                     use tokio_stream::StreamExt;
                     use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -636,7 +644,11 @@ async fn handle_rin_connection(
                 // loop stays unblocked — otherwise ask_user answers sent through
                 // this same socket connection deadlock.
                 let session_lock = {
-                    let mut map = earth.session_locks.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut map = earth
+                        .session_bus
+                        .session_locks
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
                     map.retain(|_, v| Arc::strong_count(v) > 1);
                     map.entry(sid.clone())
                         .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
@@ -649,7 +661,7 @@ async fn handle_rin_connection(
                 let aux_core = earth.aux_core.clone();
                 let session_tokens_clone = session_tokens.clone();
                 let permissions = earth.permissions.clone();
-                let pending_confirmations = earth.pending_confirmations.clone();
+                let session_bus = earth.session_bus.clone();
                 tokio::spawn(async move {
                     // P1-2/L6 · 任何退出路径(cancel / 提前 return / panic
                     // 展开)都 remove session token,消除幽灵会话。
@@ -704,10 +716,10 @@ async fn handle_rin_connection(
                                 agent_token.clone(),
                             );
                             // P3 · apply user-set interaction mode (from /plan slash)
-                            if let Some(mode) = earth.session_modes.lock().unwrap_or_else(|e| e.into_inner()).get(&sid).copied() {
+                            if let Some(mode) = earth.session_bus.session_modes.lock().unwrap_or_else(|e| e.into_inner()).get(&sid).copied() {
                                 agent.interaction_mode = mode;
                             }
-                            let human_plate = HumanPlate::with_state(permissions, pending_confirmations);
+                            let human_plate = HumanPlate::with_state(permissions, session_bus);
 
                             let ctx = crate::plates::tian_heaven::r#loop::RunContext {
                                 core: &main_core,
@@ -741,7 +753,12 @@ async fn handle_rin_connection(
                     } else {
                         InteractionMode::Normal
                     };
-                    earth.session_modes.lock().unwrap_or_else(|e| e.into_inner()).insert(sid, mode);
+                    earth
+                        .session_bus
+                        .session_modes
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .insert(sid, mode);
                     let resp = serde_json::json!({
                         "type": "interaction_mode_changed",
                         "planning": planning,
@@ -761,7 +778,11 @@ async fn handle_rin_connection(
                 }
                 let approved = msg["approved"].as_bool().unwrap_or(false);
                 let resolved = {
-                    let mut map = earth.pending_confirmations.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut map = earth
+                        .session_bus
+                        .pending_confirmations
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
                     if let Some(p) = map.remove(id) {
                         if p.token == token {
                             let _ = p.sender.send(approved);
@@ -792,7 +813,11 @@ async fn handle_rin_connection(
                     continue;
                 }
                 let resolved = {
-                    let mut map = earth.pending_questions.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut map = earth
+                        .session_bus
+                        .pending_questions
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
                     let map_size = map.len();
                     if let Some(p) = map.remove(id) {
                         let token_ok = p.token == token;
@@ -888,9 +913,9 @@ async fn handle_rin_connection(
 
     // P0-4 · 断连清扫(EOF 路径;读失败路径已在循环内清扫)。
     sweep_pending_for_sessions(
-        &earth.pending_questions,
-        &earth.pending_confirmations,
-        &earth.session_modes,
+        &earth.session_bus.pending_questions,
+        &earth.session_bus.pending_confirmations,
+        &earth.session_bus.session_modes,
         &conn_sessions,
     );
 
@@ -935,8 +960,7 @@ mod tests {
     /// P1-2/L2: session_modes 一并按 sid 清扫。
     #[test]
     fn sweep_removes_only_target_sessions() {
-        use crate::palaces::zhen_tool::builtin::ask_user::PendingQuestion;
-        use crate::plates::ren_human::PendingConfirmation;
+        use crate::plates::ren_human::{PendingConfirmation, PendingQuestion};
 
         let questions: Arc<Mutex<HashMap<String, PendingQuestion>>> =
             Arc::new(Mutex::new(HashMap::new()));
