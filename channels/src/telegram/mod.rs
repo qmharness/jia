@@ -62,7 +62,17 @@ async fn run_telegram_loop(
     cm: Arc<kernel::palaces::kan_io::ChannelManager>,
     allowed_chat_ids: Vec<String>,
 ) {
-    let mut last_update_id: u64 = 0;
+    let mut last_update_id: u64 = load_last_update_id(&token).unwrap_or(0);
+    if last_update_id > 0 {
+        tracing::info!(
+            last_update_id,
+            "Telegram bot restored persisted update offset"
+        );
+    }
+    // update_id 去重窗口(300 s,与 wechat seen_msg_ids 同模式):
+    // Telegram 在 offset 确认前会重投 update;崩溃重启也可能重投
+    // 持久化之后、确认之前的一批。
+    let mut seen_update_ids = crate::dedup::DedupWindow::new(std::time::Duration::from_secs(300));
     let mut consecutive_errors: u32 = 0;
 
     loop {
@@ -102,6 +112,14 @@ async fn run_telegram_loop(
         }
         for update in &updates.result {
             last_update_id = last_update_id.max(update.update_id);
+            // 去重:offset 确认前的重投 / 崩溃重放的批次在这里挡掉。
+            if seen_update_ids.is_duplicate(update.update_id, std::time::Instant::now()) {
+                tracing::debug!(
+                    update_id = update.update_id,
+                    "Telegram duplicate update skipped"
+                );
+                continue;
+            }
             if let Some(msg) = &update.message
                 && let Some(text) = &msg.text
             {
@@ -163,7 +181,69 @@ async fn run_telegram_loop(
                 cm.push(input);
             }
         }
+
+        // 整批处理完毕后持久化 offset(P1-6,审计 W2)——与 wechat 同一取舍:
+        // 崩溃时磁盘保留旧 offset,重启后重投该批(at-least-once),
+        // 重投由 seen_update_ids 去重窗口兜底;宁重复不丢失。
+        if !updates.result.is_empty() {
+            save_last_update_id(&token, last_update_id);
+        }
     }
+}
+
+// ── Offset 持久化(~/.jia/telegram/{bot_id}.json) ────────────────
+
+/// 状态文件名取 bot token 冒号前的数字 bot_id,绝不把 secret 写进路径。
+fn bot_state_id(token: &str) -> String {
+    let id = token.split(':').next().unwrap_or("default");
+    let sanitized: String = id.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+    if sanitized.is_empty() {
+        "default".to_string()
+    } else {
+        sanitized
+    }
+}
+
+fn state_path(token: &str) -> Option<std::path::PathBuf> {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map(std::path::PathBuf::from)
+        .ok()?;
+    Some(
+        home.join(".jia")
+            .join("telegram")
+            .join(format!("{}.json", bot_state_id(token))),
+    )
+}
+
+fn save_offset_to(path: &std::path::Path, last_update_id: u64) {
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let payload = serde_json::json!({ "last_update_id": last_update_id });
+    if std::fs::write(path, payload.to_string()).is_ok() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+        }
+    }
+}
+
+fn load_offset_from(path: &std::path::Path) -> Option<u64> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    parsed.get("last_update_id")?.as_u64()
+}
+
+fn save_last_update_id(token: &str, last_update_id: u64) {
+    if let Some(path) = state_path(token) {
+        save_offset_to(&path, last_update_id);
+    }
+}
+
+fn load_last_update_id(token: &str) -> Option<u64> {
+    state_path(token).and_then(|p| load_offset_from(&p))
 }
 
 // ── send_message (free function, called by reply dispatcher) ────
@@ -200,4 +280,54 @@ async fn send_telegram_message(
         return Err(format!("Telegram API error: {desc}"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_state_path(tag: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("jia-tg-test-{}-{tag}.json", uuid::Uuid::new_v4()))
+    }
+
+    #[test]
+    fn bot_state_id_uses_numeric_prefix() {
+        assert_eq!(bot_state_id("123456:ABC-secret"), "123456");
+        assert_eq!(bot_state_id("no-colon"), "nocolon");
+        assert_eq!(bot_state_id(":::"), "default");
+        assert_eq!(bot_state_id(""), "default");
+    }
+
+    #[test]
+    fn offset_roundtrip() {
+        let path = temp_state_path("roundtrip");
+        save_offset_to(&path, 987_654);
+        assert_eq!(load_offset_from(&path), Some(987_654));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn load_missing_file_returns_none() {
+        let path = temp_state_path("missing");
+        assert_eq!(load_offset_from(&path), None);
+    }
+
+    #[test]
+    fn load_garbage_returns_none() {
+        let path = temp_state_path("garbage");
+        std::fs::write(&path, "not json").unwrap();
+        assert_eq!(load_offset_from(&path), None);
+        std::fs::write(&path, r#"{"other": 1}"#).unwrap();
+        assert_eq!(load_offset_from(&path), None);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn offset_overwrite_advances() {
+        let path = temp_state_path("advance");
+        save_offset_to(&path, 10);
+        save_offset_to(&path, 20);
+        assert_eq!(load_offset_from(&path), Some(20));
+        let _ = std::fs::remove_file(&path);
+    }
 }

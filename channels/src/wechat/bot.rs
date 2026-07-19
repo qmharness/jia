@@ -24,7 +24,7 @@ struct WeChatAdapter {
     context_tokens: HashMap<String, String>,
     cm: Arc<kernel::palaces::kan_io::ChannelManager>,
     consecutive_errors: u32,
-    seen_msg_ids: HashMap<String, std::time::Instant>,
+    seen_msg_ids: crate::dedup::DedupWindow<String>,
 }
 
 impl WeChatAdapter {
@@ -36,7 +36,7 @@ impl WeChatAdapter {
             context_tokens: HashMap::new(),
             cm,
             consecutive_errors: 0,
-            seen_msg_ids: HashMap::new(),
+            seen_msg_ids: crate::dedup::DedupWindow::new(std::time::Duration::from_secs(300)),
         }
     }
 
@@ -138,17 +138,24 @@ impl WeChatAdapter {
             }
         }
 
-        // Update sync buffer and persist for crash recovery
-        if let Some(buf) = data.get_updates_buf {
-            self.sync_buf = buf;
-            save_sync_buf(&self.config.account_id, &self.sync_buf);
-        }
-
-        // Process messages
+        // 先处理消息,再推进并持久化游标(P1-5,审计 W1)。
+        //
+        // 批原子性取舍:整批 handle_message 全部完成后才持久化新 sync_buf。
+        // 若进程在批中崩溃(panic=abort 或 task 死亡),磁盘上保留旧游标,
+        // 重启后 iLink 会重投整批 —— at-least-once。重投批里已处理过的
+        // 前缀消息由 seen_msg_ids 去重窗口(300 s)兜底;但该表在内存中,
+        // 进程重启后为空,重投前缀可能再次推给 agent。相比旧顺序(先持久化
+        // 后处理,崩溃即永久丢失未处理的批尾消息),宁可重复也不丢失。
         if let Some(msgs) = data.msgs {
             for msg in msgs {
                 self.handle_message(msg).await;
             }
+        }
+
+        // 整批处理完毕 —— 推进游标并持久化,供崩溃恢复。
+        if let Some(buf) = data.get_updates_buf {
+            self.sync_buf = buf;
+            save_sync_buf(&self.config.account_id, &self.sync_buf);
         }
 
         Ok(())
@@ -156,18 +163,17 @@ impl WeChatAdapter {
 
     async fn handle_message(&mut self, msg: WeChatMessage) {
         // Deduplicate by msg_id — iLink delivers at-least-once.
-        // Entries older than 300 s are pruned on each incoming message.
+        // 300 s TTL 窗口,详见 dedup::DedupWindow。
         if let Some(ref mid) = msg.msg_id
             && !mid.is_empty()
         {
-            let now = std::time::Instant::now();
-            self.seen_msg_ids
-                .retain(|_, ts| now.duration_since(*ts).as_secs() < 300);
-            if self.seen_msg_ids.contains_key(mid) {
+            if self
+                .seen_msg_ids
+                .is_duplicate(mid.clone(), std::time::Instant::now())
+            {
                 tracing::debug!(msg_id = %mid, "WeChat duplicate message skipped");
                 return;
             }
-            self.seen_msg_ids.insert(mid.clone(), now);
         }
 
         let from_user = match &msg.from_user_id {

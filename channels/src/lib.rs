@@ -5,5 +5,7 @@
 //! in-process catch_unwind / restart. Process-level recovery is the
 //! responsibility of the external supervisor (launchd, systemd, etc.).
 
+mod dedup;
+
 pub mod telegram;
 pub mod wechat;
