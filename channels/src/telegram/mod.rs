@@ -70,8 +70,8 @@ async fn run_telegram_loop(
         );
     }
     // update_id 去重窗口(300 s,与 wechat seen_msg_ids 同模式):
-    // Telegram 在 offset 确认前会重投 update;崩溃重启也可能重投
-    // 持久化之后、确认之前的一批。
+    // 挡同一进程内 offset 确认前的重投;窗口在内存中,进程重启后为空,
+    // 重启重放的批次不挡(at-least-once,与 wechat 侧同一取舍)。
     let mut seen_update_ids = crate::dedup::DedupWindow::new(std::time::Duration::from_secs(300));
     let mut consecutive_errors: u32 = 0;
 
@@ -112,7 +112,9 @@ async fn run_telegram_loop(
         }
         for update in &updates.result {
             last_update_id = last_update_id.max(update.update_id);
-            // 去重:offset 确认前的重投 / 崩溃重放的批次在这里挡掉。
+            // 去重:offset 确认前(同一进程内)的重投在这里挡掉。注意去重表
+            // 在内存中——进程重启后为空,重启重放的批次不会被挡住
+            // (at-least-once,与 wechat 侧同一取舍)。
             if seen_update_ids.is_duplicate(update.update_id, std::time::Instant::now()) {
                 tracing::debug!(
                     update_id = update.update_id,
@@ -195,7 +197,10 @@ async fn run_telegram_loop(
 
 /// 状态文件名取 bot token 冒号前的数字 bot_id,绝不把 secret 写进路径。
 fn bot_state_id(token: &str) -> String {
-    let id = token.split(':').next().unwrap_or("default");
+    // 无冒号的畸形 token 整串即 secret——不得净化后用作文件名,回退 default。
+    let Some((id, _)) = token.split_once(':') else {
+        return "default".to_string();
+    };
     let sanitized: String = id.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
     if sanitized.is_empty() {
         "default".to_string()
@@ -293,7 +298,7 @@ mod tests {
     #[test]
     fn bot_state_id_uses_numeric_prefix() {
         assert_eq!(bot_state_id("123456:ABC-secret"), "123456");
-        assert_eq!(bot_state_id("no-colon"), "nocolon");
+        assert_eq!(bot_state_id("no-colon"), "default"); // 无冒号=畸形,不落 secret
         assert_eq!(bot_state_id(":::"), "default");
         assert_eq!(bot_state_id(""), "default");
     }
