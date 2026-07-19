@@ -529,7 +529,7 @@ async fn handle_rin_connection(
                 let model = config
                     .providers
                     .get(&provider_name)
-                    .map(|p: &crate::config::ProviderProfile| p.default_main_model().to_string())
+                    .map(|p: &crate::palaces::kun_config::ProviderProfile| p.default_main_model().to_string())
                     .unwrap_or_default();
                 session_tokens.register(sid.clone(), agent_token.clone(), provider_name, model);
 

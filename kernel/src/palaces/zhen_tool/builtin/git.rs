@@ -14,10 +14,13 @@ const ALLOWED_COMMANDS: &[&str] = &[
 ];
 
 /// Dangerous patterns. Only `--no-index` is reachable: it lets `git diff`
-/// operate on files outside a git repository and is read-only. The other
-/// historically listed patterns (`push --force`, `reset --hard`, `clean -f`,
-/// `clean -d`) are subcommands that are already rejected because `push`,
-/// `reset`, and `clean` are not in ALLOWED_COMMANDS, making this check dead.
+/// operate on files outside a git repository and is read-only.
+/// 拦截理由(勿删):`git diff --no-index <a> <b>` 可读取 project_root 之外
+/// 的任意文件并把内容回显给模型——这是沙箱逃逸向量,必须拦截。
+/// The other historically listed patterns (`push --force`, `reset --hard`,
+/// `clean -f`, `clean -d`) are subcommands that are already rejected because
+/// `push`, `reset`, and `clean` are not in ALLOWED_COMMANDS, making this
+/// check dead.
 const DANGEROUS_PATTERNS: &[&str] = &["--no-index"];
 
 pub struct GitTool;

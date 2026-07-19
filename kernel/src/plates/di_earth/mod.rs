@@ -147,7 +147,7 @@ impl EarthPlate {
             .collect();
         router_providers.sort_by_key(|(pri, _)| *pri);
 
-        let router = crate::palaces::zhong_core::router::ProviderRouter::new(router_providers);
+        let router = crate::palaces::zhong_core::ProviderRouter::new(router_providers);
         let main_core = Arc::new(JiaCore::with_router(
             router,
             default_kind,

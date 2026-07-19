@@ -12,7 +12,7 @@ use crate::palaces::zhen_tool::base::BaseTool;
 use crate::palaces::zhen_tool::registry::ToolRegistry;
 use crate::palaces::zhong_core::JiaCore;
 use crate::stems::action::ExecContext;
-use crate::stems::intent::{CeremoniesIntent};
+use crate::stems::CeremoniesIntent;
 use crate::stems::parse_tool_calls;
 use crate::types::{Message, Role};
 
@@ -719,7 +719,7 @@ mod tests {
             cancel_on_call: 2,
             token: token.clone(),
         });
-        let router = crate::palaces::zhong_core::router::ProviderRouter::new(vec![(0u32, provider)]);
+        let router = crate::palaces::zhong_core::ProviderRouter::new(vec![(0u32, provider)]);
         let core = Arc::new(JiaCore::with_router(router, "mock".into(), "mock".into(), 8192));
 
         let tool = DelegateTool::new(core, test_subtools(), test_store(), test_sessions());

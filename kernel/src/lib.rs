@@ -22,10 +22,6 @@ pub mod zuowang;
 // Use canonical paths: kernel::palaces::dui_gateway, etc.
 #[deprecated(note = "use kernel::palaces::dui_gateway")]
 pub use palaces::dui_gateway as gateway;
-#[deprecated(note = "use kernel::palaces::kun_config")]
-pub use palaces::kun_config as config;
-#[deprecated(note = "use kernel::palaces::zhong_core")]
-pub use palaces::zhong_core as provider;
 
 // ── 起局 (qi ju) — Constellation entry point ──────────────────
 

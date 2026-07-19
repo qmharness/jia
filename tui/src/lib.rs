@@ -61,7 +61,7 @@ impl Command for DisableAlternateScroll {
 /// Entry point for `jia tui`. Connects to the daemon via rin socket,
 /// queries the actual model/provider, initializes the terminal, and runs
 /// the event loop.
-pub async fn run(_config: kernel::config::AppConfig) {
+pub async fn run(_config: kernel::palaces::kun_config::AppConfig) {
     let data_dir = kernel::palaces::kun_config::default_data_dir();
     let rin_sock = data_dir.join("rin.sock");
 

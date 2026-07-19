@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use serde::Deserialize;
 
-use kernel::config::TelegramBotConfig;
+use kernel::palaces::kun_config::TelegramBotConfig;
 use kernel::palaces::kan_io::{ChannelInput, ChannelSource};
 use kernel::types::{Message, Role};
 

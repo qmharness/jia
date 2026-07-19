@@ -797,7 +797,7 @@ async fn test_real_llm_evolution_pipeline() {
     let skill_tool_calls = vec!["test-evolve".to_string(), "test-evolve".to_string()];
     let user_messages: Vec<(u64, String)> = vec![];
 
-    let profile = crate::config::ProviderProfile {
+    let profile = crate::palaces::kun_config::ProviderProfile {
         kind: "openai".to_string(),
         models: vec!["qwen3.6-35b-a3b-ud-mlx".to_string()],
         default_aux_model: None,
@@ -916,7 +916,7 @@ async fn test_real_llm_reflection_only() {
         user_corrections: vec![],
     };
 
-    let profile = crate::config::ProviderProfile {
+    let profile = crate::palaces::kun_config::ProviderProfile {
         kind: "openai".to_string(),
         models: vec!["qwen3.6-35b-a3b-ud-mlx".to_string()],
         default_aux_model: None,

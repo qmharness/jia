@@ -457,7 +457,7 @@ mod tests {
         }
 
         let core = {
-            let router = crate::palaces::zhong_core::router::ProviderRouter::new(vec![(
+            let router = crate::palaces::zhong_core::ProviderRouter::new(vec![(
                 0,
                 Box::new(StubProvider) as Box<dyn LlmProvider>,
             )]);

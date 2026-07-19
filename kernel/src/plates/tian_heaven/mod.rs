@@ -749,7 +749,6 @@ mod tests {
 /// stream events that drive the TUI to update `agent_phase` (see
 /// `tui/src/state.rs`). The flat loop itself does not branch on these phases.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum AgentPhase {
     Reasoning,       // 天蓬: Pure reasoning, no tool calls
     ToolCalling,     // 天冲: Dispatching tool calls

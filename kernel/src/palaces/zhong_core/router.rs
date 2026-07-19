@@ -105,7 +105,7 @@ impl LlmProvider for ProviderRouter {
         self.providers[active].1.supports_caching()
     }
 
-    fn as_router(&self) -> Option<&crate::palaces::zhong_core::router::ProviderRouter> {
+    fn as_router(&self) -> Option<&crate::palaces::zhong_core::ProviderRouter> {
         Some(self)
     }
 }

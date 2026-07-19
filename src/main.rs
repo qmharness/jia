@@ -1,5 +1,5 @@
 use clap::Parser;
-use kernel::config::{CliArgs, Commands, GatewayAction};
+use kernel::palaces::kun_config::{CliArgs, Commands, GatewayAction};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 

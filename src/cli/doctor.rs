@@ -23,7 +23,7 @@ pub fn run_doctor(config_path: Option<std::path::PathBuf>) {
     });
     print!("{:>24}: ", "Config");
     match std::fs::read_to_string(&config_path) {
-        Ok(content) => match toml::from_str::<kernel::config::JiaToml>(&content) {
+        Ok(content) => match toml::from_str::<kernel::palaces::kun_config::JiaToml>(&content) {
             Ok(cfg) => {
                 let n = cfg.providers.len();
                 let dp = cfg
@@ -204,7 +204,7 @@ pub fn run_doctor(config_path: Option<std::path::PathBuf>) {
 
     // 9. LLM connectivity (non-blocking, short timeout)
     if let Ok(content) = std::fs::read_to_string(&config_path)
-        && let Ok(cfg) = toml::from_str::<kernel::config::JiaToml>(&content)
+        && let Ok(cfg) = toml::from_str::<kernel::palaces::kun_config::JiaToml>(&content)
     {
         for (name, profile) in &cfg.providers {
             print!("{:>24}: ", format!("LLM {}", name));

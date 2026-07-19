@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use serde_json::json;
 
-use kernel::config::WeChatBotConfig;
+use kernel::palaces::kun_config::WeChatBotConfig;
 use kernel::palaces::kan_io::{ChannelInput, ChannelSource};
 use kernel::types::{Message, Role};
 

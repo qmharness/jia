@@ -1008,7 +1008,7 @@ Done."#;
     }
 
     fn router_core(providers: Vec<Box<dyn LlmProvider>>) -> JiaCore {
-        let router = crate::palaces::zhong_core::router::ProviderRouter::new(
+        let router = crate::palaces::zhong_core::ProviderRouter::new(
             providers
                 .into_iter()
                 .enumerate()

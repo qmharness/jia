@@ -54,7 +54,7 @@ pub trait LlmProvider: Send + Sync {
 
     /// If this provider is a ProviderRouter, return a reference to it.
     /// Used by the agent loop for failover. Default: None.
-    fn as_router(&self) -> Option<&crate::palaces::zhong_core::router::ProviderRouter> {
+    fn as_router(&self) -> Option<&ProviderRouter> {
         None
     }
 
@@ -197,6 +197,8 @@ pub(crate) fn classify_http_error(status: u16, body: &str) -> crate::error::Prov
 // ── Router + Circuit Breaker ──────────────────────────────────
 pub(crate) mod breaker;
 pub(crate) mod router;
+// 门面 re-export:crate 内一律走 zhong_core::ProviderRouter,不直达 router 子模块
+pub(crate) use router::ProviderRouter;
 
 // ── Anthropic ──────────────────────────────────────────────
 mod anthropic;
@@ -208,12 +210,12 @@ pub use openai::OpenAIProvider;
 
 // ── Gemini ──────────────────────────────────────────────────
 
-pub mod gemini;
+mod gemini;
 pub(crate) use gemini::GeminiProvider;
 
 // ── Factory ────────────────────────────────────────────────
 
-use crate::config::ProviderProfile;
+use crate::palaces::kun_config::ProviderProfile;
 
 /// Create a provider from a config profile.
 ///
@@ -406,7 +408,7 @@ pub(crate) mod mock {
 
 /// Fetch model list from a provider's API.
 /// Returns empty vec on failure (caller handles the warning).
-pub async fn fetch_models(profile: &crate::config::ProviderProfile) -> Vec<String> {
+pub async fn fetch_models(profile: &ProviderProfile) -> Vec<String> {
     let client = reqwest::Client::new();
     match profile.kind.as_str() {
         "openai" | "openrouter" => {

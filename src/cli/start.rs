@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 
-use kernel::config::AppConfig;
+use kernel::palaces::kun_config::AppConfig;
 // jia crate removed
 
 pub fn spawn_daemon(config_path: Option<PathBuf>, host: Option<String>, port: Option<u16>) {

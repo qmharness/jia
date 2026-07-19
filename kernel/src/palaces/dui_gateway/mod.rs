@@ -19,7 +19,7 @@ use tower_http::services::ServeDir;
 pub mod principles;
 pub mod rin;
 
-use crate::config::{ProviderProfile};
+use crate::palaces::kun_config::ProviderProfile;
 use crate::plates::di_earth::EarthPlate;
 use crate::plates::ren_human::PendingConfirmation;
 use crate::plates::ren_human::PendingQuestion;
@@ -311,7 +311,7 @@ pub use webhooks::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::CognitionSection;
+    use crate::palaces::kun_config::CognitionSection;
     use crate::palaces::gen_store::Store;
     use crate::palaces::kan_io::ChannelManager;
     use crate::palaces::kun_config::{AppConfig, BotsSection, ConfigLoader, SecuritySection};

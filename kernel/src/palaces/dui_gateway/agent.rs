@@ -13,8 +13,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::plates::ren_human::HumanPlate;
 use crate::plates::tian_heaven::Agent;
-use crate::provider;
-use crate::provider::LlmProvider;
+use crate::palaces::zhong_core as provider;
+use crate::palaces::zhong_core::LlmProvider;
 use crate::stems::AgentEvent;
 use crate::telemetry::metrics::{JIA_REQUEST_DURATION_SECONDS, JIA_REQUESTS_TOTAL};
 use crate::types::{AgentRequest, ChatRequest, HistoryEntry, Message, Role, StreamEvent};
@@ -366,7 +366,7 @@ pub async fn handle_agent(
 mod tests {
     use super::super::SessionTokens;
     use super::*;
-    use crate::config::CognitionSection;
+    use crate::palaces::kun_config::CognitionSection;
     use crate::palaces::dui_gateway::auth::RateLimiter;
     use crate::palaces::gen_store::Store;
     use crate::palaces::kan_io::ChannelManager;

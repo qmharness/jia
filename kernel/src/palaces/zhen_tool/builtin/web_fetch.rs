@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::action::ExecContext;
-use crate::stems::intent::{CeremoniesIntent};
+use crate::stems::CeremoniesIntent;
 
 pub struct WebFetchTool {
     #[allow(dead_code)]

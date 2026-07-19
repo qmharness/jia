@@ -58,7 +58,7 @@ pub async fn run_tui(config_path: Option<PathBuf>) {
         tracing::info!("Daemon spawned (PID: {})", child.id());
 
         // Wait for daemon to be ready (poll TCP)
-        let config = kernel::config::AppConfig::load(config_path.clone(), None, None)
+        let config = kernel::palaces::kun_config::AppConfig::load(config_path.clone(), None, None)
             .expect("Failed to load configuration");
         let addr = format!("{}:{}", config.host, config.port);
         let sock_addr: std::net::SocketAddr = addr.parse().expect("invalid socket addr");
@@ -71,7 +71,7 @@ pub async fn run_tui(config_path: Option<PathBuf>) {
     }
 
     // Load config for TUI launch
-    let config = kernel::config::AppConfig::load(config_path, None, None)
+    let config = kernel::palaces::kun_config::AppConfig::load(config_path, None, None)
         .expect("Failed to load configuration");
 
     tui::run(config).await;
