@@ -4,10 +4,11 @@
 //! 会话锁、子代理会话,皆是"人与机之间进行中的交互状态",当归人盘
 //! 而非地盘(地盘 = 一局不变的静态基础设施)。用户已裁决(P2-1)。
 //!
-//! 方向守护:本模块引用 tian_heaven::InteractionMode 与
-//! zhen_tool::delegate::SubagentSession —— ren_human→tian_heaven /
-//! ren_human→zhen_tool 方向在 mod.rs 已有先例(AgentEvent / BaseTool),
-//! 未新增方向违规。
+//! 方向守护(过渡态,如实记录):本模块引用 tian_heaven::InteractionMode
+//! 与 zhen_tool::delegate::SubagentSession —— ren→tian / ren→zhen 方向
+//! 在 mod.rs 有先例(AgentEvent / BaseTool),属既有边。另:ask_user.rs
+//! 对本模块 PendingQuestion 的引用是**第一条** zhen→ren 边(此前该方向
+//! 仅有注释文字)。以上过渡态均由 P2-2 方向治理统一复盘。
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -20,7 +21,8 @@ use crate::plates::tian_heaven::InteractionMode;
 /// A pending question awaiting user answer.
 ///
 /// 原居 zhen_tool::builtin::ask_user;随迁人盘以避免"盘→宫"方向违规
-/// (人盘持有它,ask_user 反向引用——zhen_tool→ren_human 方向已有先例)。
+/// (人盘持有它,ask_user 反向引用——该 zhen→ren 边为本重构新增的过渡态,
+/// 见模块头方向守护记录)。
 pub struct PendingQuestion {
     pub sender: tokio::sync::oneshot::Sender<String>,
     pub token: String,
@@ -36,18 +38,18 @@ pub struct PendingQuestion {
 /// EarthPlate / AppState / rin / agent loop 各处克隆共享同一份。
 pub struct SessionBus {
     /// 待裁决的用户确认(ask 确认 / 建项确认)。
-    pub pending_confirmations: Arc<Mutex<HashMap<String, PendingConfirmation>>>,
+    pub(crate) pending_confirmations: Arc<Mutex<HashMap<String, PendingConfirmation>>>,
     /// 待回答的用户提问(ask_user 工具 ↔ REST /answer、rin answer)。
-    pub pending_questions: Arc<Mutex<HashMap<String, PendingQuestion>>>,
+    pub(crate) pending_questions: Arc<Mutex<HashMap<String, PendingQuestion>>>,
     /// P3 · per-session interaction mode (谋划态), set by user slash command
     /// (/plan) and read when the next agent run starts. Kept in sync with the
     /// agent's actual mode via InteractionModeChanged events.
-    pub session_modes: Arc<Mutex<HashMap<String, InteractionMode>>>,
+    pub(crate) session_modes: Arc<Mutex<HashMap<String, InteractionMode>>>,
     /// Per-session locks — serializes concurrent messages from the same source
     /// so they don't race on history read/write in post_loop.
-    pub session_locks: Arc<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
+    pub(crate) session_locks: Arc<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
     /// P8 · persisted sub-agent sessions for continuation via send_message.
-    pub subagent_sessions: Arc<Mutex<HashMap<String, SubagentSession>>>,
+    pub(crate) subagent_sessions: Arc<Mutex<HashMap<String, SubagentSession>>>,
 }
 
 impl SessionBus {

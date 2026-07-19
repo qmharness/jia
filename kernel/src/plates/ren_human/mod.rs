@@ -876,4 +876,19 @@ mod tests {
             .await;
         assert!(result.is_err(), "Denied mode should reject all tools");
     }
+
+    /// P2-1 结构断言:HumanPlate 与 SessionBus 共享同一份 pending_confirmations
+    /// Arc(误改回独立 Arc 时确认会永远超时,编译与普通测试都发现不了)。
+    #[test]
+    fn with_state_shares_pending_confirmations_arc() {
+        let bus = std::sync::Arc::new(crate::plates::ren_human::SessionBus::new());
+        let plate = HumanPlate::with_state(
+            std::sync::Arc::new(PermissionMatrix::default()),
+            bus.clone(),
+        );
+        assert!(std::sync::Arc::ptr_eq(
+            &plate.pending_confirmations,
+            &bus.pending_confirmations
+        ));
+    }
 }

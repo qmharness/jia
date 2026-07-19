@@ -61,7 +61,7 @@ use crate::palaces::zhen_tool::mcp::McpManager;
 #[cfg(feature = "wasm-plugin")]
 use crate::palaces::zhen_tool::plugin_manager::PluginManager;
 use crate::plates::ren_human::HumanPlate;
-use crate::plates::ren_human::session_bus::SessionBus;
+use crate::plates::ren_human::SessionBus;
 use crate::plates::shen_spirit::RuntimeEvent;
 use crate::plates::shen_spirit::SpiritPlate;
 use crate::plates::shen_spirit::baihu::{BaiHuConfig, BaiHuHook};
