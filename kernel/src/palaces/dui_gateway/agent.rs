@@ -408,6 +408,7 @@ mod tests {
                 providers: HashMap::new(),
                 default_main_model_provider: None,
                 default_aux_model_provider: None,
+                system_prompt: crate::palaces::kun_config::DEFAULT_SYSTEM_PROMPT.to_string(),
                 security: SecuritySection::default(),
                 mcp_servers: vec![],
                 bots: BotsSection::default(),

@@ -183,7 +183,16 @@ pub struct LlmSection {
     /// all aux tasks fall back to main_core.
     #[serde(default)]
     pub default_aux_model_provider: Option<String>,
+    /// System prompt for the gateway /agent passthrough endpoint.
+    /// Defaults to [`DEFAULT_SYSTEM_PROMPT`].
+    #[serde(default)]
+    pub system_prompt: Option<String>,
 }
+
+/// Default system prompt for the gateway /agent passthrough endpoint,
+/// used when `[llm].system_prompt` is not configured.
+pub const DEFAULT_SYSTEM_PROMPT: &str =
+    "You are Jia (甲), Just Intelligence Agent (正是智能体). Respond concisely and directly.";
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ProviderProfile {
@@ -582,6 +591,9 @@ pub struct AppConfig {
     pub providers: HashMap<String, ProviderProfile>,
     pub default_main_model_provider: Option<String>,
     pub default_aux_model_provider: Option<String>,
+    /// System prompt for the gateway /agent endpoint (from `[llm].system_prompt`,
+    /// falling back to [`DEFAULT_SYSTEM_PROMPT`]).
+    pub system_prompt: String,
     pub security: SecuritySection,
     pub mcp_servers: Vec<McpServerConfig>,
     pub bots: BotsSection,
@@ -679,6 +691,10 @@ impl AppConfig {
             providers: toml.providers,
             default_main_model_provider: toml.llm.default_main_model_provider,
             default_aux_model_provider: toml.llm.default_aux_model_provider,
+            system_prompt: toml
+                .llm
+                .system_prompt
+                .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string()),
             security,
             mcp_servers: toml.mcp_servers,
             bots: toml.bots,

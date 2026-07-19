@@ -2,7 +2,7 @@ use futures::StreamExt;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::certainty::{CertaintyParams, LoopDecision, TurnCertainty};
+use super::certainty::{CertaintyParams, TurnCertainty};
 use crate::geju::GeJu;
 use crate::palaces::Palace;
 use crate::palaces::xun_context::ContextWindow;

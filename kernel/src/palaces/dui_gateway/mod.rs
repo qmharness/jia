@@ -244,12 +244,12 @@ pub fn create_app_with_earth(
         earth.config.app_config.security.rate_limit_per_minute,
     ));
     let default_aux_model_provider = earth.config.app_config.default_aux_model_provider.clone();
+    let system_prompt = earth.config.app_config.system_prompt.clone();
     let state = Arc::new(AppState {
         providers,
         default_main_provider_name,
         default_aux_model_provider,
-        system_prompt: "You are Jia (甲), Just Intelligence Agent (正是智能体). Respond concisely and directly."
-            .into(),
+        system_prompt,
         earth: Some(earth),
         pending_confirmations,
         pending_questions,
@@ -393,6 +393,7 @@ mod tests {
             providers: HashMap::new(),
             default_main_model_provider: None,
             default_aux_model_provider: None,
+            system_prompt: crate::palaces::kun_config::DEFAULT_SYSTEM_PROMPT.to_string(),
             security: SecuritySection::default(),
             mcp_servers: vec![],
             bots: BotsSection::default(),

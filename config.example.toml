@@ -10,6 +10,8 @@ port = 3000
 [llm]
 default_main_model_provider = "deepseek"  # kind is "openai" (OpenAI-compatible)
 default_aux_model_provider = "deepseek"
+# /agent 网关端点的 system prompt(可选;缺省用内置 Jia 身份提示)
+# system_prompt = "You are Jia (甲), Just Intelligence Agent (正是智能体). Respond concisely and directly."
 
 # DeepSeek
 [providers.deepseek]

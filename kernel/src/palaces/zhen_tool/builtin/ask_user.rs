@@ -57,6 +57,9 @@ impl BaseTool for AskUserQuestionTool {
     }
 
     fn parameters_schema(&self) -> Value {
+        // 契约:"options" 的末项被约定为自由文本入口("Other (free-text)")——
+        // TUI 端按此劫持末项切换为自由输入,见 tui/src/state.rs 的
+        // "Last option = free-text entry" 逻辑。两端必须同步修改。
         serde_json::json!({
             "type": "object",
             "properties": {

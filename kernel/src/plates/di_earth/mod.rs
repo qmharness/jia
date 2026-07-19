@@ -60,7 +60,6 @@ use crate::plates::ren_human::SessionBus;
 use crate::plates::shen_spirit::SpiritPlate;
 use crate::plates::shen_spirit::baihu::{BaiHuConfig, BaiHuHook};
 use crate::plates::shen_spirit::completion_check::{CompletionCheckHook, CompletionChecklist};
-use crate::plates::shen_spirit::hook::{Hook, HookEvent, HookResult, SpiritType};
 use crate::plates::shen_spirit::jiudi::JiudiHook;
 use crate::plates::shen_spirit::jiutian::JiuTianHook;
 use crate::plates::shen_spirit::liuhe::LiuheHook;

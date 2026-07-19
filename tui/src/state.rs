@@ -304,6 +304,9 @@ impl App {
                     KeyCode::Enter if has_options => {
                         let opts = options.as_ref().unwrap();
                         // Last option = free-text entry
+                        // 契约:末项被约定为 "Other (free-text)",此处劫持为自由输入;
+                        // 该约定来自 kernel ask_user 工具的 schema 描述,见
+                        // kernel/src/palaces/zhen_tool/builtin/ask_user.rs。两端必须同步修改。
                         if selected == opts.len() - 1 {
                             // Switch to free-text mode: remove option lines, keep question
                             let opt_count = opts.len() + 1; // skip leading blank + options

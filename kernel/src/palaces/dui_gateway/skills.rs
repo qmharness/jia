@@ -105,23 +105,36 @@ pub async fn handle_skills_reload(State(state): State<Arc<AppState>>) -> Json<se
         Some(e) => e,
         None => return Json(serde_json::json!({"error": "Agent not initialized"})),
     };
-    let mut new_reg = SkillRegistry::new();
-    let skills_dir = skills_dir();
-    let loaded = match SkillLoader::load_directory_sync(&skills_dir, &mut new_reg) {
-        Ok(n) => {
-            // Preserve disabled state across reload
-            let old_disabled = {
-                let old = earth.skills.read().unwrap_or_else(|e| e.into_inner());
-                old.disabled_names().into_iter().cloned().collect()
-            };
-            new_reg.set_disabled(&old_disabled);
-            n
+    // SkillLoader::load_directory_sync 是同步文件 IO,移入 spawn_blocking
+    // 避免阻塞 tokio runtime;skills 的 RwLock 守卫只留在 async 侧,
+    // 不跨入 spawn_blocking 边界。
+    let dir = skills_dir();
+    let (mut new_reg, result) = match tokio::task::spawn_blocking(move || {
+        let mut reg = SkillRegistry::new();
+        let result = SkillLoader::load_directory_sync(&dir, &mut reg);
+        (reg, result)
+    })
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("Skills reload task failed: {e}");
+            return Json(serde_json::json!({"loaded": 0}));
         }
+    };
+    let loaded = match result {
+        Ok(n) => n,
         Err(e) => {
             tracing::warn!("Skills reload failed: {e}");
             0
         }
     };
+    // Preserve disabled state across reload
+    let old_disabled = {
+        let old = earth.skills.read().unwrap_or_else(|e| e.into_inner());
+        old.disabled_names().into_iter().cloned().collect()
+    };
+    new_reg.set_disabled(&old_disabled);
     *earth.skills.write().unwrap_or_else(|e| e.into_inner()) = new_reg;
     Json(serde_json::json!({"loaded": loaded}))
 }
@@ -193,17 +206,27 @@ pub async fn handle_skills_evolve_toggle(
     // Toggle auto_evolve in SKILL.md frontmatter
     match toggle_frontmatter_auto_evolve(&path, enable).await {
         Ok(_) => {
-            // Reload to pick up the change
-            let mut new_reg = SkillRegistry::new();
-            let skills_dir = skills_dir();
-            let _ = SkillLoader::load_directory_sync(&skills_dir, &mut new_reg);
-            let old_disabled = {
-                let old = earth.skills.read().unwrap_or_else(|e| e.into_inner());
-                old.disabled_names().into_iter().cloned().collect()
-            };
-            new_reg.set_disabled(&old_disabled);
-            *earth.skills.write().unwrap_or_else(|e| e.into_inner()) = new_reg;
-            Json(serde_json::json!({"ok": true, "name": name, "auto_evolve": enable}))
+            // Reload to pick up the change(同步文件 IO 移入 spawn_blocking,
+            // 同 handle_skills_reload;RwLock 守卫不跨入阻塞边界)
+            let dir = skills_dir();
+            let reload = tokio::task::spawn_blocking(move || {
+                let mut reg = SkillRegistry::new();
+                let _ = SkillLoader::load_directory_sync(&dir, &mut reg);
+                reg
+            })
+            .await;
+            match reload {
+                Ok(mut new_reg) => {
+                    let old_disabled = {
+                        let old = earth.skills.read().unwrap_or_else(|e| e.into_inner());
+                        old.disabled_names().into_iter().cloned().collect()
+                    };
+                    new_reg.set_disabled(&old_disabled);
+                    *earth.skills.write().unwrap_or_else(|e| e.into_inner()) = new_reg;
+                    Json(serde_json::json!({"ok": true, "name": name, "auto_evolve": enable}))
+                }
+                Err(e) => Json(serde_json::json!({"error": format!("Skills reload failed: {e}")})),
+            }
         }
         Err(e) => Json(serde_json::json!({"error": e})),
     }
