@@ -7,20 +7,18 @@ use serde_json::Value;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::CeremoniesIntent;
 use crate::stems::action::ExecContext;
-use crate::stems::intent::ExecAction;
 
 /// Safe git subcommands (read-only or non-destructive).
 const ALLOWED_COMMANDS: &[&str] = &[
     "status", "diff", "log", "branch", "add", "commit", "checkout", "stash", "show", "blame", "tag",
 ];
 
-const DANGEROUS_PATTERNS: &[&str] = &[
-    "push --force",
-    "reset --hard",
-    "clean -f",
-    "clean -d",
-    "--no-index",
-];
+/// Dangerous patterns. Only `--no-index` is reachable: it lets `git diff`
+/// operate on files outside a git repository and is read-only. The other
+/// historically listed patterns (`push --force`, `reset --hard`, `clean -f`,
+/// `clean -d`) are subcommands that are already rejected because `push`,
+/// `reset`, and `clean` are not in ALLOWED_COMMANDS, making this check dead.
+const DANGEROUS_PATTERNS: &[&str] = &["--no-index"];
 
 pub struct GitTool;
 
@@ -51,9 +49,7 @@ impl BaseTool for GitTool {
     }
 
     fn ceremony(&self) -> CeremoniesIntent {
-        CeremoniesIntent::Geng(ExecAction {
-            command: "git".into(),
-        })
+        CeremoniesIntent::Geng
     }
 
     fn parameters_schema(&self) -> Value {

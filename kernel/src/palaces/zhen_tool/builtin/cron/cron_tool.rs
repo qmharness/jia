@@ -9,7 +9,6 @@ use crate::error::ToolError;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::CeremoniesIntent;
 use crate::stems::action::ExecContext;
-use crate::stems::intent::ExecAction;
 
 use super::{CronStore, TriggerMode};
 
@@ -38,9 +37,7 @@ impl BaseTool for CronTool {
     }
 
     fn ceremony(&self) -> CeremoniesIntent {
-        CeremoniesIntent::Geng(ExecAction {
-            command: "cron".into(),
-        })
+        CeremoniesIntent::Geng
     }
 
     fn parameters_schema(&self) -> Value {

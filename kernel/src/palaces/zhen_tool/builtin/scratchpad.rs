@@ -5,7 +5,7 @@ use serde_json::Value;
 use crate::palaces::qian_permission::PathOp;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::action::ExecContext;
-use crate::stems::intent::{CeremoniesIntent, ReadAction, WriteAction};
+use crate::stems::intent::{CeremoniesIntent};
 
 /// P8 · cross-worker scratchpad (跨 agent 共享知识).
 ///
@@ -65,10 +65,7 @@ impl BaseTool for ScratchpadWriteTool {
     fn ceremony(&self) -> CeremoniesIntent {
         // 己仪 (Ji, write) → is_destructive=true. Blocked in plan mode (correct:
         // writing shared state is a mutation).
-        CeremoniesIntent::Ji(WriteAction {
-            target: String::new(),
-            content: String::new(),
-        })
+        CeremoniesIntent::Ji
     }
 
     fn is_concurrency_safe(&self) -> bool {
@@ -144,9 +141,7 @@ impl BaseTool for ScratchpadReadTool {
     }
 
     fn ceremony(&self) -> CeremoniesIntent {
-        CeremoniesIntent::Wu(ReadAction {
-            target: String::new(),
-        })
+        CeremoniesIntent::Wu
     }
 
     fn is_concurrency_safe(&self) -> bool {

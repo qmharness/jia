@@ -12,7 +12,7 @@ use crate::palaces::zhen_tool::base::BaseTool;
 use crate::palaces::zhen_tool::registry::ToolRegistry;
 use crate::palaces::zhong_core::JiaCore;
 use crate::stems::action::ExecContext;
-use crate::stems::intent::{CeremoniesIntent, ReadAction};
+use crate::stems::intent::{CeremoniesIntent};
 use crate::stems::parse_tool_calls;
 use crate::types::{Message, Role};
 
@@ -140,9 +140,7 @@ impl BaseTool for DelegateTool {
     fn ceremony(&self) -> CeremoniesIntent {
         // Delegation is read-only (sub-agents only have read tools).
         // Wu ceremony ensures delegate is not blocked in planning mode.
-        CeremoniesIntent::Wu(ReadAction {
-            target: "subagent".into(),
-        })
+        CeremoniesIntent::Wu
     }
 
     fn target_palace(&self, input: &Value) -> crate::palaces::Palace {
@@ -405,9 +403,7 @@ impl BaseTool for SendMessageTool {
     fn ceremony(&self) -> CeremoniesIntent {
         // Read-only continuation (subtools are read-only). Wu → is_destructive=false,
         // so plan mode permits it (C6).
-        CeremoniesIntent::Wu(crate::stems::intent::ReadAction {
-            target: String::new(),
-        })
+        CeremoniesIntent::Wu
     }
 
     fn target_palace(&self, _input: &Value) -> crate::palaces::Palace {

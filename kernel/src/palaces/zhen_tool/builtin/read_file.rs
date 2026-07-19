@@ -5,7 +5,7 @@ use serde_json::Value;
 use crate::palaces::qian_permission::PathOp;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::action::ExecContext;
-use crate::stems::intent::{CeremoniesIntent, ReadAction};
+use crate::stems::intent::{CeremoniesIntent};
 
 pub struct ReadFileTool {}
 
@@ -36,9 +36,7 @@ impl BaseTool for ReadFileTool {
     }
 
     fn ceremony(&self) -> CeremoniesIntent {
-        CeremoniesIntent::Wu(ReadAction {
-            target: String::new(),
-        })
+        CeremoniesIntent::Wu
     }
 
     fn is_concurrency_safe(&self) -> bool {

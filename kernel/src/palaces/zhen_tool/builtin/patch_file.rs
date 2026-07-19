@@ -5,7 +5,7 @@ use serde_json::Value;
 use crate::palaces::qian_permission::PathOp;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::action::ExecContext;
-use crate::stems::intent::{CeremoniesIntent, WriteAction};
+use crate::stems::intent::{CeremoniesIntent};
 
 pub struct EditTool {}
 
@@ -39,10 +39,7 @@ impl BaseTool for EditTool {
     }
 
     fn ceremony(&self) -> CeremoniesIntent {
-        CeremoniesIntent::Ji(WriteAction {
-            target: String::new(),
-            content: String::new(),
-        })
+        CeremoniesIntent::Ji
     }
 
     fn parameters_schema(&self) -> Value {

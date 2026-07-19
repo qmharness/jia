@@ -8,7 +8,7 @@ use serde_json::Value;
 use crate::palaces::li_skill::SkillRegistry;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::action::ExecContext;
-use crate::stems::intent::{CeremoniesIntent, CommunicateAction};
+use crate::stems::intent::{CeremoniesIntent};
 
 /// A tool that bridges the ToolRegistry and SkillRegistry, allowing the LLM
 /// to invoke skills by name. When called, returns the skill's prompt content.
@@ -55,10 +55,7 @@ impl BaseTool for SkillTool {
     }
 
     fn ceremony(&self) -> CeremoniesIntent {
-        CeremoniesIntent::Ren(CommunicateAction {
-            endpoint: "skill".into(),
-            payload: String::new(),
-        })
+        CeremoniesIntent::Ren
     }
 
     fn target_palace(&self, _input: &Value) -> crate::palaces::Palace {

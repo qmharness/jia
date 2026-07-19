@@ -171,6 +171,7 @@ fn manas_certainty_trend_adjusts() {
 // ── Gate Tests ───────────────────────────────────────────────
 
 use kernel::plates::ren_human::{HumanGate, HumanPlate};
+use kernel::plates::ren_human::session_bus::SessionBus;
 use kernel::palaces::qian_permission::PermissionMatrix;
 use kernel::palaces::kun_config::{SecuritySection, SandboxMode};
 
@@ -182,7 +183,7 @@ fn test_human_plate() -> HumanPlate {
         &root,
         std::path::PathBuf::from("/tmp/backups"),
     ));
-    HumanPlate::new(perms)
+    HumanPlate::with_state(perms, Arc::new(SessionBus::new()))
 }
 
 #[test]

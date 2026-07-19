@@ -19,7 +19,7 @@ use tower_http::services::ServeDir;
 pub mod principles;
 pub mod rin;
 
-use crate::config::{AppConfig, ProviderProfile};
+use crate::config::{ProviderProfile};
 use crate::plates::di_earth::EarthPlate;
 use crate::plates::ren_human::PendingConfirmation;
 use crate::plates::ren_human::PendingQuestion;
@@ -227,24 +227,6 @@ pub fn build_router(state: Arc<AppState>, web_dir: String) -> Router {
     router
 }
 
-pub fn create_app(config: &AppConfig, web_dir: String) -> Router {
-    let state = Arc::new(AppState {
-        providers: config.providers.clone(),
-        default_main_provider_name: config.default_main_provider_name().to_string(),
-        default_aux_model_provider: config.default_aux_model_provider.clone(),
-        system_prompt: "You are Jia (甲), Just Intelligence Agent (正是智能体). Respond concisely and directly."
-            .into(),
-        earth: None,
-        pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
-        pending_questions: Arc::new(Mutex::new(HashMap::new())),
-        api_key: config.security.api_key.clone(),
-        rate_limiter: Arc::new(RateLimiter::new(config.security.rate_limit_per_minute)),
-        session_tokens: Arc::new(SessionTokens::new()),
-    });
-
-    build_router(state, web_dir)
-}
-
 /// P1-3 · `session_tokens` 由调用方注入,与 rin(UDS)监听器共用同一份,
 /// 使 HTTP /agent/cancel 与 /sessions/active 能看到并取消 TUI 会话(审计 G2)。
 pub fn create_app_with_earth(
@@ -332,7 +314,7 @@ mod tests {
     use crate::config::CognitionSection;
     use crate::palaces::gen_store::Store;
     use crate::palaces::kan_io::ChannelManager;
-    use crate::palaces::kun_config::{BotsSection, ConfigLoader, SecuritySection};
+    use crate::palaces::kun_config::{AppConfig, BotsSection, ConfigLoader, SecuritySection};
     use crate::palaces::li_skill::Skill;
     use crate::palaces::li_skill::SkillRegistry;
     use crate::palaces::qian_permission::PermissionMatrix;

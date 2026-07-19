@@ -14,7 +14,7 @@ use crate::palaces::xun_context::{ContextWindow, ToolOutputBudget};
 use crate::principles::SystemPrinciple;
 use crate::stems::Stem;
 use crate::stems::action::ExecContext;
-use crate::stems::events::InteractionMode;
+use crate::stems::InteractionMode;
 use crate::types::HistoryEntry;
 use crate::vijnana::alaya::SeedStore;
 use crate::vijnana::manas::Manas;
@@ -462,12 +462,12 @@ Be attentive, truthful, and serve with sincerity.";
     pub fn intent_stem_from_tool(ceremony: &crate::stems::CeremoniesIntent) -> Stem {
         use crate::stems::CeremoniesIntent;
         match ceremony {
-            CeremoniesIntent::Wu(_) => Stem::Wu,
-            CeremoniesIntent::Ji(_) => Stem::Ji,
-            CeremoniesIntent::Geng(_) => Stem::Geng,
-            CeremoniesIntent::Xin(_) => Stem::Xin,
-            CeremoniesIntent::Ren(_) => Stem::Ren,
-            CeremoniesIntent::Gui(_) => Stem::Gui,
+            CeremoniesIntent::Wu => Stem::Wu,
+            CeremoniesIntent::Ji => Stem::Ji,
+            CeremoniesIntent::Geng => Stem::Geng,
+            CeremoniesIntent::Xin => Stem::Xin,
+            CeremoniesIntent::Ren => Stem::Ren,
+            CeremoniesIntent::Gui => Stem::Gui,
         }
     }
 }
@@ -743,8 +743,11 @@ mod tests {
     }
 }
 
-/// Agent loop phases (九星 — nine stars)
-/// Reserved for future per-phase dispatch; currently unused in the flat loop.
+/// Agent loop phases (九星 — nine stars).
+///
+/// This is a TUI display enum: the kernel agent loop emits `RuntimeEvent`
+/// stream events that drive the TUI to update `agent_phase` (see
+/// `tui/src/state.rs`). The flat loop itself does not branch on these phases.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum AgentPhase {

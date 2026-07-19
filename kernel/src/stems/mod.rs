@@ -7,6 +7,6 @@ pub mod tool_parse;
 
 pub use events::{AgentEvent, InteractionMode};
 pub use hooks::{CompiledHook, UserHookEvent, run_pre_tool_hooks};
-pub use intent::{CeremoniesIntent, Intent, MarvelsIntent};
+pub use intent::CeremoniesIntent;
 pub use stem::Stem;
 pub use tool_parse::parse_tool_calls;

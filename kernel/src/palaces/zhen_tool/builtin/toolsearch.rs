@@ -8,7 +8,7 @@ use serde_json::Value;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::palaces::zhen_tool::registry::ToolRegistry;
 use crate::stems::action::ExecContext;
-use crate::stems::intent::{CeremoniesIntent, ReadAction};
+use crate::stems::intent::{CeremoniesIntent};
 
 /// P9 · ToolSearch — discover external (MCP/WASM) tools on demand.
 ///
@@ -51,9 +51,7 @@ impl BaseTool for ToolSearchTool {
     }
 
     fn ceremony(&self) -> CeremoniesIntent {
-        CeremoniesIntent::Wu(ReadAction {
-            target: String::new(),
-        })
+        CeremoniesIntent::Wu
     }
 
     fn is_concurrency_safe(&self) -> bool {
@@ -158,9 +156,7 @@ mod tests {
             self.d.to_string()
         }
         fn ceremony(&self) -> CeremoniesIntent {
-            CeremoniesIntent::Wu(ReadAction {
-                target: String::new(),
-            })
+            CeremoniesIntent::Wu
         }
         fn parameters_schema(&self) -> Value {
             serde_json::json!({"type":"object","properties":{"x":{"type":"string"}}})

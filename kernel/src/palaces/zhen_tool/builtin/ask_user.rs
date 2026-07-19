@@ -14,7 +14,6 @@ use crate::plates::ren_human::PendingQuestion;
 use crate::stems::AgentEvent;
 use crate::stems::CeremoniesIntent;
 use crate::stems::action::ExecContext;
-use crate::stems::intent::CommunicateAction;
 
 pub struct AskUserQuestionTool {
     pending_questions: Arc<Mutex<HashMap<String, PendingQuestion>>>,
@@ -46,10 +45,7 @@ impl BaseTool for AskUserQuestionTool {
     }
 
     fn ceremony(&self) -> CeremoniesIntent {
-        CeremoniesIntent::Ren(CommunicateAction {
-            endpoint: "user".into(),
-            payload: String::new(),
-        })
+        CeremoniesIntent::Ren
     }
 
     fn is_destructive(&self) -> bool {

@@ -9,7 +9,6 @@ use serde_json::Value;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::CeremoniesIntent;
 use crate::stems::action::ExecContext;
-use crate::stems::intent::ExecAction;
 
 const MAX_TASKS: usize = 200;
 
@@ -131,9 +130,7 @@ impl BaseTool for TaskTool {
     }
 
     fn ceremony(&self) -> CeremoniesIntent {
-        CeremoniesIntent::Geng(ExecAction {
-            command: "task".into(),
-        })
+        CeremoniesIntent::Geng
     }
 
     fn parameters_schema(&self) -> Value {

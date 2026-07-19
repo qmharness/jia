@@ -103,3 +103,90 @@ pub async fn run_pre_tool_hooks(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compiled_hook_compiles_regex_and_matches() {
+        let cfg = crate::palaces::kun_config::HookConfig {
+            event: "pre_tool_use".into(),
+            tool_pattern: Some("shell|git".into()),
+            command: "true".into(),
+            block_on_exit: true,
+        };
+        let h = CompiledHook::compile(&cfg).expect("compile");
+        assert_eq!(h.event, UserHookEvent::PreToolUse);
+        assert!(h.matches_tool("shell"));
+        assert!(h.matches_tool("git"));
+        assert!(!h.matches_tool("read_file"));
+    }
+
+    #[test]
+    fn compiled_hook_no_pattern_matches_all() {
+        let cfg = crate::palaces::kun_config::HookConfig {
+            event: "post_tool_use".into(),
+            tool_pattern: None,
+            command: "true".into(),
+            block_on_exit: false,
+        };
+        let h = CompiledHook::compile(&cfg).expect("compile");
+        assert_eq!(h.event, UserHookEvent::PostToolUse);
+        assert!(h.matches_tool("anything"));
+    }
+
+    #[test]
+    fn compiled_hook_rejects_bad_regex() {
+        let cfg = crate::palaces::kun_config::HookConfig {
+            event: "pre_tool_use".into(),
+            tool_pattern: Some("(".into()), // invalid regex
+            command: "true".into(),
+            block_on_exit: false,
+        };
+        assert!(CompiledHook::compile(&cfg).is_err());
+    }
+
+    #[tokio::test]
+    async fn pre_tool_hook_blocks_on_nonzero_exit() {
+        // A hook that exits 1 with block_on_exit must block.
+        let cfg = crate::palaces::kun_config::HookConfig {
+            event: "pre_tool_use".into(),
+            tool_pattern: Some("shell".into()),
+            command: "exit 1".into(),
+            block_on_exit: true,
+        };
+        let hooks = vec![CompiledHook::compile(&cfg).unwrap()];
+        let res = run_pre_tool_hooks(&hooks, "shell", &serde_json::json!({})).await;
+        assert!(res.is_err(), "expected block");
+        assert!(res.unwrap_err().contains("blocked"));
+    }
+
+    #[tokio::test]
+    async fn pre_tool_hook_allows_on_zero_exit() {
+        let cfg = crate::palaces::kun_config::HookConfig {
+            event: "pre_tool_use".into(),
+            tool_pattern: Some("shell".into()),
+            command: "exit 0".into(),
+            block_on_exit: true,
+        };
+        let hooks = vec![CompiledHook::compile(&cfg).unwrap()];
+        let res = run_pre_tool_hooks(&hooks, "shell", &serde_json::json!({})).await;
+        assert!(res.is_ok(), "expected allow");
+    }
+
+    #[tokio::test]
+    async fn pre_tool_hook_skips_non_matching_tool() {
+        // Hook targets "git"; a "shell" call must not be blocked even if the
+        // command would exit non-zero.
+        let cfg = crate::palaces::kun_config::HookConfig {
+            event: "pre_tool_use".into(),
+            tool_pattern: Some("git".into()),
+            command: "exit 1".into(),
+            block_on_exit: true,
+        };
+        let hooks = vec![CompiledHook::compile(&cfg).unwrap()];
+        let res = run_pre_tool_hooks(&hooks, "shell", &serde_json::json!({})).await;
+        assert!(res.is_ok(), "non-matching tool must not be blocked");
+    }
+}

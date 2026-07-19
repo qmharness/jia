@@ -22,7 +22,7 @@ use crate::palaces::kun_config::default_workspace_dir;
 use crate::plates::di_earth::EarthPlate;
 use crate::plates::ren_human::HumanPlate;
 use crate::plates::shen_spirit::RuntimeEvent;
-use crate::stems::events::AgentEvent;
+use crate::stems::AgentEvent;
 use crate::types::{HistoryEntry, Message, Role};
 use crate::vijnana::manas::Manas;
 

@@ -8,7 +8,6 @@ use serde_json::Value;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::CeremoniesIntent;
 use crate::stems::action::ExecContext;
-use crate::stems::intent::{ExecAction, ReadAction};
 
 use super::connection::McpConnection;
 use super::protocol::McpToolDef;
@@ -54,13 +53,9 @@ impl BaseTool for McpTool {
 
     fn ceremony(&self) -> CeremoniesIntent {
         if self.read_only {
-            CeremoniesIntent::Wu(ReadAction {
-                target: format!("MCP:{}", self.def.name),
-            })
+            CeremoniesIntent::Wu
         } else {
-            CeremoniesIntent::Geng(ExecAction {
-                command: self.def.name.clone(),
-            })
+            CeremoniesIntent::Geng
         }
     }
 

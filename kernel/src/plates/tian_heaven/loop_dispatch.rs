@@ -13,8 +13,8 @@ use crate::plates::shen_spirit::{EventBus, RuntimeEvent};
 use crate::stems::Stem;
 use crate::stems::action::ExecContext;
 use crate::stems::action::ToolCall;
-use crate::stems::events::{AgentEvent, InteractionMode};
-use crate::stems::hooks::{CompiledHook, run_pre_tool_hooks};
+use crate::stems::{AgentEvent, InteractionMode};
+use crate::stems::{CompiledHook, run_pre_tool_hooks};
 use crate::telemetry::metrics::JIA_TOOL_DURATION_SECONDS;
 
 /// Dispatch a single tool call through GeJu evaluation, hook gates, and

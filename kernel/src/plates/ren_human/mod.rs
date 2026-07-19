@@ -58,16 +58,6 @@ impl Clone for HumanPlate {
 pub use crate::error::DispatchError;
 
 impl HumanPlate {
-    pub fn new(permissions: Arc<PermissionMatrix>) -> Self {
-        Self {
-            gates: [GateState::Open; 8],
-            closed_by_principle: AtomicU8::new(0),
-            permissions,
-            pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
-            confirmation_override: None,
-        }
-    }
-
     /// 以共享会话总线构造 — 确认表取自 bus,与人盘内聚(P2-1:
     /// pending_confirmations 已迁人盘 SessionBus)。
     pub fn with_state(permissions: Arc<PermissionMatrix>, session_bus: Arc<SessionBus>) -> Self {
@@ -213,7 +203,7 @@ impl HumanPlate {
         }
         // Check KaiMen for external communication tools
         if !self.gate_is_open(HumanGate::KaiMen)
-            && matches!(tool.ceremony(), crate::stems::CeremoniesIntent::Ren(_))
+            && matches!(tool.ceremony(), crate::stems::CeremoniesIntent::Ren)
         {
             tracing::warn!(
                 "HumanPlate: KaiMen closed, blocking communication tool {}",
@@ -448,7 +438,7 @@ impl HumanPlate {
 
 impl Default for HumanPlate {
     fn default() -> Self {
-        Self::new(Arc::new(PermissionMatrix::default()))
+        Self::with_state(Arc::new(PermissionMatrix::default()), Arc::new(SessionBus::new()))
     }
 }
 
@@ -493,9 +483,7 @@ mod tests {
             "echoes input".to_string()
         }
         fn ceremony(&self) -> crate::stems::CeremoniesIntent {
-            crate::stems::CeremoniesIntent::Wu(crate::stems::intent::ReadAction {
-                target: String::new(),
-            })
+            crate::stems::CeremoniesIntent::Wu
         }
         fn parameters_schema(&self) -> serde_json::Value {
             serde_json::json!({"type": "object", "properties": {}})
@@ -522,9 +510,7 @@ mod tests {
             "executes commands".to_string()
         }
         fn ceremony(&self) -> crate::stems::CeremoniesIntent {
-            crate::stems::CeremoniesIntent::Geng(crate::stems::intent::ExecAction {
-                command: String::new(),
-            })
+            crate::stems::CeremoniesIntent::Geng
         }
         fn parameters_schema(&self) -> serde_json::Value {
             serde_json::json!({"type": "object", "properties": {"cmd": {"type": "string"}}})

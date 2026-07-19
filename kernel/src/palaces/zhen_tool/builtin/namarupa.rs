@@ -11,7 +11,6 @@ use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::CeremoniesIntent;
 use crate::stems::Stem;
 use crate::stems::action::ExecContext;
-use crate::stems::intent::StoreAction;
 use crate::utils;
 use crate::vijnana::alaya::{Seed, SeedContent, SeedNature, SeedSource, SeedTier};
 
@@ -314,10 +313,7 @@ impl BaseTool for NamaRupaTool {
     }
 
     fn ceremony(&self) -> CeremoniesIntent {
-        CeremoniesIntent::Gui(StoreAction {
-            key: "namarupa".into(),
-            value: String::new(),
-        })
+        CeremoniesIntent::Gui
     }
 
     fn target_palace(&self, input: &Value) -> crate::palaces::Palace {

@@ -99,7 +99,6 @@ mod tests {
     use super::*;
     use crate::error::ToolError;
     use crate::stems::action::ExecContext;
-    use crate::stems::intent::ReadAction;
 
     struct DummyTool;
     #[async_trait::async_trait]
@@ -111,9 +110,7 @@ mod tests {
             "a dummy tool".to_string()
         }
         fn ceremony(&self) -> crate::stems::CeremoniesIntent {
-            crate::stems::CeremoniesIntent::Wu(ReadAction {
-                target: String::new(),
-            })
+            crate::stems::CeremoniesIntent::Wu
         }
         fn parameters_schema(&self) -> serde_json::Value {
             serde_json::json!({})
@@ -141,9 +138,7 @@ mod tests {
             "named".to_string()
         }
         fn ceremony(&self) -> crate::stems::CeremoniesIntent {
-            crate::stems::CeremoniesIntent::Wu(ReadAction {
-                target: String::new(),
-            })
+            crate::stems::CeremoniesIntent::Wu
         }
         fn parameters_schema(&self) -> serde_json::Value {
             serde_json::json!({})

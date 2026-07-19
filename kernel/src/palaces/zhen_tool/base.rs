@@ -31,9 +31,9 @@ pub trait BaseTool: Send + Sync {
     fn parameters_schema(&self) -> serde_json::Value;
 
     /// Whether this tool performs destructive (non-read-only) operations.
-    /// Default: true for all CeremoniesIntent categories except Wu (ReadAction).
+    /// Default: true for all CeremoniesIntent categories except Wu.
     fn is_destructive(&self) -> bool {
-        !matches!(self.ceremony(), crate::stems::CeremoniesIntent::Wu(_))
+        !matches!(self.ceremony(), crate::stems::CeremoniesIntent::Wu)
     }
 
     /// Whether this tool can execute concurrently with other tools.
@@ -57,12 +57,12 @@ pub trait BaseTool: Send + Sync {
         use crate::palaces::Palace;
         match self.ceremony() {
             // 阳遁三局: 戊→震3, 己→巽4, 庚→中5, 辛→乾6, 壬→兑7, 癸→艮8
-            crate::stems::CeremoniesIntent::Wu(_) => Palace::Zhen,
-            crate::stems::CeremoniesIntent::Ji(_) => Palace::Xun,
-            crate::stems::CeremoniesIntent::Geng(_) => Palace::Zhong,
-            crate::stems::CeremoniesIntent::Xin(_) => Palace::Qian,
-            crate::stems::CeremoniesIntent::Ren(_) => Palace::Dui,
-            crate::stems::CeremoniesIntent::Gui(_) => Palace::Gen,
+            crate::stems::CeremoniesIntent::Wu => Palace::Zhen,
+            crate::stems::CeremoniesIntent::Ji => Palace::Xun,
+            crate::stems::CeremoniesIntent::Geng => Palace::Zhong,
+            crate::stems::CeremoniesIntent::Xin => Palace::Qian,
+            crate::stems::CeremoniesIntent::Ren => Palace::Dui,
+            crate::stems::CeremoniesIntent::Gui => Palace::Gen,
         }
     }
 

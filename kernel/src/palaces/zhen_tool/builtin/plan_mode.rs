@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::action::ExecContext;
-use crate::stems::intent::{CeremoniesIntent, ReadAction};
+use crate::stems::intent::{CeremoniesIntent};
 
 /// P3 · Plan-mode control tools (谋划态).
 ///
@@ -37,9 +37,7 @@ impl BaseTool for EnterPlanModeTool {
     }
 
     fn ceremony(&self) -> CeremoniesIntent {
-        CeremoniesIntent::Wu(ReadAction {
-            target: String::new(),
-        })
+        CeremoniesIntent::Wu
     }
 
     fn is_concurrency_safe(&self) -> bool {
@@ -79,9 +77,7 @@ impl BaseTool for ExitPlanModeTool {
     }
 
     fn ceremony(&self) -> CeremoniesIntent {
-        CeremoniesIntent::Wu(ReadAction {
-            target: String::new(),
-        })
+        CeremoniesIntent::Wu
     }
 
     fn is_concurrency_safe(&self) -> bool {

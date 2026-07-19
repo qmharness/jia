@@ -9,7 +9,6 @@ use serde_json::Value;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::stems::action::ExecContext;
 use crate::stems::intent::CeremoniesIntent;
-use crate::stems::intent::CommunicateAction;
 
 use crate::palaces::zhen_tool::browser_cdp;
 
@@ -54,10 +53,7 @@ impl BaseTool for BrowserScrollTool {
     }
 
     fn ceremony(&self) -> CeremoniesIntent {
-        CeremoniesIntent::Ren(CommunicateAction {
-            endpoint: String::new(),
-            payload: String::new(),
-        })
+        CeremoniesIntent::Ren
     }
 
     fn is_concurrency_safe(&self) -> bool {
