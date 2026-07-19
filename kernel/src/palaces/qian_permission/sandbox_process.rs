@@ -180,21 +180,45 @@ fn apply_child_rlimits(mem_limit: u64, fsize_limit: u64, nproc_limit: u64) {
             rlim_cur: mem_limit,
             rlim_max: mem_limit,
         };
-        unsafe { ::libc::setrlimit(libc::RLIMIT_AS, &lim) };
+        let ret = unsafe { ::libc::setrlimit(libc::RLIMIT_AS, &lim) };
+        if ret != 0 {
+            tracing::warn!(
+                resource = "RLIMIT_AS",
+                limit = mem_limit,
+                error = %std::io::Error::last_os_error(),
+                "setrlimit failed; memory limit not enforced"
+            );
+        }
     }
     if fsize_limit > 0 {
         let lim = ::libc::rlimit {
             rlim_cur: fsize_limit,
             rlim_max: fsize_limit,
         };
-        unsafe { ::libc::setrlimit(libc::RLIMIT_FSIZE, &lim) };
+        let ret = unsafe { ::libc::setrlimit(libc::RLIMIT_FSIZE, &lim) };
+        if ret != 0 {
+            tracing::warn!(
+                resource = "RLIMIT_FSIZE",
+                limit = fsize_limit,
+                error = %std::io::Error::last_os_error(),
+                "setrlimit failed; file size limit not enforced"
+            );
+        }
     }
     if nproc_limit > 0 {
         let lim = ::libc::rlimit {
             rlim_cur: nproc_limit,
             rlim_max: nproc_limit,
         };
-        unsafe { ::libc::setrlimit(libc::RLIMIT_NPROC, &lim) };
+        let ret = unsafe { ::libc::setrlimit(libc::RLIMIT_NPROC, &lim) };
+        if ret != 0 {
+            tracing::warn!(
+                resource = "RLIMIT_NPROC",
+                limit = nproc_limit,
+                error = %std::io::Error::last_os_error(),
+                "setrlimit failed; process count limit not enforced"
+            );
+        }
     }
 }
 
@@ -207,23 +231,77 @@ fn apply_child_rlimits(mem_limit: u64, fsize_limit: u64, nproc_limit: u64) {
             rlim_cur: mem_limit,
             rlim_max: mem_limit,
         };
-        unsafe { ::libc::setrlimit(libc::RLIMIT_DATA, &lim) };
+        let ret = unsafe { ::libc::setrlimit(libc::RLIMIT_DATA, &lim) };
+        if ret != 0 {
+            tracing::warn!(
+                resource = "RLIMIT_DATA",
+                limit = mem_limit,
+                error = %std::io::Error::last_os_error(),
+                "setrlimit failed; memory limit not enforced"
+            );
+        }
     }
     if fsize_limit > 0 {
         let lim = ::libc::rlimit {
             rlim_cur: fsize_limit,
             rlim_max: fsize_limit,
         };
-        unsafe { ::libc::setrlimit(libc::RLIMIT_FSIZE, &lim) };
+        let ret = unsafe { ::libc::setrlimit(libc::RLIMIT_FSIZE, &lim) };
+        if ret != 0 {
+            tracing::warn!(
+                resource = "RLIMIT_FSIZE",
+                limit = fsize_limit,
+                error = %std::io::Error::last_os_error(),
+                "setrlimit failed; file size limit not enforced"
+            );
+        }
     }
     if nproc_limit > 0 {
         let lim = ::libc::rlimit {
             rlim_cur: nproc_limit,
             rlim_max: nproc_limit,
         };
-        unsafe { ::libc::setrlimit(libc::RLIMIT_NPROC, &lim) };
+        let ret = unsafe { ::libc::setrlimit(libc::RLIMIT_NPROC, &lim) };
+        if ret != 0 {
+            tracing::warn!(
+                resource = "RLIMIT_NPROC",
+                limit = nproc_limit,
+                error = %std::io::Error::last_os_error(),
+                "setrlimit failed; process count limit not enforced"
+            );
+        }
     }
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn apply_child_rlimits(_mem_limit: u64, _fsize_limit: u64, _nproc_limit: u64) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn execute_with_rlimits_succeeds() {
+        // Generous limits the child can actually honor — exercises the
+        // setrlimit return-value-checking path (no warn expected).
+        let sandbox = ProcessSandbox {
+            timeout: Duration::from_secs(10),
+            memory_limit_bytes: 1024 * 1024 * 1024,
+            file_size_limit_bytes: 100 * 1024 * 1024,
+            max_processes: 256,
+        };
+        let cwd = std::env::current_dir().unwrap();
+        let out = sandbox
+            .execute("echo rlimit-ok", &cwd, &HashMap::new())
+            .await
+            .unwrap();
+        assert_eq!(out.exit_code, 0);
+        assert!(out.stdout.contains("rlimit-ok"));
+    }
+
+    #[test]
+    fn zero_limits_are_noop() {
+        // 0 disables each limit — must not call setrlimit nor panic.
+        apply_child_rlimits(0, 0, 0);
+    }
+}

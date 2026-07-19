@@ -394,7 +394,8 @@ pub async fn run_start(
             if let Ok(existing) = std::fs::read_to_string(&pid_path)
                 && let Ok(pid) = existing.trim().parse::<u32>()
             {
-                // SAFETY: 0 return = process not alive, 1+ = alive
+                // kill(pid, 0) sends no signal — it only probes liveness:
+                // return 0 = process exists (alive), -1/ESRCH = no such process.
                 let alive = unsafe { libc::kill(pid as i32, 0) } == 0;
                 if !alive {
                     let _ = std::fs::remove_file(&pid_path);

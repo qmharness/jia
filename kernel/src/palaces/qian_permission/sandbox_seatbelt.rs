@@ -33,6 +33,21 @@ pub fn is_available() -> bool {
         .unwrap_or(false)
 }
 
+/// Escape a string for embedding inside a double-quoted Seatbelt (.sb)
+/// profile literal. Without this, a path containing `"` or `\` would break
+/// out of the string literal and corrupt (or inject into) the profile.
+fn escape_sb_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 fn build_profile(project_root: &PathBuf, allowed_paths: &[PathBuf]) -> String {
     let mut p = String::new();
     p.push_str("(version 1)\n");
@@ -48,7 +63,7 @@ fn build_profile(project_root: &PathBuf, allowed_paths: &[PathBuf]) -> String {
     for path in paths {
         p.push_str(&format!(
             "(allow file-write* (subpath \"{}\"))\n",
-            path.display()
+            escape_sb_string(&path.display().to_string())
         ));
     }
     p
@@ -160,4 +175,41 @@ fn run_seatbelt(
         stderr,
         exit_code,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn escape_sb_string_escapes_quotes_and_backslashes() {
+        assert_eq!(escape_sb_string("/plain/path"), "/plain/path");
+        assert_eq!(escape_sb_string("/a\"b"), "/a\\\"b");
+        assert_eq!(escape_sb_string("/a\\b"), "/a\\\\b");
+        assert_eq!(
+            escape_sb_string("/q\"\\\""),
+            "/q\\\"\\\\\\\""
+        );
+    }
+
+    #[test]
+    fn build_profile_escapes_embedded_paths() {
+        let root = PathBuf::from("/proj/with\"quote");
+        let allowed = vec![PathBuf::from("/extra/back\\slash")];
+        let profile = build_profile(&root, &allowed);
+        // The raw metacharacters must not appear unescaped inside literals
+        assert!(profile.contains("(subpath \"/proj/with\\\"quote\")"));
+        assert!(profile.contains("(subpath \"/extra/back\\\\slash\")"));
+        // Structural lines still present
+        assert!(profile.starts_with("(version 1)\n"));
+        assert!(profile.contains("(deny network*)\n"));
+        assert!(profile.contains("(deny file-write* (subpath \"/\"))\n"));
+    }
+
+    #[test]
+    fn build_profile_plain_paths_unchanged() {
+        let root = PathBuf::from("/proj/root");
+        let profile = build_profile(&root, &[]);
+        assert!(profile.contains("(allow file-write* (subpath \"/proj/root\"))\n"));
+    }
 }

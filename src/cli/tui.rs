@@ -14,6 +14,10 @@ pub async fn run_tui(config_path: Option<PathBuf>) {
         .and_then(|s| s.trim().parse::<u32>().ok())
         .map(|pid| {
             #[cfg(unix)]
+            // SAFETY: kill(pid, 0) sends no signal — it only probes whether
+            // `pid` exists and is signalable by this user. `pid` comes from
+            // the daemon PID file; a stale or recycled PID at worst yields a
+            // wrong liveness answer, never memory unsafety.
             unsafe {
                 libc::kill(pid as i32, 0) == 0
             }

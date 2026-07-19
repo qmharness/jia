@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -64,15 +65,18 @@ struct LandlockPathBeneathAttr {
 // SAFETY: Direct Linux Landlock syscalls. All pointer arguments reference
 // valid stack-allocated structs. The syscall numbers match the Linux kernel
 // ABI (landlock_create_ruleset = 444, landlock_add_rule = 445,
-// landlock_restrict_self = 446 on x86_64). Called only from within a child
-// process (between fork and exec) to sandbox command execution.
+// landlock_restrict_self = 446 on x86_64). Called either from within a child
+// process (between fork and exec) to sandbox command execution, or from a
+// short-lived probe thread in `is_available`.
 unsafe fn landlock_create_ruleset(attr: &LandlockRulesetAttr) -> libc::c_long {
-    libc::syscall(
-        SYS_LANDLOCK_CREATE_RULESET,
-        attr as *const LandlockRulesetAttr,
-        std::mem::size_of::<LandlockRulesetAttr>(),
-        0u32,
-    )
+    unsafe {
+        libc::syscall(
+            SYS_LANDLOCK_CREATE_RULESET,
+            attr as *const LandlockRulesetAttr,
+            std::mem::size_of::<LandlockRulesetAttr>(),
+            0u32,
+        )
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -84,20 +88,22 @@ unsafe fn landlock_add_rule(
     rule_type: u32,
     attr: &LandlockPathBeneathAttr,
 ) -> libc::c_long {
-    libc::syscall(
-        SYS_LANDLOCK_ADD_RULE,
-        ruleset_fd,
-        rule_type,
-        attr as *const LandlockPathBeneathAttr,
-        0u32,
-    )
+    unsafe {
+        libc::syscall(
+            SYS_LANDLOCK_ADD_RULE,
+            ruleset_fd,
+            rule_type,
+            attr as *const LandlockPathBeneathAttr,
+            0u32,
+        )
+    }
 }
 
 #[cfg(target_os = "linux")]
 // SAFETY: See landlock_create_ruleset. ruleset_fd must be a valid ruleset fd.
 // This syscall is irreversible — it permanently restricts the calling process.
 unsafe fn landlock_restrict_self(ruleset_fd: i32) -> libc::c_long {
-    libc::syscall(SYS_LANDLOCK_RESTRICT_SELF, ruleset_fd, 0u32)
+    unsafe { libc::syscall(SYS_LANDLOCK_RESTRICT_SELF, ruleset_fd, 0u32) }
 }
 
 // ── Public API ───────────────────────────────────────────────────
@@ -112,33 +118,61 @@ pub struct LandlockSandbox {
     pub timeout: Duration,
 }
 
-/// Probe whether Landlock is supported by the current kernel.
+/// Probe whether Landlock is usable by the current (unprivileged) process.
 ///
-/// Tries `landlock_create_ruleset` with an empty access mask. On
-/// kernels >= 5.13 this returns a valid fd. On older kernels it
-/// returns -ENOSYS.
+/// `landlock_restrict_self(2)` requires the calling thread to have
+/// `no_new_privs` set (or hold CAP_SYS_ADMIN), otherwise it fails with
+/// EPERM. Probing only `landlock_create_ruleset` is therefore not enough —
+/// it would report "available" on kernels >= 5.13 even when `restrict_self`
+/// would always fail, causing `auto_select` to pick a backend that breaks
+/// every command.
+///
+/// The probe runs in a short-lived dedicated thread: `no_new_privs` is a
+/// per-thread attribute, so setting it here does not affect the main
+/// process, and the probe ruleset (which is irreversible) dies with the
+/// thread.
 pub fn is_available() -> bool {
-    unsafe {
+    std::thread::spawn(|| unsafe {
+        if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
+            return false;
+        }
         let attr = LandlockRulesetAttr {
             handled_access_fs: 0,
         };
         let fd = landlock_create_ruleset(&attr);
-        if fd >= 0 {
-            libc::close(fd as i32);
-            true
-        } else {
-            false
+        if fd < 0 {
+            return false;
         }
-    }
+        // Actually restrict this probe thread with the empty ruleset —
+        // verifies the full create+restrict path an unprivileged child
+        // would take (returns EPERM without no_new_privs/CAP_SYS_ADMIN).
+        let ret = landlock_restrict_self(fd as i32);
+        libc::close(fd as i32);
+        ret == 0
+    })
+    .join()
+    .unwrap_or(false)
 }
 
 // ── Core Landlock logic ──────────────────────────────────────────
 
-unsafe fn apply_landlock(project_root: &Path, allowed_paths: &[PathBuf]) -> Result<(), String> {
+/// Build a fully-populated Landlock ruleset and return its fd.
+///
+/// Runs in the parent process *before* fork so that all heap allocation
+/// (path Vec, CString, format! error messages) and tracing happen outside
+/// the `pre_exec` closure — between fork and exec only async-signal-safe
+/// operations are allowed, and allocating there can deadlock the child of
+/// a multithreaded (tokio) process. The returned fd is inherited by the
+/// child, whose `pre_exec` closure only needs to `restrict_self` on it.
+///
+/// On error any partially-built ruleset fd is closed before returning.
+// SAFETY: all raw syscalls below operate on valid fds/structs as documented
+// on the individual wrappers; error paths close every fd they own.
+unsafe fn prepare_ruleset(project_root: &Path, allowed_paths: &[PathBuf]) -> Result<i32, String> {
     let attr = LandlockRulesetAttr {
         handled_access_fs: HANDLED_ACCESS_FS,
     };
-    let ruleset_fd = landlock_create_ruleset(&attr);
+    let ruleset_fd = unsafe { landlock_create_ruleset(&attr) };
 
     if ruleset_fd < 0 {
         let err = std::io::Error::last_os_error();
@@ -151,6 +185,7 @@ unsafe fn apply_landlock(project_root: &Path, allowed_paths: &[PathBuf]) -> Resu
         }
         return Err(format!("landlock_create_ruleset failed: {err}"));
     }
+    let ruleset_fd = ruleset_fd as i32;
 
     // Collect paths: project_root + all allowed_paths
     let mut paths: Vec<PathBuf> = vec![project_root.to_path_buf()];
@@ -166,7 +201,7 @@ unsafe fn apply_landlock(project_root: &Path, allowed_paths: &[PathBuf]) -> Resu
             Err(_) => continue,
         };
 
-        let dir_fd = libc::open(cstr.as_ptr(), O_PATH | libc::O_CLOEXEC);
+        let dir_fd = unsafe { libc::open(cstr.as_ptr(), O_PATH | libc::O_CLOEXEC) };
         if dir_fd < 0 {
             tracing::warn!(?path, "Landlock: cannot open path for ruleset");
             continue;
@@ -176,25 +211,17 @@ unsafe fn apply_landlock(project_root: &Path, allowed_paths: &[PathBuf]) -> Resu
             allowed_access: HANDLED_ACCESS_FS,
             parent_fd: dir_fd as i32,
         };
-        let ret = landlock_add_rule(ruleset_fd as i32, LANDLOCK_RULE_PATH_BENEATH, &path_attr);
-        libc::close(dir_fd);
+        let ret = unsafe { landlock_add_rule(ruleset_fd, LANDLOCK_RULE_PATH_BENEATH, &path_attr) };
+        unsafe { libc::close(dir_fd) };
 
         if ret < 0 {
             let err = std::io::Error::last_os_error();
+            unsafe { libc::close(ruleset_fd) };
             return Err(format!("landlock_add_rule for {path_str} failed: {err}"));
         }
     }
 
-    // Enforce the ruleset (irreversible for this process)
-    let ret = landlock_restrict_self(ruleset_fd as i32);
-    libc::close(ruleset_fd as i32);
-
-    if ret < 0 {
-        let err = std::io::Error::last_os_error();
-        return Err(format!("landlock_restrict_self failed: {err}"));
-    }
-
-    Ok(())
+    Ok(ruleset_fd)
 }
 
 // ── ExecutionSandbox impl ────────────────────────────────────────
@@ -208,11 +235,11 @@ impl ExecutionSandbox for LandlockSandbox {
     async fn execute(
         &self,
         cmd: &str,
-        cwd: &PathBuf,
+        cwd: &Path,
         env: &HashMap<String, String>,
     ) -> Result<SandboxOutput, String> {
         let cmd_owned = cmd.to_string();
-        let cwd_owned = cwd.clone();
+        let cwd_owned = cwd.to_path_buf();
         let env_owned = env.clone();
         let timeout = self.timeout;
         let project_root = self.project_root.clone();
@@ -253,20 +280,40 @@ fn run_landlock(
         cmd_builder.env(k, v);
     }
 
-    let proot = project_root.to_path_buf();
-    let apaths = allowed_paths.to_vec();
+    // Build the ruleset in the parent, before fork: all allocation and
+    // tracing happens here, so the pre_exec closure below performs only
+    // syscalls (async-signal-safe) and never touches the heap.
+    let ruleset_fd = unsafe { prepare_ruleset(project_root, allowed_paths)? };
 
+    // SAFETY: the pre_exec closure runs in the child between fork and exec,
+    // where only async-signal-safe operations are permitted. The closure
+    // performs no heap allocation — it only calls prctl, landlock syscalls
+    // and close on the inherited ruleset fd. `ruleset_fd` is a valid fd
+    // (created without CLOEXEC, so it survives until the child closes it).
     unsafe {
         cmd_builder.pre_exec(move || {
-            apply_landlock(&proot, &apaths)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            // landlock_restrict_self requires no_new_privs (or CAP_SYS_ADMIN),
+            // otherwise it fails with EPERM for unprivileged users. Must be
+            // set in this same thread, right before restrict.
+            if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
+                let err = std::io::Error::last_os_error();
+                libc::close(ruleset_fd);
+                return Err(err);
+            }
+            // Enforce the ruleset (irreversible for this process)
+            let ret = landlock_restrict_self(ruleset_fd);
+            libc::close(ruleset_fd);
+            if ret < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
             Ok(())
         });
     }
 
-    let child = cmd_builder
-        .spawn()
-        .map_err(|e| format!("Landlock spawn error: {e}"))?;
+    let spawn_result = cmd_builder.spawn();
+    // The child got its own copy of the fd across fork; drop the parent's.
+    unsafe { libc::close(ruleset_fd) };
+    let child = spawn_result.map_err(|e| format!("Landlock spawn error: {e}"))?;
     let pid = child.id();
 
     let done = Arc::new(AtomicBool::new(false));
@@ -309,4 +356,34 @@ fn run_landlock(
         stderr,
         exit_code,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_available_runs_and_is_consistent() {
+        // The probe must not panic, must not affect the calling thread
+        // (no_new_privs is set only inside the probe thread), and should
+        // give a stable answer across calls.
+        let first = is_available();
+        // Verify the probe did not set no_new_privs on THIS thread.
+        let nnp = unsafe { libc::prctl(libc::PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0) };
+        assert_eq!(nnp, 0, "probe leaked no_new_privs into caller thread");
+        assert_eq!(first, is_available());
+    }
+
+    #[test]
+    fn prepare_ruleset_matches_probe_availability() {
+        // If the probe says Landlock is usable, building a real ruleset in
+        // the parent must succeed; if the probe says no, building may fail
+        // but must return a clean Err (never panic, never leak a fd we then
+        // fail to close — verified indirectly by not crashing).
+        let result = unsafe { prepare_ruleset(Path::new("/tmp"), &[]) };
+        if is_available() {
+            let fd = result.expect("probe said available but prepare_ruleset failed");
+            unsafe { libc::close(fd) };
+        }
+    }
 }
