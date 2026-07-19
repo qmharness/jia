@@ -187,6 +187,12 @@ unsafe fn prepare_ruleset(project_root: &Path, allowed_paths: &[PathBuf]) -> Res
     }
     let ruleset_fd = ruleset_fd as i32;
 
+    // Prevent the fd leaking into unrelated concurrent spawns in this
+    // multithreaded process: it is only needed until the child restricts
+    // (pre-exec) and may vanish at exec. fork inheritance is unaffected by
+    // CLOEXEC, so the child still sees it in pre_exec.
+    unsafe { libc::fcntl(ruleset_fd, libc::F_SETFD, libc::FD_CLOEXEC) };
+
     // Collect paths: project_root + all allowed_paths
     let mut paths: Vec<PathBuf> = vec![project_root.to_path_buf()];
     paths.extend_from_slice(allowed_paths);
@@ -289,7 +295,8 @@ fn run_landlock(
     // where only async-signal-safe operations are permitted. The closure
     // performs no heap allocation — it only calls prctl, landlock syscalls
     // and close on the inherited ruleset fd. `ruleset_fd` is a valid fd
-    // (created without CLOEXEC, so it survives until the child closes it).
+    // inherited across fork (CLOEXEC only takes effect at exec, after the
+    // closure has already used and closed it).
     unsafe {
         cmd_builder.pre_exec(move || {
             // landlock_restrict_self requires no_new_privs (or CAP_SYS_ADMIN),
@@ -300,11 +307,17 @@ fn run_landlock(
                 libc::close(ruleset_fd);
                 return Err(err);
             }
-            // Enforce the ruleset (irreversible for this process)
+            // Enforce the ruleset (irreversible for this process). Capture
+            // errno before close(2) — an interrupted close could clobber it.
             let ret = landlock_restrict_self(ruleset_fd);
+            let err = if ret < 0 {
+                Some(std::io::Error::last_os_error())
+            } else {
+                None
+            };
             libc::close(ruleset_fd);
-            if ret < 0 {
-                return Err(std::io::Error::last_os_error());
+            if let Some(err) = err {
+                return Err(err);
             }
             Ok(())
         });
@@ -383,6 +396,9 @@ mod tests {
         let result = unsafe { prepare_ruleset(Path::new("/tmp"), &[]) };
         if is_available() {
             let fd = result.expect("probe said available but prepare_ruleset failed");
+            unsafe { libc::close(fd) };
+        } else if let Ok(fd) = result {
+            // Probe/build divergence: don't leak the fd we accidentally got.
             unsafe { libc::close(fd) };
         }
     }

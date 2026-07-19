@@ -91,6 +91,17 @@ impl SandboxBackend {
                 return Self::Seatbelt;
             }
         }
+        // Explicitly warn when we land on the weakest backend: it has no
+        // filesystem isolation (rlimits only), and a silent downgrade from a
+        // preferred/probed backend could mask a deployment's security posture.
+        if pref != Self::Process {
+            tracing::warn!(
+                preferred = ?pref,
+                "sandbox: preferred backend unavailable, falling back to Process (rlimits only, no filesystem isolation)"
+            );
+        } else {
+            tracing::info!("sandbox: using Process backend (rlimits only)");
+        }
         Self::Process
     }
 }
