@@ -1,6 +1,9 @@
-//! P4 user-configurable hooks compiled at startup with pre-compiled regex.
-
-// ── dispatch_one_tool ─────────────────────────────────────────
+//! hooks — P4 用户可配置门规钩子 (P2-2 自天盘 loop_hooks 下沉)
+//!
+//! 哲学依据:CompiledHook 的编译产物由地盘装配期持有
+//! (EarthPlate.user_hooks,一局不变),消费在天盘 dispatch —— 跨盘
+//! 共享的编译期语义,归天干层。运行函数 run_pre_tool_hooks 是纯
+//! 子进程执行(无盘依赖),随类型一并居此。
 
 /// P4 · a user-configurable hook compiled at startup (regex pre-compiled).
 #[derive(Debug, Clone)]
@@ -42,7 +45,7 @@ impl CompiledHook {
         })
     }
 
-    pub(super) fn matches_tool(&self, tool_name: &str) -> bool {
+    pub(crate) fn matches_tool(&self, tool_name: &str) -> bool {
         match &self.tool_pattern {
             Some(p) => p.is_match(tool_name),
             None => true,

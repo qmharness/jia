@@ -23,7 +23,7 @@ use kernel::plates::di_earth::EarthPlate;
 use kernel::plates::ren_human::HumanPlate;
 use kernel::plates::shen_spirit::{completion_check::CompletionChecklist, EventBus, SpiritPlate};
 use kernel::plates::tian_heaven::Agent;
-use kernel::plates::tian_heaven::r#loop::AgentEvent;
+use kernel::stems::AgentEvent;
 use kernel::types::{Message, Role};
 use kernel::vijnana::alaya::SeedStore;
 use tokio_stream::StreamExt;

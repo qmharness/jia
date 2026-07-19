@@ -13,9 +13,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::plates::ren_human::HumanPlate;
 use crate::plates::tian_heaven::Agent;
-use crate::plates::tian_heaven::r#loop::AgentEvent;
 use crate::provider;
 use crate::provider::LlmProvider;
+use crate::stems::AgentEvent;
 use crate::telemetry::metrics::{JIA_REQUEST_DURATION_SECONDS, JIA_REQUESTS_TOTAL};
 use crate::types::{AgentRequest, ChatRequest, HistoryEntry, Message, Role, StreamEvent};
 use crate::vijnana::manas::Manas;

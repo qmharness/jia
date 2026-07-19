@@ -73,7 +73,7 @@ pub trait BaseTool: Send + Sync {
     async fn execute_with_tx(
         &self,
         input: serde_json::Value,
-        _tx: &tokio::sync::mpsc::UnboundedSender<crate::plates::tian_heaven::r#loop::AgentEvent>,
+        _tx: &tokio::sync::mpsc::UnboundedSender<crate::stems::AgentEvent>,
         ctx: &ExecContext,
     ) -> Result<String, ToolError> {
         self.execute(input, ctx).await

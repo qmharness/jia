@@ -4,11 +4,11 @@
 //! 会话锁、子代理会话,皆是"人与机之间进行中的交互状态",当归人盘
 //! 而非地盘(地盘 = 一局不变的静态基础设施)。用户已裁决(P2-1)。
 //!
-//! 方向守护(过渡态,如实记录):本模块引用 tian_heaven::InteractionMode
-//! 与 zhen_tool::delegate::SubagentSession —— ren→tian / ren→zhen 方向
-//! 在 mod.rs 有先例(AgentEvent / BaseTool),属既有边。另:ask_user.rs
-//! 对本模块 PendingQuestion 的引用是**第一条** zhen→ren 边(此前该方向
-//! 仅有注释文字)。以上过渡态均由 P2-2 方向治理统一复盘。
+//! 方向守护(P2-2 复盘后,如实记录):InteractionMode 已随 P2-2 下沉
+//! 天干层(stems),ren→tian 边消解。残余过渡态:zhen_tool::delegate
+//! ::SubagentSession(ren→zhen)经 P2-1 复核裁为可接受过渡,不动;
+//! ask_user.rs 对本模块 PendingQuestion 的引用为 zhen→ren 边(人盘 =
+//! 人机交互边界,工具向边界取待答状态,语义自洽),保留观察。
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -16,7 +16,7 @@ use std::sync::Mutex;
 
 use super::PendingConfirmation;
 use crate::palaces::zhen_tool::builtin::delegate::SubagentSession;
-use crate::plates::tian_heaven::InteractionMode;
+use crate::stems::InteractionMode;
 
 /// A pending question awaiting user answer.
 ///

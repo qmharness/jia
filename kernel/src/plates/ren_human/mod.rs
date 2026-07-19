@@ -9,7 +9,7 @@ use crate::geju::{ApprovalGate, ExecutionMode, GeJuResult};
 use crate::palaces::qian_permission::PermissionMatrix;
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::plates::shen_spirit::{EventBus, RuntimeEvent};
-use crate::plates::tian_heaven::r#loop::AgentEvent;
+use crate::stems::AgentEvent;
 use crate::stems::action::ExecContext;
 use crate::stems::action::ToolResult;
 

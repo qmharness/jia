@@ -12,6 +12,10 @@ use crate::plates::shen_spirit::hook::{HookEvent, HookRegistry, SpiritType, fire
 use crate::plates::shen_spirit::{EventBus, RuntimeEvent};
 use crate::stems::Stem;
 use crate::stems::action::ExecContext;
+use crate::stems::events::{AgentEvent, InteractionMode};
+#[cfg(test)]
+use crate::stems::hooks::{CompiledHook, UserHookEvent, run_pre_tool_hooks};
+use crate::stems::tool_parse::parse_tool_calls;
 use crate::telemetry::metrics::{JIA_LLM_DURATION_SECONDS, JIA_TOKENS_COMPACTED_TOTAL};
 use crate::types::{HistoryEntry, Message, Role, to_llm_messages};
 use crate::vijnana::alaya::SeedStore;
@@ -21,9 +25,6 @@ use crate::vijnana::vasana::signal::SignalDetector;
 // ── Re-exports from split submodules ────────────────────────────
 
 pub use super::loop_dispatch::dispatch_one_tool;
-pub use super::loop_events::AgentEvent;
-pub use super::loop_hooks::{CompiledHook, UserHookEvent, run_pre_tool_hooks};
-pub use super::loop_parse::parse_tool_calls;
 
 // ── RunContext ──────────────────────────────────────────────────
 
@@ -728,7 +729,7 @@ impl super::Agent {
             for tc in &tool_calls {
                 match tc.name.as_str() {
                     "enter_plan_mode" => {
-                        self.interaction_mode = super::InteractionMode::Planning;
+                        self.interaction_mode = InteractionMode::Planning;
                         ctx.human_plate.sync_jingjue_with_mode(true); // Planning → suppress alerts
                         tracing::info!(session = %self.id, "entered planning mode");
                         let _ = ctx
@@ -736,7 +737,7 @@ impl super::Agent {
                             .send(AgentEvent::InteractionModeChanged { planning: true });
                     }
                     "exit_plan_mode" => {
-                        self.interaction_mode = super::InteractionMode::Normal;
+                        self.interaction_mode = InteractionMode::Normal;
                         ctx.human_plate.sync_jingjue_with_mode(false); // Normal → resume alerts
                         tracing::info!(session = %self.id, "exited planning mode");
                         let _ = ctx

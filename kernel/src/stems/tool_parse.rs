@@ -1,4 +1,7 @@
-//! Extract <tool_call> blocks from LLM responses.
+//! Extract <tool_call> blocks from LLM responses. (P2-2 自天盘 loop_parse 下沉)
+//!
+//! 纯函数,无盘依赖(仅产出 stems::action::ToolCall)——它是 LLM 响应
+//! 文本的共享解析语义:天盘 loop 与震宫 delegate 子代理皆用,归天干层。
 //!
 //! Supported formats (DeepSeek, Anthropic, and OpenAI-compatible models vary):
 //!
@@ -237,7 +240,6 @@ fn find_tag_prefix(text: &str, tag_name: &str, _exclude: &str) -> Option<usize> 
 fn find_tag_body<'a>(text: &'a str, tag_name: &str) -> (&'a str, &'a str) {
     let open = format!("<{tag_name}");
     let close = format!("</{tag_name}>");
-
     let mut depth = 1u32;
     let mut search_pos = 0usize;
 

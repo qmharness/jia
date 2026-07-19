@@ -2,7 +2,7 @@ use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use jia::palaces::Palace;
 use jia::palaces::gen_store::Store;
 use jia::palaces::xun_context::ContextWindow;
-use jia::plates::tian_heaven::r#loop::parse_tool_calls;
+use jia::stems::parse_tool_calls;
 use jia::stems::Stem;
 use jia::types::{HistoryEntry, Message, Role, to_llm_messages};
 use jia::vijnana::alaya::{Seed, SeedContent, SeedNature, SeedSource, SeedStore, SeedTier};

@@ -3,8 +3,6 @@ use std::sync::Arc;
 
 use std::time::SystemTime;
 
-use crate::plates::di_earth::EarthPlate;
-
 use super::cron::CronStore;
 
 /// Get current local time components: (minute, hour, day, month, weekday)
@@ -103,10 +101,14 @@ fn field_matches(field: &str, current: u32) -> bool {
 }
 
 /// Spawn a background task that checks cron jobs every 30 seconds
-/// and spawns background agent tasks for matching jobs.
+/// and fires the injected `spawn` callback for matching jobs.
+///
+/// P2-2 · C13 解:会话编排(构造 Agent/RunContext)已上天盘
+/// (tian_heaven::spawn);此 runner 只负责调度,经闭包回调触发,
+/// 不再持有 EarthPlate(震宫 → 地盘方向违规消除)。
 pub fn spawn_cron_runner(
     store: Arc<CronStore>,
-    earth: Arc<EarthPlate>,
+    spawn: Arc<dyn Fn(String, String) + Send + Sync>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
@@ -174,7 +176,7 @@ pub fn spawn_cron_runner(
                     schedule = %job.schedule,
                     "Cron job fired"
                 );
-                earth.spawn_cron_agent(job.name.clone(), job.prompt.clone());
+                spawn(job.name.clone(), job.prompt.clone());
 
                 // One-shot jobs auto-disable after firing.
                 if is_once {

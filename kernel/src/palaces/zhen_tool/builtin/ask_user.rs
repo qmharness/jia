@@ -11,7 +11,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::plates::ren_human::PendingQuestion;
-use crate::plates::tian_heaven::r#loop::AgentEvent;
+use crate::stems::AgentEvent;
 use crate::stems::CeremoniesIntent;
 use crate::stems::action::ExecContext;
 use crate::stems::intent::CommunicateAction;

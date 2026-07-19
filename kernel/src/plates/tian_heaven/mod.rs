@@ -3,11 +3,9 @@
 use std::sync::Arc;
 pub mod certainty;
 pub mod r#loop;
+pub mod spawn;
 
 mod loop_dispatch;
-mod loop_events;
-mod loop_hooks;
-mod loop_parse;
 mod loop_post;
 mod loop_prompt;
 
@@ -16,6 +14,7 @@ use crate::palaces::xun_context::{ContextWindow, ToolOutputBudget};
 use crate::principles::SystemPrinciple;
 use crate::stems::Stem;
 use crate::stems::action::ExecContext;
+use crate::stems::events::InteractionMode;
 use crate::types::HistoryEntry;
 use crate::vijnana::alaya::SeedStore;
 use crate::vijnana::manas::Manas;
@@ -91,21 +90,6 @@ pub struct Agent {
     /// Seed co-activation matrix — tracks which seeds are retrieved together.
     /// Per-project sparse matrix with exponential decay.
     pub coactivation: crate::vijnana::vasana::coactivation::SeedCoActivationMatrix,
-}
-
-/// P3 · Interaction mode — 谋划态 (planning) vs Normal.
-///
-/// Distinct from `AgentPhase` (九星, loop execution phase): this is a
-/// user-facing interaction state. `Planning` forces read-only operation —
-/// destructive tools are rejected by a loop-level short-circuit before GeJu
-/// evaluation, so GeJu stays a pure 干叠加 evaluator (A2). User-triggered
-/// primarily (slash/TUI); the model may also call enter/exit_plan_mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum InteractionMode {
-    #[default]
-    Normal,
-    /// 谋划态 — read-only research/planning. Destructive tools blocked.
-    Planning,
 }
 
 impl Agent {

@@ -13,10 +13,9 @@ use crate::plates::shen_spirit::{EventBus, RuntimeEvent};
 use crate::stems::Stem;
 use crate::stems::action::ExecContext;
 use crate::stems::action::ToolCall;
+use crate::stems::events::{AgentEvent, InteractionMode};
+use crate::stems::hooks::{CompiledHook, run_pre_tool_hooks};
 use crate::telemetry::metrics::JIA_TOOL_DURATION_SECONDS;
-
-use super::loop_events::AgentEvent;
-use super::loop_hooks::{CompiledHook, run_pre_tool_hooks};
 
 /// Dispatch a single tool call through GeJu evaluation, hook gates, and
 /// HumanPlate execution. Returns the tool output/error, GeJu metadata,
@@ -34,7 +33,7 @@ pub async fn dispatch_one_tool(
     output_budget: &ToolOutputBudget,
     tool_failure_count: &mut std::collections::HashMap<String, u32>,
     max_consecutive_failures: u32,
-    interaction_mode: super::InteractionMode,
+    interaction_mode: InteractionMode,
     user_hooks: &[CompiledHook],
     exec_ctx: &ExecContext,
     principles: &[crate::principles::SystemPrinciple],
@@ -109,7 +108,7 @@ pub async fn dispatch_one_tool(
     // GeJu.evaluate so GeJu remains a pure 干叠加 evaluator (A2) — the planning
     // gate is a 人盘 concern, not a 格局 concern. enter/exit_plan_mode are
     // is_destructive()=false so they pass (D1: no self-deadlock).
-    if interaction_mode == super::InteractionMode::Planning && tool.is_destructive() {
+    if interaction_mode == InteractionMode::Planning && tool.is_destructive() {
         let err = format!(
             "【谋划态】当前为只读计划模式，变更类工具 '{}' 被拒。完成方案后用 exit_plan_mode 退出谋划态再执行。",
             tc.name

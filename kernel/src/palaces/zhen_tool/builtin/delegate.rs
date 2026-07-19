@@ -11,9 +11,9 @@ use crate::palaces::zhen_tool::base::BaseTool;
 
 use crate::palaces::zhen_tool::registry::ToolRegistry;
 use crate::palaces::zhong_core::JiaCore;
-use crate::plates::tian_heaven::r#loop::parse_tool_calls;
 use crate::stems::action::ExecContext;
 use crate::stems::intent::{CeremoniesIntent, ReadAction};
+use crate::stems::parse_tool_calls;
 use crate::types::{Message, Role};
 
 pub struct DelegateTool {
