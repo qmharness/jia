@@ -55,7 +55,10 @@ impl BaiHuHook {
     }
 
     fn compute_severity(&self) -> f32 {
-        let failures = self.failure_history.lock().unwrap();
+        let failures = self
+            .failure_history
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let failure_rate = if failures.len() >= self.config.consecutive_failure_window {
             let recent: Vec<_> = failures
                 .iter()
@@ -67,10 +70,13 @@ impl BaiHuHook {
             0.0
         };
 
-        let calls = self.call_history.lock().unwrap();
+        let calls = self.call_history.lock().unwrap_or_else(|e| e.into_inner());
         let loop_detected = calls.len() >= self.config.retrieval_loop_repeat as f32 as usize;
 
-        let certainty = self.certainty_history.lock().unwrap();
+        let certainty = self
+            .certainty_history
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let crash = if certainty.len() >= 2 {
             let last = certainty.back().copied().unwrap_or(0.0);
             let prev = certainty.iter().rev().nth(1).copied().unwrap_or(0.0);
@@ -109,7 +115,10 @@ impl Hook for BaiHuHook {
                 error,
                 duration_ms: _,
             } => {
-                let mut h = self.failure_history.lock().unwrap();
+                let mut h = self
+                    .failure_history
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
                 h.push_back(error.is_none());
                 if h.len() > 20 {
                     h.pop_front();
@@ -120,7 +129,7 @@ impl Hook for BaiHuHook {
                     "{}|{}",
                     tool_name, input
                 ));
-                let mut h = self.call_history.lock().unwrap();
+                let mut h = self.call_history.lock().unwrap_or_else(|e| e.into_inner());
                 h.push_back((tool_name, hash));
                 if h.len() > 20 {
                     h.pop_front();
@@ -128,7 +137,10 @@ impl Hook for BaiHuHook {
             }
             HookEvent::LlmResponse { certainty, .. } => {
                 if let Some(c) = certainty {
-                    let mut h = self.certainty_history.lock().unwrap();
+                    let mut h = self
+                        .certainty_history
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
                     h.push_back(c);
                     if h.len() > self.config.consecutive_failure_window {
                         h.pop_front();

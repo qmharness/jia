@@ -210,7 +210,11 @@ pub async fn handle_agent(
             tokio::spawn(async move {
                 // —— session_lock + cancel-aware wait ——
                 let session_lock = {
-                    let mut map = earth_for_spawn.session_bus.session_locks.lock().unwrap();
+                    let mut map = earth_for_spawn
+                        .session_bus
+                        .session_locks
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
                     map.retain(|_, v| Arc::strong_count(v) > 1);
                     map.entry(sid.clone())
                         .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))

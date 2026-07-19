@@ -58,7 +58,7 @@ impl Hook for JiuTianHook {
                 turn,
                 ..
             } => {
-                let traj = self.trajectory.lock().unwrap();
+                let traj = self.trajectory.lock().unwrap_or_else(|e| e.into_inner());
                 if traj.len() >= 5 {
                     let summary = traj
                         .iter()

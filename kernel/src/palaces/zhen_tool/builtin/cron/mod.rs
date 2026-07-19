@@ -122,7 +122,7 @@ impl CronFileStore {
     /// and populate the initial mtime cache.
     fn load_all_sync(&self) -> std::io::Result<Vec<CronJob>> {
         let mut jobs = Vec::new();
-        let mut mtimes = self.mtimes.lock().unwrap();
+        let mut mtimes = self.mtimes.lock().unwrap_or_else(|e| e.into_inner());
 
         let entries = match std::fs::read_dir(&self.dir) {
             Ok(e) => e,
@@ -198,7 +198,7 @@ impl CronFileStore {
             .map_err(|e| format!("duration cron job '{}': {e}", job.name))?;
         self.mtimes
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .insert(job.name.clone(), dur.as_secs());
         Ok(())
     }
@@ -207,7 +207,10 @@ impl CronFileStore {
     fn remove_file(&self, name: &str) {
         let path = self.dir.join(format!("{name}.json"));
         let _ = std::fs::remove_file(&path);
-        self.mtimes.lock().unwrap().remove(name);
+        self.mtimes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(name);
     }
 
     /// Scan the directory for changes since last scan.
@@ -239,7 +242,7 @@ impl CronFileStore {
         }
 
         // Detect added/modified
-        let mtimes = self.mtimes.lock().unwrap();
+        let mtimes = self.mtimes.lock().unwrap_or_else(|e| e.into_inner());
         for (name, mtime) in &current_files {
             match mtimes.get(name) {
                 None => {
@@ -276,7 +279,7 @@ impl CronFileStore {
         drop(mtimes);
 
         // Update mtime cache
-        let mut mtimes = self.mtimes.lock().unwrap();
+        let mut mtimes = self.mtimes.lock().unwrap_or_else(|e| e.into_inner());
         // Remove deleted
         for name in &removed_names {
             mtimes.remove(name);
@@ -395,10 +398,8 @@ impl CronStore {
         })
     }
 
-    fn lock_jobs(&self) -> Result<std::sync::MutexGuard<'_, Vec<CronJob>>, String> {
-        self.jobs
-            .lock()
-            .map_err(|e| format!("Cron store poisoned: {e}"))
+    fn lock_jobs(&self) -> std::sync::MutexGuard<'_, Vec<CronJob>> {
+        self.jobs.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     pub fn add(
@@ -416,7 +417,7 @@ impl CronStore {
         }
         let job_file;
         {
-            let mut guard = self.lock_jobs()?;
+            let mut guard = self.lock_jobs();
             if guard.len() >= MAX_JOBS {
                 return Err(format!("Max {MAX_JOBS} cron jobs reached"));
             }
@@ -441,13 +442,13 @@ impl CronStore {
     }
 
     pub fn list(&self) -> Result<Vec<CronJob>, String> {
-        let guard = self.lock_jobs()?;
+        let guard = self.lock_jobs();
         Ok(guard.clone())
     }
 
     pub fn remove(&self, name: &str) -> Result<(), String> {
         {
-            let mut guard = self.lock_jobs()?;
+            let mut guard = self.lock_jobs();
             let len_before = guard.len();
             guard.retain(|j| j.name != name);
             if guard.len() >= len_before {
@@ -467,7 +468,7 @@ impl CronStore {
     ) -> Result<(), String> {
         let job_file;
         {
-            let mut guard = self.lock_jobs()?;
+            let mut guard = self.lock_jobs();
             let job = guard
                 .iter_mut()
                 .find(|j| j.name == name)
@@ -493,7 +494,7 @@ impl CronStore {
     pub fn set_enabled(&self, name: &str, enabled: bool) -> Result<(), String> {
         let job_file;
         {
-            let mut guard = self.lock_jobs()?;
+            let mut guard = self.lock_jobs();
             let job = guard
                 .iter_mut()
                 .find(|j| j.name == name)
@@ -510,7 +511,7 @@ impl CronStore {
     pub fn record_fired(&self, name: &str) {
         let job_file;
         {
-            let mut guard = self.lock_jobs().unwrap();
+            let mut guard = self.lock_jobs();
             if let Some(job) = guard.iter_mut().find(|j| j.name == name) {
                 job.last_fired_at = Some(crate::utils::unix_now() as u64);
                 job_file = Some(job.to_file());
@@ -526,9 +527,8 @@ impl CronStore {
     }
 
     pub fn set_last_response(&self, name: &str, response: String) {
-        if let Ok(mut guard) = self.lock_jobs()
-            && let Some(job) = guard.iter_mut().find(|j| j.name == name)
-        {
+        let mut guard = self.lock_jobs();
+        if let Some(job) = guard.iter_mut().find(|j| j.name == name) {
             job.last_response = Some(response);
         }
     }
@@ -536,7 +536,7 @@ impl CronStore {
     /// Upsert a job from hot-reload. If the job already exists in memory,
     /// replace its config fields but preserve runtime fields.
     pub fn upsert(&self, job: CronJob) {
-        let mut guard = self.lock_jobs().unwrap();
+        let mut guard = self.lock_jobs();
         if let Some(existing) = guard.iter_mut().find(|j| j.name == job.name) {
             existing.schedule = job.schedule;
             existing.prompt = job.prompt;
@@ -550,13 +550,13 @@ impl CronStore {
 
     /// Remove jobs by name (for hot-reload deletions).
     pub fn remove_by_names(&self, names: &[String]) {
-        let mut guard = self.lock_jobs().unwrap();
+        let mut guard = self.lock_jobs();
         guard.retain(|j| !names.contains(&j.name));
     }
 
     /// Return a snapshot of all enabled jobs.
     pub fn enabled_jobs(&self) -> Vec<CronJob> {
-        let guard = self.lock_jobs().unwrap();
+        let guard = self.lock_jobs();
         guard.iter().filter(|j| j.enabled).cloned().collect()
     }
 }

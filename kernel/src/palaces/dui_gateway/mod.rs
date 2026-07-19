@@ -69,13 +69,13 @@ impl SessionTokens {
                 .unwrap_or_default()
                 .as_secs() as i64,
         };
-        let mut tokens = self.tokens.lock().expect("SessionTokens lock poisoned");
+        let mut tokens = self.tokens.lock().unwrap_or_else(|e| e.into_inner());
         tokens.insert(session_id, (token, info));
         JIA_ACTIVE_SESSIONS.set(tokens.len() as f64);
     }
 
     fn cancel(&self, session_id: &str) {
-        let mut tokens = self.tokens.lock().expect("SessionTokens lock poisoned");
+        let mut tokens = self.tokens.lock().unwrap_or_else(|e| e.into_inner());
         if let Some((token, _)) = tokens.remove(session_id) {
             token.cancel();
         }
@@ -83,22 +83,19 @@ impl SessionTokens {
     }
 
     fn remove(&self, session_id: &str) {
-        let mut tokens = self.tokens.lock().expect("SessionTokens lock poisoned");
+        let mut tokens = self.tokens.lock().unwrap_or_else(|e| e.into_inner());
         tokens.remove(session_id);
         JIA_ACTIVE_SESSIONS.set(tokens.len() as f64);
     }
 
     pub fn active_count(&self) -> usize {
-        self.tokens
-            .lock()
-            .expect("SessionTokens lock poisoned")
-            .len()
+        self.tokens.lock().unwrap_or_else(|e| e.into_inner()).len()
     }
 
     pub fn list_active(&self) -> Vec<SessionInfo> {
         self.tokens
             .lock()
-            .expect("SessionTokens lock poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .values()
             .map(|(_, info)| info.clone())
             .collect()

@@ -43,7 +43,7 @@ impl CompletionChecklist {
 
     /// 从 ToolPostExecute 事件解析结构化信号。
     pub fn ingest(&self, tool_name: &str, output: &str, error: &Option<String>) {
-        let mut v = self.vector.lock().unwrap();
+        let mut v = self.vector.lock().unwrap_or_else(|e| e.into_inner());
 
         // Parse sandbox exit code from output string: "[exit code: N]"
         if let Some(code) = parse_exit_code(output) {
@@ -67,7 +67,7 @@ impl CompletionChecklist {
 
     /// ConfidentStop 时评估完成度。
     pub fn assess(&self) -> CompletionAssessment {
-        let v = self.vector.lock().unwrap();
+        let v = self.vector.lock().unwrap_or_else(|e| e.into_inner());
         let mut missing = Vec::new();
 
         // Check all exit codes
@@ -98,7 +98,7 @@ impl CompletionChecklist {
 
     /// Reset the accumulated vector for a new task.
     pub fn reset(&self) {
-        *self.vector.lock().unwrap() = CompletionVector::default();
+        *self.vector.lock().unwrap_or_else(|e| e.into_inner()) = CompletionVector::default();
     }
 }
 

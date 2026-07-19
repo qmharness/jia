@@ -52,8 +52,8 @@ impl ProviderRouter {
     /// Record a failure and try to switch to the next healthy provider.
     /// Returns true if a new provider was selected, false if all are exhausted.
     pub(crate) fn try_failover(&self) -> bool {
-        let mut breakers = self.breakers.lock().unwrap();
-        let mut active = self.active.lock().unwrap();
+        let mut breakers = self.breakers.lock().unwrap_or_else(|e| e.into_inner());
+        let mut active = self.active.lock().unwrap_or_else(|e| e.into_inner());
         let now = std::time::Instant::now();
 
         // Mark current provider as failed
@@ -81,7 +81,7 @@ impl LlmProvider for ProviderRouter {
         tools: Option<&[ToolSchema]>,
         cancel_token: Option<CancellationToken>,
     ) -> Pin<Box<dyn Stream<Item = Result<StreamChunk, ProviderError>> + Send>> {
-        let active = *self.active.lock().unwrap();
+        let active = *self.active.lock().unwrap_or_else(|e| e.into_inner());
         self.providers[active]
             .1
             .infer_stream(messages, tools, cancel_token)
@@ -94,14 +94,14 @@ impl LlmProvider for ProviderRouter {
         tools: Option<&[ToolSchema]>,
         cancel_token: Option<CancellationToken>,
     ) -> Pin<Box<dyn Stream<Item = Result<StreamChunk, ProviderError>> + Send>> {
-        let active = *self.active.lock().unwrap();
+        let active = *self.active.lock().unwrap_or_else(|e| e.into_inner());
         self.providers[active]
             .1
             .infer_stream_with_system(messages, system, tools, cancel_token)
     }
 
     fn supports_caching(&self) -> bool {
-        let active = *self.active.lock().unwrap();
+        let active = *self.active.lock().unwrap_or_else(|e| e.into_inner());
         self.providers[active].1.supports_caching()
     }
 
