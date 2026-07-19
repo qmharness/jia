@@ -150,6 +150,10 @@ pub async fn run_app(
                     app.connection = None;
                     app.status = StatusIcon::Disconnected;
                     app.reconnect_attempts = 0;
+                    // P1-4/H3: 断连时复位发送门控——工作中断连会让
+                    // sending_allowed 永久卡 false(Done/Error 永远不到达),
+                    // Enter 被静默吞掉。复位后用户可输入,发送时走断连提示。
+                    app.sending_allowed = true;
                     next_reconnect = Some(
                         tokio::time::Instant::now() + std::time::Duration::from_millis(500),
                     );
@@ -185,6 +189,9 @@ pub async fn run_app(
                     app.reconnect_attempts = 0;
                     next_reconnect = None;
                     app.status = StatusIcon::Done;
+                    // P1-4/H3: 重连后确保发送门控打开(断连前的 Working 状态
+                    // 可能已把它卡在 false)。
+                    app.sending_allowed = true;
                     app.lines.push(ChatLine {
                         text: "✓ Reconnected".to_string(),
                         style: Style::default().fg(Color::Green),

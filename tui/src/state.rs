@@ -212,11 +212,11 @@ impl App {
                             },
                             style: Style::default().fg(Color::Cyan),
                         });
-                    } else {
-                        self.send_agent_message(&text);
+                    } else if self.send_agent_message(&text) {
                         self.composer.add_to_history(&text);
                         self.composer.clear();
                     }
+                    // 未发送(断连):保留 composer 文本,notice 已在 send_agent_message 内显示
                 }
                 // Agent working — Enter is silently ignored
             }
@@ -693,8 +693,16 @@ impl App {
 
     // ── Send Helpers ───────────────────────────────────
 
-    fn send_agent_message(&mut self, text: &str) {
-        let Some(conn) = &self.connection else { return };
+    /// 返回是否真正发出。断连时显示可见提示并保留 composer 文本(P1-4/H3:
+    /// 此前静默 return——无回显无报错,用户以为已发送)。
+    fn send_agent_message(&mut self, text: &str) -> bool {
+        let Some(conn) = &self.connection else {
+            self.lines.push(ChatLine {
+                text: "✗ Not connected to daemon — message not sent (reconnecting…)".to_string(),
+                style: StatusIcon::Disconnected.style(),
+            });
+            return false;
+        };
         let msg = kernel::types::Message::text(kernel::types::Role::User, text.to_string());
         let cwd = std::env::current_dir()
             .ok()
@@ -724,6 +732,7 @@ impl App {
         self.status = StatusIcon::Working;
         self.sending_allowed = false;
         self.start_time = Instant::now();
+        true
     }
 
     /// P3 · send a /plan (or /plan-end) mode-toggle to the daemon.
@@ -869,5 +878,77 @@ mod tests {
         )));
         assert!(!app.quit);
         assert!(matches!(app.mode, Mode::Normal));
+    }
+}
+
+// P1-4 tests appended to the existing tests module (see above).
+#[cfg(test)]
+mod p1_4_tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    fn test_app() -> App {
+        App {
+            mode: Mode::Normal,
+            lines: Vec::new(),
+            history: Vec::new(),
+            needs_finalize: false,
+            inserted_rows: 0,
+            resize_pending: None,
+            resize_deadline: None,
+            composer: Composer::new(),
+            session_id: None,
+            status: StatusIcon::Done,
+            planning: false,
+            start_time: Instant::now(),
+            last_elapsed: 0,
+            connection: None,
+            reconnect_attempts: 0,
+            sending_allowed: true,
+            llm: LlmInfo {
+                model_id: "test".into(),
+                provider: "test".into(),
+            },
+            spinner_idx: 0,
+            agent_phase: AgentPhase::Reasoning,
+            quit: false,
+            confirm_selected: 0,
+            project_name: String::new(),
+            project_id: String::new(),
+        }
+    }
+
+    /// P1-4/H3: 断连时发送——可见提示、返回 false。
+    #[test]
+    fn send_agent_message_disconnected_shows_notice() {
+        let mut app = test_app(); // connection: None
+        assert!(!app.send_agent_message("hello"));
+        assert!(
+            app.lines.iter().any(|l| l.text.contains("Not connected")),
+            "disconnected send must show a visible notice: {:?}",
+            app.lines.iter().map(|l| &l.text).collect::<Vec<_>>()
+        );
+        // 不应进入 Working / 卡门控
+        assert_ne!(app.status, StatusIcon::Working);
+        assert!(app.sending_allowed);
+    }
+
+    /// P1-4/H3: 断连时按 Enter——composer 文本保留(不静默吞)。
+    #[test]
+    fn enter_while_disconnected_keeps_composer_text() {
+        let mut app = test_app();
+        for c in "hi".chars() {
+            app.dispatch_event(Event::Key(KeyEvent::new(
+                KeyCode::Char(c),
+                KeyModifiers::NONE,
+            )));
+        }
+        app.dispatch_event(Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)));
+        assert_eq!(
+            app.composer.text(),
+            "hi",
+            "unsent message must stay in the composer"
+        );
+        assert!(app.lines.iter().any(|l| l.text.contains("Not connected")));
     }
 }
