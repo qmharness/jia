@@ -41,6 +41,22 @@ pub struct RunContext<'a> {
 // ── Agent::run ─────────────────────────────────────────────────
 
 impl super::Agent {
+    /// F7 · persist the current history verbatim.
+    ///
+    /// Used by the normal end-of-turn incremental save AND by early exits
+    /// (LLM error / cancellation) so content already in history is durable
+    /// even if `post_loop` never runs. Deliberately saves history AS-IS:
+    /// partial output from failed streams never enters history (P0-3: only
+    /// normally-ended streams are recorded), and post_loop's lifecycle work
+    /// (consolidation, distillation, …) is not duplicated here.
+    async fn save_history_now(&self) {
+        if let Ok(json) = serde_json::to_string(&self.history) {
+            if let Err(e) = self.earth.store_async.save_session(&self.id, &json).await {
+                tracing::warn!(session = %self.id, error = %e, "Failed to save session");
+            }
+        }
+    }
+
     #[tracing::instrument(skip(self, messages, ctx), fields(session = %self.id))]
     pub async fn run(&mut self, messages: Vec<Message>, ctx: &RunContext<'_>) {
         let _ = ctx.tx.send(AgentEvent::Session {
@@ -83,12 +99,21 @@ impl super::Agent {
         }
 
         loop {
-            self.turn_count += 1;
-            // XiuMen (休门) — agent pause. When closed, loop sleeps and retries.
-            if !ctx.human_plate.gate_is_open(HumanGate::XiuMen) {
+            // XiuMen (休门) — agent pause. While the gate is closed the agent
+            // idles WITHOUT consuming turn budget (a paused turn is not a
+            // turn — F4) and honors cancellation so a paused agent remains
+            // stoppable.
+            while !ctx.human_plate.gate_is_open(HumanGate::XiuMen) {
+                if ctx.cancel_token.is_cancelled() {
+                    tracing::info!(
+                        session = %self.id,
+                        "Agent loop cancelled while paused (XiuMen closed)"
+                    );
+                    return;
+                }
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                continue;
             }
+            self.turn_count += 1;
             if self.turn_count > self.max_turns {
                 tracing::warn!(
                     session = %self.id,
@@ -182,7 +207,7 @@ impl super::Agent {
                             msgs.extend(to_llm_messages(h));
                             (ContextWindow::count_tokens(&msgs), msgs)
                         };
-                        let (t_after, method) = {
+                        let compaction: Option<(usize, &str)> = {
                             let victims_raw = &compact_msgs[start..start + count];
                             // FNV-1a dedup: remove duplicate messages before feeding to LLM
                             let mut seen = std::collections::HashSet::new();
@@ -227,32 +252,56 @@ impl super::Agent {
                                         .insert(hist_start, HistoryEntry::system(content));
                                     let (tokens, msgs) = rebuild(&self.history);
                                     llm_messages = msgs;
-                                    (tokens, "summarize")
+                                    Some((tokens, "summarize"))
                                 }
                                 Err(e) => {
-                                    tracing::warn!(
-                                        error = %e,
-                                        "Compaction summarization failed, falling back to fit()"
-                                    );
-                                    let mut fit_msgs = compact_msgs.clone();
-                                    let (_dropped, _) = self.context_window.fit(&mut fit_msgs);
-                                    let mut new_history: Vec<HistoryEntry> = Vec::new();
-                                    let mut msg_iter = fit_msgs.into_iter();
-                                    for entry in std::mem::take(&mut self.history) {
-                                        if entry.is_message() {
-                                            if msg_iter.next().is_some() {
+                                    // F5: if the session was cancelled, summarize
+                                    // already refused the partial checkpoint — do
+                                    // NOT rewrite history at all (not even via the
+                                    // fit fallback) while winding down. The cancel
+                                    // check after stream finalization ends the turn
+                                    // with history intact.
+                                    if ctx.cancel_token.is_cancelled() {
+                                        tracing::info!(
+                                            session = %self.id,
+                                            error = %e,
+                                            "Compaction aborted by cancellation; history left unchanged"
+                                        );
+                                        None
+                                    } else {
+                                        tracing::warn!(
+                                            error = %e,
+                                            "Compaction summarization failed, falling back to fit()"
+                                        );
+                                        let mut fit_msgs = compact_msgs.clone();
+                                        let (_dropped, _) = self.context_window.fit(&mut fit_msgs);
+                                        let mut new_history: Vec<HistoryEntry> = Vec::new();
+                                        let mut msg_iter = fit_msgs.into_iter();
+                                        for entry in std::mem::take(&mut self.history) {
+                                            if entry.is_message() {
+                                                if msg_iter.next().is_some() {
+                                                    new_history.push(entry);
+                                                }
+                                            } else {
                                                 new_history.push(entry);
                                             }
-                                        } else {
-                                            new_history.push(entry);
                                         }
+                                        self.history = new_history;
+                                        let (tokens, msgs) = rebuild(&self.history);
+                                        llm_messages = msgs;
+                                        Some((tokens, "fit"))
                                     }
-                                    self.history = new_history;
-                                    let (tokens, msgs) = rebuild(&self.history);
-                                    llm_messages = msgs;
-                                    (tokens, "fit")
                                 }
                             }
+                        };
+
+                        let Some((t_after, method)) = compaction else {
+                            // Compaction skipped (cancelled) — leave history
+                            // untouched and wind down immediately; no LLM call
+                            // is issued for a session that is going away. As
+                            // with the other cancel paths, SessionEnd/Done are
+                            // left to the caller's teardown.
+                            return;
                         };
 
                         // Anti-thrashing state
@@ -402,6 +451,7 @@ impl super::Agent {
                             {
                                 if ctx.cancel_token.is_cancelled() {
                                     tracing::info!(session = %self.id, "Agent loop cancelled");
+                                    self.save_history_now().await;
                                     return;
                                 }
                                 tracing::warn!(session = %self.id, error = %e, retry = self.retry_count + 1, "LLM error, re-issuing request with next provider");
@@ -413,13 +463,15 @@ impl super::Agent {
                             }
                             tracing::error!(session = %self.id, error = %e, "LLM inference error");
                             let _ = ctx.tx.send(AgentEvent::Error(format!("{e}")));
+                            self.save_history_now().await;
                             return;
                         }
                         None => {
-                            if ctx.cancel_token.is_cancelled() {
-                                tracing::info!(session = %self.id, "Agent loop cancelled");
-                                return;
-                            }
+                            // F6: do NOT discard a normally-ended stream when a
+                            // cancel raced its final chunk — break out and run
+                            // the normal finalization (StreamEnd + history).
+                            // Cancellation is honored right after the response
+                            // is safely recorded, before any tool execution.
                             break 'llm_retry;
                         }
                     }
@@ -473,6 +525,17 @@ impl super::Agent {
             };
 
             self.history.push(HistoryEntry::assistant(full_response));
+
+            // F6: cancellation is honored only AFTER a normally-ended stream
+            // has been finalized (StreamEnd sent, response in history) — a
+            // complete response is never discarded by a late-arriving cancel.
+            // Tool calls are NOT executed once cancelled. F7: persist the
+            // finalized history before returning.
+            if ctx.cancel_token.is_cancelled() {
+                tracing::info!(session = %self.id, "Agent loop cancelled");
+                self.save_history_now().await;
+                return;
+            }
 
             tracing::info!(
                 session = %self.id,
@@ -803,11 +866,7 @@ impl super::Agent {
             });
 
             // Incremental persist: save history after each turn
-            if let Ok(json) = serde_json::to_string(&self.history) {
-                if let Err(e) = self.earth.store_async.save_session(&self.id, &json).await {
-                    tracing::warn!(session = %self.id, error = %e, "Failed to save session incrementally");
-                }
-            }
+            self.save_history_now().await;
         }
 
         ctx.event_bus.emit(RuntimeEvent::SessionEnd {
@@ -1284,5 +1343,249 @@ Done."#;
         assert!(events.iter().any(|e| matches!(e, AgentEvent::Error(_))));
         assert!(!events.iter().any(|e| matches!(e, AgentEvent::StreamEnd)));
         assert!(assistant_texts(&agent).is_empty());
+    }
+
+    // ── P2-3: 取消语义抛光 (F4/F5/F6/F7) ─────────────────────
+
+    /// F4: with XiuMen closed the loop must idle WITHOUT burning turn_count
+    /// (old code: +1 per 500ms spin → false "Reached maximum turns" after
+    /// ~12.5s) and must exit promptly on cancellation.
+    #[tokio::test]
+    async fn xiumen_pause_does_not_burn_turns_and_honors_cancel() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = temp_earth(tmp.path());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider: Box<dyn LlmProvider> = Box::new(ScriptedProvider::new(
+            vec![MockStep::Complete("must never be reached")],
+            calls.clone(),
+        ));
+        let core = router_core(vec![provider]);
+        let human_plate =
+            HumanPlate::with_state(earth.permissions.clone(), earth.session_bus.clone());
+        human_plate.close_gate(HumanGate::XiuMen);
+        let (tx, mut rx) = mpsc::unbounded_channel::<AgentEvent>();
+        let cancel = CancellationToken::new();
+        let mut agent = super::super::Agent::new("pause-test".into(), earth.clone());
+
+        let ctx = RunContext {
+            core: &core,
+            human_plate: &human_plate,
+            event_bus: &earth.spirit.event_bus,
+            hook_registry: &earth.spirit.hook_registry,
+            tx,
+            cancel_token: &cancel,
+        };
+        let run = agent.run(vec![Message::text(Role::User, "hi")], &ctx);
+        let watchdog = async {
+            // Several 500ms spin cycles pass, then cancel.
+            tokio::time::sleep(std::time::Duration::from_millis(1600)).await;
+            cancel.cancel();
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            tokio::join!(run, watchdog)
+        })
+        .await
+        .expect("cancel must break the XiuMen pause spin");
+
+        assert_eq!(
+            agent.turn_count, 0,
+            "paused loop must not consume turn budget"
+        );
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            0,
+            "LLM must not be called while paused"
+        );
+        let events: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        assert!(
+            !events.iter().any(|e| matches!(e, AgentEvent::Error(_))),
+            "pause must not surface a spurious max-turns error: {events:?}"
+        );
+    }
+
+    /// F5 (loop side): when cancellation cuts the summarize stream short,
+    /// compaction must be skipped entirely — no半截 summary inserted, no
+    /// fit() fallback rewrite, no messages drained from history.
+    #[tokio::test]
+    async fn compaction_cancelled_leaves_history_untouched() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = temp_earth(tmp.path());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider: Box<dyn LlmProvider> = Box::new(ScriptedProvider::new(
+            vec![MockStep::Complete(
+                "partial checkpoint that must be refused",
+            )],
+            calls.clone(),
+        ));
+        let core = router_core(vec![provider]);
+        let human_plate =
+            HumanPlate::with_state(earth.permissions.clone(), earth.session_bus.clone());
+        let cancel = CancellationToken::new();
+        let mut agent = super::super::Agent::new("f5-test".into(), earth.clone());
+        // Force the compaction path: tiny context window + removable history.
+        agent.context_window = ContextWindow::new(8, 0.75);
+        agent.history.push(HistoryEntry::assistant(
+            "old answer with enough tokens to exceed the tiny limit",
+        ));
+        // Model a cancel that lands while summarize is in flight.
+        cancel.cancel();
+
+        let (tx, mut rx) = mpsc::unbounded_channel::<AgentEvent>();
+        let ctx = RunContext {
+            core: &core,
+            human_plate: &human_plate,
+            event_bus: &earth.spirit.event_bus,
+            hook_registry: &earth.spirit.hook_registry,
+            tx,
+            cancel_token: &cancel,
+        };
+        agent.run(vec![Message::text(Role::User, "hi")], &ctx).await;
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "only the summarize call ran; the turn wound down before main inference"
+        );
+        // History = pre-seeded assistant + the new user message — nothing
+        // drained, no compaction marker inserted.
+        assert_eq!(agent.history.len(), 2, "history must not be rewritten");
+        assert!(
+            agent
+                .history
+                .iter()
+                .all(|e| !matches!(e, HistoryEntry::System { content } if content.contains("CONTEXT COMPACTION"))),
+            "no半截 compaction summary in history: {:?}",
+            agent.history
+        );
+        assert!(
+            agent.compaction_summary.is_none(),
+            "refused partial must not seed the next iterative update"
+        );
+        let events: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        assert!(
+            !events.iter().any(|e| matches!(e, AgentEvent::Error(_))),
+            "cancelled compaction is not an error: {events:?}"
+        );
+    }
+
+    /// F6/F7: a cancel racing the end of a normally-completed stream must NOT
+    /// discard the full response — it is finalized (StreamEnd + history) and
+    /// persisted before the loop exits.
+    #[tokio::test]
+    async fn cancel_after_stream_end_keeps_complete_response() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = temp_earth(tmp.path());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider: Box<dyn LlmProvider> = Box::new(ScriptedProvider::new(
+            vec![MockStep::Complete("full answer")],
+            calls.clone(),
+        ));
+        let core = router_core(vec![provider]);
+        let human_plate =
+            HumanPlate::with_state(earth.permissions.clone(), earth.session_bus.clone());
+        let cancel = CancellationToken::new();
+        let mut agent = super::super::Agent::new("f6-test".into(), earth.clone());
+        // The ScriptedProvider ignores the token and completes the stream;
+        // the pre-fired token models a cancel arriving as the stream ends.
+        cancel.cancel();
+
+        let (tx, mut rx) = mpsc::unbounded_channel::<AgentEvent>();
+        let ctx = RunContext {
+            core: &core,
+            human_plate: &human_plate,
+            event_bus: &earth.spirit.event_bus,
+            hook_registry: &earth.spirit.hook_registry,
+            tx,
+            cancel_token: &cancel,
+        };
+        agent.run(vec![Message::text(Role::User, "hi")], &ctx).await;
+
+        // The complete response survives: finalized into history…
+        assert_eq!(
+            assistant_texts(&agent),
+            ["full answer"],
+            "complete response must not be discarded by a racing cancel"
+        );
+        let events: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| matches!(e, AgentEvent::StreamEnd))
+                .count(),
+            1,
+            "StreamEnd sent for the completed stream: {events:?}"
+        );
+        // …and persisted before the early return (F7).
+        let saved = earth
+            .store_async
+            .load_session("f6-test")
+            .await
+            .unwrap()
+            .expect("history must be persisted on the cancel path");
+        let saved_hist: Vec<HistoryEntry> = serde_json::from_str(&saved).unwrap();
+        assert!(
+            saved_hist.iter().any(
+                |e| matches!(e, HistoryEntry::Assistant { content } if content == "full answer")
+            ),
+            "finalized response must reach the store: {saved}"
+        );
+    }
+
+    /// F6 companion: the finalized response stays in history, but its tool
+    /// calls must NOT execute once the session is cancelled.
+    #[tokio::test]
+    async fn cancel_after_stream_end_does_not_execute_tool_calls() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = temp_earth(tmp.path());
+        let target = tmp.path().join("secret.txt");
+        std::fs::write(&target, "s3cret").unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let text = format!(
+            "reading it now\n<tool_call>\n{{\"tool\": \"read_file\", \"parameters\": {{\"file_path\": \"{}\"}}}}\n</tool_call>",
+            target.display()
+        );
+        // MockStep::Complete takes &'static str; leak the test string (test-only).
+        let text: &'static str = Box::leak(text.into_boxed_str());
+        let provider: Box<dyn LlmProvider> = Box::new(ScriptedProvider::new(
+            vec![MockStep::Complete(text)],
+            calls.clone(),
+        ));
+        let core = router_core(vec![provider]);
+        let human_plate =
+            HumanPlate::with_state(earth.permissions.clone(), earth.session_bus.clone());
+        let cancel = CancellationToken::new();
+        let mut agent = super::super::Agent::new("f6-tools".into(), earth.clone());
+        cancel.cancel();
+
+        let (tx, mut rx) = mpsc::unbounded_channel::<AgentEvent>();
+        let ctx = RunContext {
+            core: &core,
+            human_plate: &human_plate,
+            event_bus: &earth.spirit.event_bus,
+            hook_registry: &earth.spirit.hook_registry,
+            tx,
+            cancel_token: &cancel,
+        };
+        agent.run(vec![Message::text(Role::User, "hi")], &ctx).await;
+
+        assert_eq!(
+            assistant_texts(&agent).len(),
+            1,
+            "complete response still enters history"
+        );
+        assert!(
+            !agent
+                .history
+                .iter()
+                .any(|e| matches!(e, HistoryEntry::ToolCall { .. })),
+            "cancelled session must not execute the parsed tool call"
+        );
+        let events: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, AgentEvent::ToolBatchStart)),
+            "no tool batch may start after cancel: {events:?}"
+        );
     }
 }

@@ -99,7 +99,7 @@ impl ContextWindow {
         ];
 
         let mut response = String::new();
-        let mut stream = core.infer(request, None, cancel_token);
+        let mut stream = core.infer(request, None, cancel_token.clone());
         use futures::StreamExt;
         while let Some(chunk) = stream.next().await {
             match chunk {
@@ -109,6 +109,14 @@ impl ContextWindow {
                 Err(e) => return Err(format!("Summarization error: {e}")),
                 _ => {}
             }
+        }
+
+        // F5: a stream cut short by cancellation ends cleanly from the
+        // consumer's side (run_or_cancel drops the producer → None), so a
+        // truncated checkpoint would otherwise look like a valid summary.
+        // Refuse it — callers must never rewrite history with a半截 summary.
+        if cancel_token.as_ref().is_some_and(|t| t.is_cancelled()) {
+            return Err("summarization cancelled — partial checkpoint discarded".into());
         }
 
         let summary = response.trim().to_string();
@@ -419,6 +427,56 @@ mod tests {
         let (dropped, _remaining) = ctx.fit(&mut msgs);
         assert_eq!(dropped, 0);
         assert_eq!(msgs.len(), 2);
+    }
+
+    /// F5: a summarize stream cut short by cancellation ends cleanly (None)
+    /// from the consumer's side — the partial text must be REFUSED, never
+    /// returned as a valid checkpoint that would rewrite history.
+    #[tokio::test]
+    async fn summarize_refuses_partial_checkpoint_on_cancel() {
+        use crate::error::ProviderError;
+        use crate::palaces::zhong_core::{JiaCore, LlmProvider, StreamChunk};
+
+        struct StubProvider;
+        impl LlmProvider for StubProvider {
+            fn infer_stream(
+                &self,
+                _messages: Vec<Message>,
+                _tools: Option<&[crate::stems::action::ToolSchema]>,
+                _cancel_token: Option<CancellationToken>,
+            ) -> std::pin::Pin<
+                Box<dyn futures::Stream<Item = Result<StreamChunk, ProviderError>> + Send>,
+            > {
+                let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+                tokio::spawn(async move {
+                    let _ = tx.send(Ok(StreamChunk::Delta("half a checkpoint".to_string())));
+                    // Producer ends here, as when run_or_cancel drops it mid-stream.
+                });
+                Box::pin(tokio_stream::wrappers::UnboundedReceiverStream::new(rx))
+            }
+        }
+
+        let core = {
+            let router = crate::palaces::zhong_core::router::ProviderRouter::new(vec![(
+                0,
+                Box::new(StubProvider) as Box<dyn LlmProvider>,
+            )]);
+            JiaCore::with_router(router, "mock".into(), "mock".into(), 8192)
+        };
+        let msgs = vec![Message::text(Role::User, "hello")];
+
+        // Cancel fired (mid-stream truncation) → partial must be refused.
+        let token = CancellationToken::new();
+        token.cancel();
+        let res = ContextWindow::summarize(&msgs, &core, Some(token), None).await;
+        assert!(
+            res.is_err(),
+            "cancelled summarize must not yield a partial checkpoint: {res:?}"
+        );
+
+        // Control: same provider, no cancel → the text is accepted.
+        let res = ContextWindow::summarize(&msgs, &core, None, None).await;
+        assert_eq!(res.unwrap().content, "half a checkpoint");
     }
 
     // ── ToolOutputBudget tests ──────────────────────────────
