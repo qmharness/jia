@@ -125,8 +125,10 @@ pub async fn handle_skills_reload(State(state): State<Arc<AppState>>) -> Json<se
     let loaded = match result {
         Ok(n) => n,
         Err(e) => {
+            // S3: 加载失败时保留现有 registry——此前无条件用(可能为空的)
+            // new_reg 整体替换,目录读取失败即清空全部 skills。
             tracing::warn!("Skills reload failed: {e}");
-            0
+            return Json(serde_json::json!({"error": format!("reload failed: {e}"), "loaded": 0}));
         }
     };
     // Preserve disabled state across reload
