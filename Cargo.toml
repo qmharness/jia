@@ -2,6 +2,12 @@
 members = ["kernel", "tui", "channels"]
 resolver = "3"
 
+# P2-6/P0-1 错误处理治理:全 workspace unwrap/expect 一律 warn
+# (测试豁免见 clippy.toml allow-unwrap-in-tests)
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+
 [package]
 name = "jia"
 version = "0.1.0"
@@ -57,3 +63,6 @@ tempfile = "3"
 lto = "thin"
 codegen-units = 1
 panic = "abort"
+
+[lints]
+workspace = true

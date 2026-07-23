@@ -54,6 +54,12 @@ pub trait LlmProvider: Send + Sync {
 
     /// If this provider is a ProviderRouter, return a reference to it.
     /// Used by the agent loop for failover. Default: None.
+    //
+    // 有意为之的 crate 内部下行通道:pub trait 上返回 pub(crate) 类型,
+    // 触发 private_interfaces 警告——但外部 crate 本就无法构造/调用
+    // (ProviderRouter 不可达),抽到扩展 trait 会使 Box<dyn LlmProvider>
+    // 对象安全模型复杂化,代价大于收益,故显式豁免。
+    #[allow(private_interfaces)]
     fn as_router(&self) -> Option<&ProviderRouter> {
         None
     }
@@ -215,11 +221,12 @@ pub(crate) use router::ProviderRouter;
 
 // ── Anthropic ──────────────────────────────────────────────
 mod anthropic;
-pub use anthropic::AnthropicProvider;
+// 门面收敛:外部无直接使用方,具体 provider 类型不出 crate(经 create_provider 工厂)。
+pub(crate) use anthropic::AnthropicProvider;
 
 // ── OpenAI ────────────────────────────────────────────────
 mod openai;
-pub use openai::OpenAIProvider;
+pub(crate) use openai::OpenAIProvider;
 
 // ── Gemini ──────────────────────────────────────────────────
 

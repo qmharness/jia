@@ -69,7 +69,5 @@ test-utils = []
 tempfile = "3"
 criterion = { version = "0.5", features = ["html_reports"] }
 
-[lints.clippy]
-# P0-1 错误处理治理:unwrap/expect 一律 warn(测试豁免见 clippy.toml allow-unwrap-in-tests)
-unwrap_used = "warn"
-expect_used = "warn"
+[lints]
+workspace = true

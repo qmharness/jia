@@ -141,11 +141,12 @@ pub async fn handle_agent(
         (Some(earth), Some(profile)) => {
             // Resolve session ID (from request or generate new)
             let is_new = req.session_id.as_ref().is_none_or(|s| s.is_empty());
-            let session_id = if is_new {
-                uuid::Uuid::new_v4().to_string()
-            } else {
-                req.session_id.clone().unwrap()
-            };
+            let session_id = req
+                .session_id
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
             // Insert placeholder row immediately so session appears in list
             // Resolve effective cwd: validate the request cwd, and for old sessions
