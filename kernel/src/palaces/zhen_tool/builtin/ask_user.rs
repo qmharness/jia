@@ -135,6 +135,9 @@ impl BaseTool for AskUserQuestionTool {
         // 在 session_lock 内永卡 → 同 sid 后续 run 永久阻塞(审计 F2+L5)。
         // 断连清扫(rin 连接结束按 session_id remove pending 条目)使 sender
         // drop,orx 醒为 Err,走 "(user disconnected)" 分支。
+        // B1 兜底超时:headless(cron/io)场景没有取消源也没有清扫者,
+        // 无限等待 = 永久挂起;超时(与确认等待同 confirmation_timeout)
+        // 是唯一兜底。前端仍按 timeout_secs 显示倒计时,语义一致。
         tracing::info!(%id, "ask_user: waiting for answer");
         let answered = tokio::select! {
             r = orx => r,
@@ -147,6 +150,16 @@ impl BaseTool for AskUserQuestionTool {
                     .remove(&id);
                 tracing::info!(%id, "ask_user: cancelled while waiting");
                 return Err("ask_user cancelled".into());
+            }
+            _ = tokio::time::sleep(ctx.permissions.confirmation_timeout) => {
+                // B1 兜底:headless 场景无取消源/无清扫者,超时按拒绝处理,
+                // 防 agent 持 session_lock 永久挂起。
+                self.pending_questions
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(&id);
+                tracing::warn!(%id, timeout_secs, "ask_user: timed out waiting for answer");
+                return Ok("(no answer — timed out)".into());
             }
         };
         match answered {
@@ -229,6 +242,38 @@ mod tests {
         assert!(
             pending.lock().unwrap().is_empty(),
             "pending_questions must have no residue after cancel"
+        );
+    }
+
+    /// B1 · 兜底超时:无人回答(headless 无取消源/无清扫)时按超时返回,
+    /// 不永久挂起,pending_questions 无残留。
+    #[tokio::test]
+    async fn ask_user_times_out_without_answer() {
+        let pending = Arc::new(Mutex::new(HashMap::new()));
+        let tool = AskUserQuestionTool::new(pending.clone());
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut permissions = PermissionMatrix::default();
+        permissions.confirmation_timeout = std::time::Duration::from_millis(50);
+        let ctx = ExecContext {
+            permissions: Arc::new(permissions),
+            session_id: "sess-1".into(),
+            cancel_token: tokio_util::sync::CancellationToken::new(),
+        };
+
+        let res = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            tool.execute_with_tx(serde_json::json!({"question": "q?"}), &tx, &ctx)
+                .await
+        })
+        .await
+        .expect("ask_user must return after fallback timeout (hang!)")
+        .unwrap();
+        assert!(
+            res.contains("timed out"),
+            "timeout path should report timed out, got: {res}"
+        );
+        assert!(
+            pending.lock().unwrap().is_empty(),
+            "pending_questions must have no residue after timeout"
         );
     }
 
