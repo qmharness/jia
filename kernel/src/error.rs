@@ -44,6 +44,12 @@ pub enum ProviderError {
     Stream(String),
     #[error("provider error: {0}")]
     Provider(String),
+    /// Truncation sentinel: injected into the stream by `run_or_cancel` when
+    /// the cancellation token fires, so the consumer can distinguish a
+    /// cancelled (truncated) stream from a natural end (channel close →
+    /// `None`). Never retryable — cancellation is not a provider failure.
+    #[error("cancelled")]
+    Cancelled,
 }
 
 impl ProviderError {

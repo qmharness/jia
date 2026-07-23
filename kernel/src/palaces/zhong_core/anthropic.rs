@@ -78,8 +78,9 @@ impl LlmProvider for AnthropicProvider {
         let api_key = self.api_key.clone();
         let url = format!("{}/messages", self.api_base.trim_end_matches('/'));
 
+        let cancel_tx = tx.clone();
         tokio::spawn(async move {
-            run_or_cancel(cancel_token, async {
+            run_or_cancel(cancel_token, cancel_tx, async {
                 let resp = match client
                     .post(&url)
                     .header("x-api-key", &api_key)
@@ -253,8 +254,9 @@ impl LlmProvider for AnthropicProvider {
         let api_key = self.api_key.clone();
         let url = format!("{}/messages", self.api_base.trim_end_matches('/'));
 
+        let cancel_tx = tx.clone();
         tokio::spawn(async move {
-            run_or_cancel(cancel_token, async {
+            run_or_cancel(cancel_token, cancel_tx, async {
                 let resp = match client
                     .post(&url)
                     .header("x-api-key", &api_key)

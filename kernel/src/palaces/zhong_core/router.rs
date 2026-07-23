@@ -72,6 +72,16 @@ impl ProviderRouter {
         }
         false // all exhausted
     }
+
+    /// Test-only: read a provider's consecutive-failure counter (S1 tests).
+    #[cfg(test)]
+    pub(crate) fn breaker_failure_count(&self, idx: usize) -> Option<u32> {
+        self.breakers
+            .lock()
+            .ok()?
+            .get(idx)
+            .map(|b| b.failure_count())
+    }
 }
 
 impl LlmProvider for ProviderRouter {

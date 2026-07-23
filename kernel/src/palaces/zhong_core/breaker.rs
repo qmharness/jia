@@ -70,6 +70,13 @@ impl CircuitBreaker {
             self.state = BreakerState::Open;
         }
     }
+
+    /// Test-only: observe the consecutive-failure counter (S1 tests assert a
+    /// cancelled turn does NOT reset it via record_llm_success).
+    #[cfg(test)]
+    pub(crate) fn failure_count(&self) -> u32 {
+        self.failure_count
+    }
 }
 
 #[cfg(test)]

@@ -438,6 +438,21 @@ impl super::Agent {
                                 "prompt cache hit"
                             );
                         }
+                        Some(Err(crate::error::ProviderError::Cancelled)) => {
+                            // S1: truncation sentinel injected by run_or_cancel
+                            // — the stream was CUT by cancellation, it did not
+                            // end naturally. Unlike the `None` arm (F6), the
+                            // partial response is DISCARDED: no history entry,
+                            // no StreamEnd, and no record_llm_success (a
+                            // cancelled turn must not reset the circuit
+                            // breaker). Not retryable — `Cancelled` is excluded
+                            // from is_retryable, and cancellation is honored,
+                            // not failed over. F7: persist history as-is
+                            // before returning.
+                            tracing::info!(session = %self.id, "LLM stream truncated by cancellation; partial response discarded");
+                            self.save_history_now().await;
+                            return;
+                        }
                         Some(Err(e)) => {
                             // Check the retry budget BEFORE failover so the
                             // final failure doesn't pointlessly flip the
@@ -958,6 +973,11 @@ Done."#;
         },
         /// Stream the text and end the stream normally.
         Complete(&'static str),
+        /// S1: stream `partial` as deltas, then end with the truncation
+        /// sentinel (what run_or_cancel injects when cancellation cuts the
+        /// producer). The consumer must treat this as a cancellation, NOT a
+        /// natural end.
+        Truncated(&'static str),
     }
 
     /// A mock provider that plays a per-call script and counts invocations.
@@ -995,6 +1015,7 @@ Done."#;
                 let (text, err) = match step {
                     MockStep::FailAfter { partial, err } => (partial, Some(err)),
                     MockStep::Complete(text) => (text, None),
+                    MockStep::Truncated(partial) => (partial, Some(ProviderError::Cancelled)),
                 };
                 for ch in text.chars() {
                     let _ = tx.send(Ok(StreamChunk::Delta(ch.to_string())));
@@ -1510,6 +1531,120 @@ Done."#;
                 .iter()
                 .any(|e| matches!(e, AgentEvent::ToolBatchStart)),
             "no tool batch may start after cancel: {events:?}"
+        );
+    }
+
+    /// S1: a stream cut by cancellation carries the `Cancelled` sentinel —
+    /// the loop must DISCARD the partial response (no history entry, no
+    /// StreamEnd, no Error) and must NOT record_llm_success, so the circuit
+    /// breaker's failure count survives the cancelled turn.
+    #[tokio::test]
+    async fn cancelled_stream_truncation_discards_partial_and_skips_success() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = temp_earth(tmp.path());
+        let calls = Arc::new(AtomicUsize::new(0));
+        // Turn 1: P1 fails retryable → breaker[0]=1, failover to P2 completes.
+        // Turn 2: P2 fails retryable → failover back to P1, whose stream is
+        // truncated by cancellation (sentinel after partial deltas).
+        let p1: Box<dyn LlmProvider> = Box::new(ScriptedProvider::new(
+            vec![
+                MockStep::FailAfter {
+                    partial: "junk",
+                    err: ProviderError::RateLimited { body: "429".into() },
+                },
+                MockStep::Truncated("half response that must be dropped"),
+            ],
+            calls.clone(),
+        ));
+        let p2: Box<dyn LlmProvider> = Box::new(ScriptedProvider::new(
+            vec![
+                MockStep::Complete("turn1 answer"),
+                MockStep::FailAfter {
+                    partial: "junk2",
+                    err: ProviderError::RateLimited { body: "429".into() },
+                },
+            ],
+            calls.clone(),
+        ));
+        let core = router_core(vec![p1, p2]);
+        let human_plate =
+            HumanPlate::with_state(earth.permissions.clone(), earth.session_bus.clone());
+        let cancel = CancellationToken::new();
+        let mut agent = super::super::Agent::new("s1-test".into(), earth.clone());
+
+        // Turn 1: establishes a non-zero failure count on P1's breaker.
+        {
+            let (tx, _rx) = mpsc::unbounded_channel::<AgentEvent>();
+            let ctx = RunContext {
+                core: &core,
+                human_plate: &human_plate,
+                event_bus: &earth.spirit.event_bus,
+                hook_registry: &earth.spirit.hook_registry,
+                tx,
+                cancel_token: &cancel,
+            };
+            agent.run(vec![Message::text(Role::User, "hi")], &ctx).await;
+        }
+        assert_eq!(
+            core.test_breaker_failure_count(0),
+            Some(1),
+            "turn 1 retryable failure must be recorded on P1's breaker"
+        );
+        assert_eq!(assistant_texts(&agent), ["turn1 answer"]);
+
+        // Turn 2: ends on P1's truncated (cancelled) stream.
+        let (tx, mut rx) = mpsc::unbounded_channel::<AgentEvent>();
+        {
+            let ctx = RunContext {
+                core: &core,
+                human_plate: &human_plate,
+                event_bus: &earth.spirit.event_bus,
+                hook_registry: &earth.spirit.hook_registry,
+                tx,
+                cancel_token: &cancel,
+            };
+            agent
+                .run(vec![Message::text(Role::User, "again")], &ctx)
+                .await;
+        }
+
+        // The truncated partial never enters history — only turn 1's answer.
+        assert_eq!(
+            assistant_texts(&agent),
+            ["turn1 answer"],
+            "cancelled mid-stream partial must be discarded: {:?}",
+            agent.history
+        );
+        // record_llm_success was NOT called on the cancelled turn: P1 (the
+        // active provider when the sentinel arrived) keeps its failure.
+        assert_eq!(
+            core.test_breaker_failure_count(0),
+            Some(1),
+            "a cancelled turn must not reset the circuit breaker"
+        );
+        let events: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        assert!(
+            !events.iter().any(|e| matches!(e, AgentEvent::StreamEnd)),
+            "truncated stream must not emit StreamEnd: {events:?}"
+        );
+        assert!(
+            !events.iter().any(|e| matches!(e, AgentEvent::Error(_))),
+            "cancellation is not an error: {events:?}"
+        );
+        assert!(
+            !events.iter().any(|e| matches!(e, AgentEvent::Done)),
+            "cancelled turn exits without Done: {events:?}"
+        );
+        // F7: history as-is (no half response) reached the store.
+        let saved = earth
+            .store_async
+            .load_session("s1-test")
+            .await
+            .unwrap()
+            .expect("history must be persisted on the truncation path");
+        assert!(
+            !saved.contains("half response"),
+            "truncated partial must not reach the store: {saved}"
         );
     }
 }

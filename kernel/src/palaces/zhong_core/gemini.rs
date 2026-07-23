@@ -113,8 +113,9 @@ impl LlmProvider for GeminiProvider {
         let model = self.model.clone();
         let url = format!("{base}/models/{model}:streamGenerateContent?alt=sse");
 
+        let cancel_tx = tx.clone();
         tokio::spawn(async move {
-            super::run_or_cancel(cancel_token, async {
+            super::run_or_cancel(cancel_token, cancel_tx, async {
                 let resp = match client
                     .post(&url)
                     .header("x-goog-api-key", &api_key)

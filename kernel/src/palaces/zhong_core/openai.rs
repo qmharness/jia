@@ -76,8 +76,9 @@ impl LlmProvider for OpenAIProvider {
         let api_key = self.api_key.clone();
         let url = format!("{}/chat/completions", self.api_base.trim_end_matches('/'));
 
+        let cancel_tx = tx.clone();
         tokio::spawn(async move {
-            run_or_cancel(cancel_token, async {
+            run_or_cancel(cancel_token, cancel_tx, async {
                 // Track streaming tool call fragments (index → accumulated state).
                 let mut tc_state: std::collections::HashMap<usize, (String, String, String)> =
                     std::collections::HashMap::new(); // index → (id, name, args_json)

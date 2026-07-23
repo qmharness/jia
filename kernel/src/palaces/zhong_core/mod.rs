@@ -157,16 +157,29 @@ fn build_openai_content(msg: &Message) -> serde_json::Value {
     serde_json::Value::Array(parts)
 }
 
-/// Run `f` to completion, or return early if the cancellation token fires.
+/// Run `f` to completion, or cut it short if the cancellation token fires.
+///
+/// S1 truncation sentinel: `cancel_tx` is a clone of the provider's stream
+/// sender held OUTSIDE `f`. On cancellation the sentinel
+/// `Err(ProviderError::Cancelled)` is injected into the channel BEFORE `f`
+/// (and its inner sender) is dropped, so the consumer can distinguish a
+/// cancelled mid-stream truncation from a natural end (channel close →
+/// `None`). The select is `biased` towards `f`: if the producer completed at
+/// the same instant the token fired, it counts as a natural end (F6) and no
+/// sentinel is emitted.
 async fn run_or_cancel(
     cancel_token: Option<CancellationToken>,
+    cancel_tx: tokio::sync::mpsc::UnboundedSender<Result<StreamChunk, ProviderError>>,
     f: impl Future<Output = ()> + Send,
 ) {
     match cancel_token {
         Some(token) => {
             tokio::select! {
-                _ = token.cancelled() => {},
+                biased;
                 _ = f => {}
+                _ = token.cancelled() => {
+                    let _ = cancel_tx.send(Err(ProviderError::Cancelled));
+                }
             }
         }
         None => {
@@ -326,6 +339,13 @@ impl JiaCore {
             .map_or(false, |r| r.try_failover())
     }
 
+    /// Test-only: read a provider's consecutive-failure counter through the
+    /// router (S1 tests assert a cancelled turn leaves it untouched).
+    #[cfg(test)]
+    pub(crate) fn test_breaker_failure_count(&self, idx: usize) -> Option<u32> {
+        self.provider.as_router()?.breaker_failure_count(idx)
+    }
+
     pub fn model(&self) -> &str {
         &self.model
     }
@@ -378,7 +398,7 @@ pub(crate) mod mock {
             &self,
             _messages: Vec<Message>,
             _tools: Option<&[super::ToolSchema]>,
-            _cancel_token: Option<CancellationToken>,
+            cancel_token: Option<CancellationToken>,
         ) -> Pin<Box<dyn Stream<Item = Result<super::StreamChunk, ProviderError>> + Send>> {
             let (tx, rx) = mpsc::unbounded_channel();
             let mut guard = self.responses.lock().unwrap();
@@ -388,17 +408,24 @@ pub(crate) mod mock {
                 Ok(guard.remove(0))
             };
 
+            let cancel_tx = tx.clone();
             tokio::spawn(async move {
-                match response {
-                    Ok(text) => {
-                        for ch in text.chars() {
-                            let _ = tx.send(Ok(super::StreamChunk::Delta(ch.to_string())));
+                super::run_or_cancel(cancel_token, cancel_tx, async move {
+                    match response {
+                        Ok(text) => {
+                            for ch in text.chars() {
+                                let _ = tx.send(Ok(super::StreamChunk::Delta(ch.to_string())));
+                                // Yield so a cancellation can land mid-stream,
+                                // exercising the truncation sentinel in tests.
+                                tokio::task::yield_now().await;
+                            }
+                        }
+                        Err(e) => {
+                            let _ = tx.send(Err(e));
                         }
                     }
-                    Err(e) => {
-                        let _ = tx.send(Err(e));
-                    }
-                }
+                })
+                .await;
             });
 
             Box::pin(UnboundedReceiverStream::new(rx))
@@ -518,5 +545,113 @@ mod tests {
             let p = MockProvider::new(vec!["ok".to_string()]);
             assert!(!p.supports_caching());
         }
+    }
+
+    // ── S1: truncation sentinel ────────────────────────────────
+
+    #[tokio::test]
+    async fn run_or_cancel_injects_cancelled_sentinel() {
+        let (tx, mut rx) =
+            tokio::sync::mpsc::unbounded_channel::<Result<StreamChunk, ProviderError>>();
+        let token = CancellationToken::new();
+        token.cancel();
+        let inner = tx.clone();
+        run_or_cancel(Some(token), tx, async move {
+            // Producer that never yields anything on its own.
+            let _hold = inner;
+            futures::future::pending::<()>().await;
+        })
+        .await;
+        match rx.recv().await {
+            Some(Err(ProviderError::Cancelled)) => {}
+            other => panic!("expected Cancelled sentinel, got {other:?}"),
+        }
+        assert!(
+            rx.recv().await.is_none(),
+            "channel must close right after the sentinel (producer dropped)"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_or_cancel_natural_end_emits_no_sentinel() {
+        let (tx, mut rx) =
+            tokio::sync::mpsc::unbounded_channel::<Result<StreamChunk, ProviderError>>();
+        let token = CancellationToken::new(); // never cancelled
+        let inner = tx.clone();
+        run_or_cancel(Some(token), tx, async move {
+            let _ = inner.send(Ok(StreamChunk::Delta("hi".into())));
+        })
+        .await;
+        assert!(matches!(
+            rx.recv().await,
+            Some(Ok(StreamChunk::Delta(ref d))) if d == "hi"
+        ));
+        assert!(
+            rx.recv().await.is_none(),
+            "natural end must close without a sentinel"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_or_cancel_biased_to_completion_on_race() {
+        // F6: token already fired, but the producer completes in one poll —
+        // the biased select treats it as a natural end, no sentinel.
+        let (tx, mut rx) =
+            tokio::sync::mpsc::unbounded_channel::<Result<StreamChunk, ProviderError>>();
+        let token = CancellationToken::new();
+        token.cancel();
+        let inner = tx.clone();
+        run_or_cancel(Some(token), tx, async move {
+            let _ = inner.send(Ok(StreamChunk::Delta("done".into())));
+        })
+        .await;
+        assert!(matches!(
+            rx.recv().await,
+            Some(Ok(StreamChunk::Delta(ref d))) if d == "done"
+        ));
+        assert!(
+            rx.recv().await.is_none(),
+            "a completed producer wins the race — no sentinel"
+        );
+    }
+
+    #[tokio::test]
+    async fn mock_provider_emits_sentinel_when_cancelled_mid_stream() {
+        use futures::StreamExt;
+        let p = mock::MockProvider::new(vec!["a fairly long mock response".to_string()]);
+        let token = CancellationToken::new();
+        let mut stream = p.infer_stream(vec![], None, Some(token.clone()));
+        // First delta arrives, then the cancel lands mid-stream.
+        assert!(matches!(
+            stream.next().await,
+            Some(Ok(StreamChunk::Delta(_)))
+        ));
+        token.cancel();
+        let mut saw_sentinel = false;
+        while let Some(item) = stream.next().await {
+            if matches!(item, Err(ProviderError::Cancelled)) {
+                saw_sentinel = true;
+            }
+        }
+        assert!(
+            saw_sentinel,
+            "cancel mid-stream must surface the truncation sentinel"
+        );
+    }
+
+    #[tokio::test]
+    async fn mock_provider_completes_without_sentinel_when_not_cancelled() {
+        use futures::StreamExt;
+        let p = mock::MockProvider::new(vec!["abc".to_string()]);
+        let token = CancellationToken::new();
+        let mut stream = p.infer_stream(vec![], None, Some(token));
+        let mut text = String::new();
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(StreamChunk::Delta(d)) => text.push_str(&d),
+                other => panic!("unexpected item in uncancelled mock stream: {other:?}"),
+            }
+        }
+        assert_eq!(text, "abc");
     }
 }
