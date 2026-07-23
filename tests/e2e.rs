@@ -123,6 +123,7 @@ fn temp_earth(store: Arc<Store>, temp_dir: &std::path::Path) -> Arc<EarthPlate> 
         bots: Default::default(),
         hooks: vec![],
         cognition: CognitionSection::default(),
+        system_prompt: kernel::palaces::kun_config::DEFAULT_SYSTEM_PROMPT.to_string(),
     };
     let config_loader = Arc::new(kernel::palaces::kun_config::ConfigLoader::from_app_config(
         config,
