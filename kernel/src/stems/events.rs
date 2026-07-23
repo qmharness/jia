@@ -56,6 +56,12 @@ pub enum AgentEvent {
     },
     /// Context compaction in progress — 天英.
     Compacting,
+    /// S2: LLM 流失败、即将换源重发。失败轮已流出的 Delta(半截垃圾)
+    /// 不作数——前端应把当前 assistant 气泡截断回本轮流开始前的位置。
+    /// `attempt` 是即将开始的第几次重试(1-based)。
+    Retrying {
+        attempt: u32,
+    },
 }
 
 /// P3 · Interaction mode — 谋划态 (planning) vs Normal.

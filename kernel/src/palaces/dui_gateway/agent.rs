@@ -352,6 +352,7 @@ pub async fn handle_agent(
                     StreamEvent::ContextPressure { tokens, threshold }
                 }
                 AgentEvent::Compacting => StreamEvent::Compacting,
+                AgentEvent::Retrying { attempt } => StreamEvent::Retrying { attempt },
             };
             let json = serde_json::to_string(&stream_event).unwrap_or_default();
             Ok(Event::default().data(json))

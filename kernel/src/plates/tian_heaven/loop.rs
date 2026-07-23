@@ -468,6 +468,13 @@ impl super::Agent {
                                 }
                                 tracing::warn!(session = %self.id, error = %e, retry = self.retry_count + 1, "LLM error, re-issuing request with next provider");
                                 self.retry_count += 1;
+                                // S2: the failed attempt's partial Deltas are
+                                // already on the wire — tell frontends to roll
+                                // the bubble back before the retried stream
+                                // starts appending.
+                                let _ = ctx.tx.send(AgentEvent::Retrying {
+                                    attempt: self.retry_count,
+                                });
                                 continue 'llm_retry;
                             }
                             if self.retry_count >= MAX_LLM_RETRIES {
@@ -1123,6 +1130,32 @@ Done."#;
         );
         assert!(events.iter().any(|e| matches!(e, AgentEvent::Done)));
         assert_eq!(agent.retry_count, 0, "retry_count reset after success");
+        // S2: the retry arm must emit exactly one Retrying { attempt: 1 },
+        // ordered AFTER the failed attempt's junk Deltas and BEFORE the
+        // retried stream's Deltas — frontends truncate the bubble on it.
+        let retry_positions: Vec<usize> = events
+            .iter()
+            .enumerate()
+            .filter_map(|(i, e)| matches!(e, AgentEvent::Retrying { attempt: 1 }).then_some(i))
+            .collect();
+        assert_eq!(
+            retry_positions.len(),
+            1,
+            "exactly one Retrying {{ attempt: 1 }}: {events:?}"
+        );
+        let rp = retry_positions[0];
+        assert!(
+            events[..rp]
+                .iter()
+                .any(|e| matches!(e, AgentEvent::Delta(_))),
+            "junk Deltas must precede Retrying: {events:?}"
+        );
+        assert!(
+            events[rp..]
+                .iter()
+                .any(|e| matches!(e, AgentEvent::Delta(d) if d == "f")),
+            "retried stream's Deltas must follow Retrying: {events:?}"
+        );
     }
 
     #[tokio::test]

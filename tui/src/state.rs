@@ -61,6 +61,21 @@ pub struct LlmInfo {
     pub provider: String,
 }
 
+// ── StreamAnchor (S2) ─────────────────────────────────────
+
+/// S2: 当前 LLM 流的回滚锚点。没有现成的"流开始"事件——协议里一个 LLM
+/// 流的边界是 `StreamEnd`(结束)与 turn 边界,因此锚点在首个实际写入
+/// `lines` 的 Delta 处惰性记录;`Retrying` 时截回锚点,`StreamEnd`/
+/// `Error` 时清除。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StreamAnchor {
+    /// 首个 Delta 推入了新行:记录推入前的 `lines.len()`,回滚时整体截掉。
+    NewLines(usize),
+    /// 首个 Delta 追加进了已有的 assistant 行(默认样式):记录行号与
+    /// 该行原有文本长度,回滚时只截该行文本,保留此前内容。
+    AppendInto { line: usize, len: usize },
+}
+
 // ── App State ──────────────────────────────────────────────
 
 pub(crate) struct App {
@@ -102,6 +117,8 @@ pub(crate) struct App {
     pub(crate) project_name: String,
     /// P3 · project ID from .jia/config.toml
     pub(crate) project_id: String,
+    /// S2: rollback anchor for the in-flight LLM stream (see `StreamAnchor`).
+    pub(crate) stream_anchor: Option<StreamAnchor>,
 }
 
 // ── Public API ─────────────────────────────────────────────
@@ -542,11 +559,29 @@ impl App {
                         last.map(|l| l.style != Style::default()).unwrap_or(false);
                     let skip = whitespace_only && (last_blank || last_non_assistant);
                     if !skip {
+                        // S2: lazily record the rollback anchor on the first
+                        // Delta that actually writes (retries re-arm it after
+                        // `Retrying` clears it).
+                        let append_into_existing = self
+                            .lines
+                            .last()
+                            .map(|l| l.style == Style::default())
+                            .unwrap_or(false);
+                        if self.stream_anchor.is_none() {
+                            self.stream_anchor = Some(if append_into_existing {
+                                StreamAnchor::AppendInto {
+                                    line: self.lines.len() - 1,
+                                    len: self.lines.last().map(|l| l.text.len()).unwrap_or(0),
+                                }
+                            } else {
+                                StreamAnchor::NewLines(self.lines.len())
+                            });
+                        }
                         // Append to last line if it's an assistant (default style) line
-                        if let Some(last) = self.lines.last_mut()
-                            && last.style == Style::default()
-                        {
-                            last.text.push_str(&content);
+                        if append_into_existing {
+                            if let Some(last) = self.lines.last_mut() {
+                                last.text.push_str(&content);
+                            }
                         } else {
                             // Blank line above assistant response
                             self.lines.push(ChatLine {
@@ -582,6 +617,7 @@ impl App {
                 self.last_elapsed = self.start_time.elapsed().as_secs();
                 // Push the active turn into scrollback; run_app flushes it.
                 self.needs_finalize = true;
+                self.stream_anchor = None;
             }
             StreamEvent::Error { message } => {
                 self.lines.push(ChatLine {
@@ -592,6 +628,9 @@ impl App {
                 self.agent_phase = AgentPhase::ErrorRecovery;
                 self.sending_allowed = true;
                 self.last_elapsed = self.start_time.elapsed().as_secs();
+                // S2: error path ends the stream without StreamEnd — clear a
+                // stale anchor so the next turn re-anchors correctly.
+                self.stream_anchor = None;
             }
             StreamEvent::InteractionModeChanged { planning } => {
                 self.planning = planning;
@@ -675,6 +714,31 @@ impl App {
             }
             StreamEvent::StreamEnd => {
                 self.agent_phase = AgentPhase::StopCheck;
+                // S2: stream finalized — bubble is keep-as-is; drop the anchor.
+                self.stream_anchor = None;
+            }
+            StreamEvent::Retrying { attempt } => {
+                // S2: the failed attempt's partial Deltas are already appended;
+                // truncate the bubble back to the stream-start anchor so the
+                // retried stream doesn't concatenate after half junk.
+                match self.stream_anchor.take() {
+                    Some(StreamAnchor::NewLines(idx)) => {
+                        self.lines.truncate(idx);
+                    }
+                    Some(StreamAnchor::AppendInto { line, len }) => {
+                        self.lines.truncate(line + 1);
+                        if let Some(l) = self.lines.get_mut(line) {
+                            l.text.truncate(len);
+                        }
+                    }
+                    None => {}
+                }
+                // NOTE: display rows already pushed to terminal scrollback by
+                // flush_streaming_overflow (viewport overflow) cannot be
+                // un-inserted — only the in-viewport bubble is rolled back.
+                // inserted_rows may now over-count; both flush paths guard
+                // with `< rows.len()` / `> inserted_rows`, so no panic.
+                tracing::debug!(attempt, "LLM retry: truncated partial assistant bubble");
             }
             StreamEvent::ToolCall { .. } => {
                 self.agent_phase = AgentPhase::ToolCalling;
@@ -845,6 +909,7 @@ mod tests {
             confirm_selected: 0,
             project_name: String::new(),
             project_id: String::new(),
+            stream_anchor: None,
         }
     }
 
@@ -920,6 +985,7 @@ mod p1_4_tests {
             confirm_selected: 0,
             project_name: String::new(),
             project_id: String::new(),
+            stream_anchor: None,
         }
     }
 
@@ -958,5 +1024,144 @@ mod p1_4_tests {
             "unsent message must stay in the composer"
         );
         assert!(app.lines.iter().any(|l| l.text.contains("Not connected")));
+    }
+}
+
+// S2 tests: Retrying rolls back the partial assistant bubble.
+#[cfg(test)]
+mod s2_retry_tests {
+    use super::*;
+
+    fn test_app() -> App {
+        App {
+            mode: Mode::Normal,
+            lines: Vec::new(),
+            history: Vec::new(),
+            needs_finalize: false,
+            inserted_rows: 0,
+            resize_pending: None,
+            resize_deadline: None,
+            composer: Composer::new(),
+            session_id: None,
+            status: StatusIcon::Done,
+            planning: false,
+            start_time: Instant::now(),
+            last_elapsed: 0,
+            connection: None,
+            reconnect_attempts: 0,
+            sending_allowed: true,
+            llm: LlmInfo {
+                model_id: "test".into(),
+                provider: "test".into(),
+            },
+            spinner_idx: 0,
+            agent_phase: AgentPhase::Reasoning,
+            quit: false,
+            confirm_selected: 0,
+            project_name: String::new(),
+            project_id: String::new(),
+            stream_anchor: None,
+        }
+    }
+
+    fn delta(s: &str) -> StreamEvent {
+        StreamEvent::Delta {
+            content: s.to_string(),
+        }
+    }
+
+    /// S2 核心场景(P0-3 回归):失败轮的半截 Delta 已 append,Retrying
+    /// 必须截掉;重试后的新流从锚点重开——气泡里只有 "final" 没有 "junk"。
+    #[test]
+    fn retrying_truncates_partial_assistant_bubble() {
+        let mut app = test_app();
+        app.handle_stream_event(delta("junk"));
+        app.handle_stream_event(delta(" more junk"));
+        app.handle_stream_event(StreamEvent::Retrying { attempt: 1 });
+        app.handle_stream_event(delta("final"));
+        app.handle_stream_event(StreamEvent::StreamEnd);
+
+        let all: Vec<&str> = app.lines.iter().map(|l| l.text.as_str()).collect();
+        assert!(
+            all.iter().all(|t| !t.contains("junk")),
+            "junk from the failed attempt must be truncated: {all:?}"
+        );
+        assert!(
+            all.iter().any(|t| t.contains("final")),
+            "retried stream must be present: {all:?}"
+        );
+        assert_eq!(app.stream_anchor, None, "StreamEnd clears the anchor");
+    }
+
+    /// 二次重试:每次 Retrying 后锚点重新武装,两轮垃圾都被截掉。
+    #[test]
+    fn retrying_twice_truncates_each_failed_attempt() {
+        let mut app = test_app();
+        app.handle_stream_event(delta("junk1"));
+        app.handle_stream_event(StreamEvent::Retrying { attempt: 1 });
+        app.handle_stream_event(delta("junk2"));
+        app.handle_stream_event(StreamEvent::Retrying { attempt: 2 });
+        app.handle_stream_event(delta("final"));
+        app.handle_stream_event(StreamEvent::StreamEnd);
+
+        let all: Vec<&str> = app.lines.iter().map(|l| l.text.as_str()).collect();
+        assert!(
+            all.iter().all(|t| !t.contains("junk")),
+            "both failed attempts must be truncated: {all:?}"
+        );
+        assert!(all.iter().any(|t| t.contains("final")), "{all:?}");
+    }
+
+    /// AppendInto 锚点:流把 Delta 追加进已有的 assistant 行时,回滚只截
+    /// 新增文本,保留行内原有内容。
+    #[test]
+    fn retrying_append_into_existing_line_keeps_prior_text() {
+        let mut app = test_app();
+        // 先完成一个正常的 assistant 气泡(StreamEnd 清锚点)。
+        app.handle_stream_event(delta("kept"));
+        app.handle_stream_event(StreamEvent::StreamEnd);
+        // 下一个流的首个 Delta 追加进同一行(默认样式),然后失败重试。
+        app.handle_stream_event(delta("junk"));
+        app.handle_stream_event(StreamEvent::Retrying { attempt: 1 });
+        app.handle_stream_event(delta("final"));
+
+        let last = app.lines.last().expect("bubble line must exist");
+        assert_eq!(last.text, "keptfinal", "only the junk suffix is removed");
+    }
+
+    /// 工具卡片(非默认样式)夹在中间时:Retrying 不越过锚点截掉工具行
+    /// ——锚点在首个 Delta 处才记录,工具行在锚点之前,天然安全。
+    #[test]
+    fn retrying_does_not_touch_lines_before_the_stream() {
+        let mut app = test_app();
+        app.lines.push(ChatLine {
+            text: "🔧 read_file".into(),
+            style: Style::default().fg(Color::Cyan),
+        });
+        app.handle_stream_event(delta("junk"));
+        app.handle_stream_event(StreamEvent::Retrying { attempt: 1 });
+        app.handle_stream_event(delta("final"));
+
+        assert!(
+            app.lines.iter().any(|l| l.text == "🔧 read_file"),
+            "tool card before the stream must survive: {:?}",
+            app.lines.iter().map(|l| &l.text).collect::<Vec<_>>()
+        );
+        assert!(app.lines.iter().all(|l| !l.text.contains("junk")));
+        assert!(app.lines.iter().any(|l| l.text.contains("final")));
+    }
+
+    /// 无垃圾的边界:流未流出任何 Delta 就失败(锚点为空),Retrying 是
+    /// 无操作,不得误删已有行。
+    #[test]
+    fn retrying_without_anchor_is_noop() {
+        let mut app = test_app();
+        app.lines.push(ChatLine {
+            text: "prior".into(),
+            style: Style::default().fg(Color::Red),
+        });
+        app.handle_stream_event(StreamEvent::Retrying { attempt: 1 });
+        assert_eq!(app.lines.len(), 1);
+        assert_eq!(app.lines[0].text, "prior");
     }
 }

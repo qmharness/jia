@@ -140,6 +140,10 @@ pub enum StreamEvent {
     ContextPressure { tokens: usize, threshold: usize },
     #[serde(rename = "compacting")]
     Compacting,
+    /// S2 · LLM stream failed and is being retried — the frontend should
+    /// roll back the partial assistant bubble streamed by the failed attempt.
+    #[serde(rename = "retrying")]
+    Retrying { attempt: u32 },
 }
 
 impl Role {

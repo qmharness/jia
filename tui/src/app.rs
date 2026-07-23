@@ -67,6 +67,7 @@ pub async fn run_app(
         confirm_selected: 0,
         project_name: String::new(),
         project_id: String::new(),
+        stream_anchor: None,
     };
 
     if has_project {

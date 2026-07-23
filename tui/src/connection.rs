@@ -95,6 +95,11 @@ pub enum StreamEvent {
     },
     ContextPressure,
     Compacting,
+    /// S2: LLM stream failed mid-flight and is being retried — the TUI rolls
+    /// the partial assistant bubble back to the stream-start anchor.
+    Retrying {
+        attempt: u32,
+    },
 }
 
 impl StreamEvent {
@@ -150,6 +155,11 @@ impl StreamEvent {
             }),
             "context_pressure" => Some(StreamEvent::ContextPressure),
             "compacting" => Some(StreamEvent::Compacting),
+            // Unknown/missing attempt is tolerated (default 0) — the TUI only
+            // needs the signal, not the count.
+            "retrying" => Some(StreamEvent::Retrying {
+                attempt: value["attempt"].as_u64().unwrap_or(0) as u32,
+            }),
             _ => None,
         }
     }
@@ -425,6 +435,34 @@ mod tests {
                 assert_eq!(options, Some(vec![]));
             }
             other => panic!("expected UserQuestion with empty options, got {other:?}"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod s2_tests {
+    use super::*;
+
+    /// S2: daemon 的 {"type":"retrying","attempt":N} 必须解析为 Retrying。
+    #[test]
+    fn parse_retrying() {
+        let v: Value = serde_json::json!({
+            "type": "retrying",
+            "attempt": 2
+        });
+        match StreamEvent::from_value(&v) {
+            Some(StreamEvent::Retrying { attempt }) => assert_eq!(attempt, 2),
+            other => panic!("expected Retrying, got {other:?}"),
+        }
+    }
+
+    /// S2 兼容:缺少 attempt 字段时容忍(默认 0),TUI 只需要截断信号。
+    #[test]
+    fn parse_retrying_missing_attempt_tolerated() {
+        let v: Value = serde_json::json!({ "type": "retrying" });
+        match StreamEvent::from_value(&v) {
+            Some(StreamEvent::Retrying { attempt }) => assert_eq!(attempt, 0),
+            other => panic!("expected Retrying, got {other:?}"),
         }
     }
 }

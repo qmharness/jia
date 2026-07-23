@@ -607,6 +607,7 @@ async fn handle_rin_connection(
                                 StreamEvent::ContextPressure { tokens, threshold }
                             }
                             AgentEvent::Compacting => StreamEvent::Compacting,
+                            AgentEvent::Retrying { attempt } => StreamEvent::Retrying { attempt },
                             AgentEvent::Done => StreamEvent::Done,
                             AgentEvent::Error(message) => StreamEvent::Error { message },
                             AgentEvent::InteractionModeChanged { planning } => {
