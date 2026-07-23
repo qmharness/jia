@@ -190,7 +190,7 @@
 └─ 不变量：每轮生成 TurnSnapshot，天盘意图干必须经过格局评估
 ```
 
-天盘是系统的"运行时刻"。它是唯一运行主轮次推断（main_core，通过 `pub(crate)` 封装的 `JiaCore::infer`）的视角。辅助 LLM 调用（aux_core）——vijnana/vasana 蒸馏、li_skill 反思与修订、delegate 子代理、xun_context 压缩——位于天盘之外，属 §9 已登记的 documented exceptions。天盘的每个轮次（turn）对应奇门遁甲中的一个"时辰"——天干转动一宫。
+天盘是系统的"运行时刻"。它是唯一运行主轮次推断（main_core，通过 `pub(crate)` 封装的 `JiaCore::infer`）的视角。辅助 LLM 调用（aux_core）——vijnana/vasana 蒸馏、li_skill 反思与修订、delegate 子代理、xun_context 压缩——位于天盘之外，属 §9 已登记的 documented exceptions；gateway `/chat` 端点是原始 LLM 透传（不经 agent 循环与 GeJu），同为已登记例外。天盘的每个轮次（turn）对应奇门遁甲中的一个"时辰"——天干转动一宫。
 
 #### 人盘 — 权限边界
 
@@ -295,7 +295,7 @@ GeJuResult.execution_mode
     六仪（工具调用）→ 格局评估 → 人盘分发
 ```
 
-甲（LLM）只在通过六仪（工具分类）和格局（安全评估）时才能间接访问。主轮次推断只在天盘循环中运行（main_core）；辅助 LLM 调用点（aux_core：vijnana/vasana 蒸馏、li_skill 反思与修订、delegate 子代理、xun_context 压缩）属 §9 已登记的 documented exceptions。这确保了每个主轮次 LLM 调用都经过安全策略评估。
+甲（LLM）只在通过六仪（工具分类）和格局（安全评估）时才能间接访问。主轮次推断只在天盘循环中运行（main_core）；辅助 LLM 调用点（aux_core：vijnana/vasana 蒸馏、li_skill 反思与修订、delegate 子代理、xun_context 压缩）与 gateway `/chat` 原始透传均属 §9 已登记的 documented exceptions。这确保了每个主轮次 LLM 调用都经过安全策略评估。
 
 ---
 
