@@ -76,6 +76,9 @@ impl WeChatAdapter {
                     );
                     self.context_tokens.clear();
                     self.sync_buf.clear();
+                    // 游标清零同步落盘:旧游标属于已失效会话,重启后从磁盘
+                    // 恢复会拿它去新会话重放/错位(此前只清内存不落盘)。
+                    save_sync_buf(&self.config.account_id, &self.sync_buf);
                     tokio::time::sleep(tokio::time::Duration::from_secs(600)).await;
                 }
                 Err(kind) => {
