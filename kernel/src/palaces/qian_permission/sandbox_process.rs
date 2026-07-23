@@ -210,7 +210,9 @@ fn apply_child_rlimits(mem_limit: u64, fsize_limit: u64, nproc_limit: u64) {
         };
         let ret = unsafe { ::libc::setrlimit(libc::RLIMIT_FSIZE, &lim) };
         if ret != 0 {
-            child_warn("jia-sandbox: setrlimit(RLIMIT_FSIZE) failed; file size limit not enforced\n");
+            child_warn(
+                "jia-sandbox: setrlimit(RLIMIT_FSIZE) failed; file size limit not enforced\n",
+            );
         }
     }
     if nproc_limit > 0 {
@@ -220,7 +222,9 @@ fn apply_child_rlimits(mem_limit: u64, fsize_limit: u64, nproc_limit: u64) {
         };
         let ret = unsafe { ::libc::setrlimit(libc::RLIMIT_NPROC, &lim) };
         if ret != 0 {
-            child_warn("jia-sandbox: setrlimit(RLIMIT_NPROC) failed; process count limit not enforced\n");
+            child_warn(
+                "jia-sandbox: setrlimit(RLIMIT_NPROC) failed; process count limit not enforced\n",
+            );
         }
     }
 }
@@ -246,7 +250,9 @@ fn apply_child_rlimits(mem_limit: u64, fsize_limit: u64, nproc_limit: u64) {
         };
         let ret = unsafe { ::libc::setrlimit(libc::RLIMIT_FSIZE, &lim) };
         if ret != 0 {
-            child_warn("jia-sandbox: setrlimit(RLIMIT_FSIZE) failed; file size limit not enforced\n");
+            child_warn(
+                "jia-sandbox: setrlimit(RLIMIT_FSIZE) failed; file size limit not enforced\n",
+            );
         }
     }
     if nproc_limit > 0 {
@@ -256,7 +262,9 @@ fn apply_child_rlimits(mem_limit: u64, fsize_limit: u64, nproc_limit: u64) {
         };
         let ret = unsafe { ::libc::setrlimit(libc::RLIMIT_NPROC, &lim) };
         if ret != 0 {
-            child_warn("jia-sandbox: setrlimit(RLIMIT_NPROC) failed; process count limit not enforced\n");
+            child_warn(
+                "jia-sandbox: setrlimit(RLIMIT_NPROC) failed; process count limit not enforced\n",
+            );
         }
     }
 }

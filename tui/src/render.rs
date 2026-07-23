@@ -299,7 +299,9 @@ pub fn format_tool_result(
     let geju_str = geju.unwrap_or("");
     let mode_str = execution_mode.unwrap_or("");
 
-    let mut lines = if let Some(err) = error && !err.is_empty() {
+    let mut lines = if let Some(err) = error
+        && !err.is_empty()
+    {
         vec![ChatLine {
             text: format!("  └ ({geju_str} · {mode_str}) — {mode_icon} ERROR: {err}"),
             style: Style::default().fg(Color::Red),
@@ -317,7 +319,10 @@ pub fn format_tool_result(
         } else {
             output.to_string()
         };
-        lines.push(ChatLine { text: preview, style: Style::default() });
+        lines.push(ChatLine {
+            text: preview,
+            style: Style::default(),
+        });
     }
     lines
 }
@@ -329,7 +334,16 @@ fn tool_summary(tool: &str, input: &str) -> String {
         Err(_) => return String::new(),
     };
     // Common fields across tools — try each in priority order
-    for key in &["command", "url", "path", "query", "pattern", "action", "subagent_type", "task"] {
+    for key in &[
+        "command",
+        "url",
+        "path",
+        "query",
+        "pattern",
+        "action",
+        "subagent_type",
+        "task",
+    ] {
         if let Some(val) = v.get(key).and_then(|v| v.as_str()) {
             let val = if val.len() > 80 {
                 format!("{}…", &val[..80])
@@ -347,9 +361,19 @@ pub fn format_tool_call(tool: &str, input: &str) -> ChatLine {
     let display = if tool == "ask_user" {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(input) {
             let q = v.get("question").and_then(|q| q.as_str()).unwrap_or("");
-            let n = v.get("options").and_then(|o| o.as_array()).map(|a| a.len()).unwrap_or(0);
-            if n > 0 { format!("{q} ({n} options)") } else { q.to_string() }
-        } else { String::new() }
+            let n = v
+                .get("options")
+                .and_then(|o| o.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0);
+            if n > 0 {
+                format!("{q} ({n} options)")
+            } else {
+                q.to_string()
+            }
+        } else {
+            String::new()
+        }
     } else {
         // Extract key fields for a meaningful one-line summary
         tool_summary(tool, input)
@@ -359,7 +383,10 @@ pub fn format_tool_call(tool: &str, input: &str) -> ChatLine {
     } else {
         format!("🔧 {tool} — {display}")
     };
-    ChatLine { text, style: Style::default().fg(Color::Yellow) }
+    ChatLine {
+        text,
+        style: Style::default().fg(Color::Yellow),
+    }
 }
 
 /// Build a ChatLine for a confirmation request.

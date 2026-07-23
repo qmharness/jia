@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use serde_json::json;
 
-use kernel::palaces::kun_config::WeChatBotConfig;
 use kernel::palaces::kan_io::{ChannelInput, ChannelSource};
+use kernel::palaces::kun_config::WeChatBotConfig;
 use kernel::types::{Message, Role};
 
 use super::types::{
@@ -254,8 +254,7 @@ impl WeChatAdapter {
         let typing_user = from_user.clone();
         tokio::spawn(async move {
             // Fire typing indicator so the user sees "typing..." in chat
-            send_wechat_typing(&typing_client, &typing_base, &typing_token, &typing_user)
-                .await;
+            send_wechat_typing(&typing_client, &typing_base, &typing_token, &typing_user).await;
             while let Some(reply) = reply_rx.recv().await {
                 match send_wechat_message(
                     &client,

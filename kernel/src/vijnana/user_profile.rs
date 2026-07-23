@@ -3,9 +3,7 @@ use std::sync::Arc;
 use crate::palaces::Palace;
 use crate::palaces::gen_store::Store;
 use crate::stems::Stem;
-use crate::vijnana::alaya::{
-    Seed, SeedContent, SeedNature, SeedSource, SeedStore, SeedTier,
-};
+use crate::vijnana::alaya::{Seed, SeedContent, SeedNature, SeedSource, SeedStore, SeedTier};
 
 /// Manages the user profile — preference seeds that are dissolution-immune and
 /// always injected into the system prompt.
@@ -151,7 +149,10 @@ mod tests {
             "got: {prompt}"
         );
         assert!(prompt.contains("User's Uses: vim"), "got: {prompt}");
-        assert!(prompt.contains("User's Role: backend engineer"), "got: {prompt}");
+        assert!(
+            prompt.contains("User's Role: backend engineer"),
+            "got: {prompt}"
+        );
     }
 
     #[test]

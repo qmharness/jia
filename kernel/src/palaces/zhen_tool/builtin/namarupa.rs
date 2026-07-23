@@ -410,9 +410,7 @@ mod tests {
     use super::*;
     use crate::palaces::Palace;
     use crate::stems::Stem;
-    use crate::vijnana::alaya::{
-        Seed, SeedContent, SeedNature, SeedSource, SeedTier,
-    };
+    use crate::vijnana::alaya::{Seed, SeedContent, SeedNature, SeedSource, SeedTier};
 
     fn temp_store() -> Arc<Store> {
         let dir = tempfile::tempdir().unwrap();

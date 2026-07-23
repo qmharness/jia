@@ -438,7 +438,10 @@ impl HumanPlate {
 
 impl Default for HumanPlate {
     fn default() -> Self {
-        Self::with_state(Arc::new(PermissionMatrix::default()), Arc::new(SessionBus::new()))
+        Self::with_state(
+            Arc::new(PermissionMatrix::default()),
+            Arc::new(SessionBus::new()),
+        )
     }
 }
 

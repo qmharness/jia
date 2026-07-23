@@ -4,7 +4,6 @@ use crate::error::JiaError;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-
 use crate::palaces::Palace;
 use crate::palaces::gen_store::Store;
 use crate::stems::Stem;

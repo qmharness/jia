@@ -6,8 +6,8 @@ use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde_json::Value;
 
 use crate::palaces::zhen_tool::base::BaseTool;
-use crate::stems::action::ExecContext;
 use crate::stems::CeremoniesIntent;
+use crate::stems::action::ExecContext;
 
 pub struct WebSearchTool {
     #[allow(dead_code)]

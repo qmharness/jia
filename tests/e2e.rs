@@ -11,7 +11,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use kernel::palaces::gen_store::Store;
-use kernel::palaces::kun_config::{AppConfig, CognitionSection, ProviderProfile, SandboxMode, SecuritySection};
+use kernel::palaces::kun_config::{
+    AppConfig, CognitionSection, ProviderProfile, SandboxMode, SecuritySection,
+};
 use kernel::palaces::li_skill::SkillRegistry;
 use kernel::palaces::qian_permission::PermissionMatrix;
 use kernel::palaces::zhen_tool::ToolRegistry;
@@ -21,7 +23,7 @@ use kernel::palaces::zhen_tool::builtin::{
 use kernel::palaces::zhong_core::JiaCore;
 use kernel::plates::di_earth::EarthPlate;
 use kernel::plates::ren_human::HumanPlate;
-use kernel::plates::shen_spirit::{completion_check::CompletionChecklist, EventBus, SpiritPlate};
+use kernel::plates::shen_spirit::{EventBus, SpiritPlate, completion_check::CompletionChecklist};
 use kernel::plates::tian_heaven::Agent;
 use kernel::stems::AgentEvent;
 use kernel::types::{Message, Role};
@@ -471,7 +473,9 @@ async fn e2e_post_loop_memory() {
     assert!(events.iter().any(|e| matches!(e, AgentEvent::Done)));
 
     // Run post_loop to persist memory
-    agent.post_loop(store.clone(), &earth.main_core, None, &human).await;
+    agent
+        .post_loop(store.clone(), &earth.main_core, None, &human)
+        .await;
 
     // Verify seeds were persisted
     let seed_store = SeedStore::new(store.clone());

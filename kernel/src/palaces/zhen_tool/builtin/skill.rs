@@ -7,8 +7,8 @@ use serde_json::Value;
 
 use crate::palaces::li_skill::SkillRegistry;
 use crate::palaces::zhen_tool::base::BaseTool;
-use crate::stems::action::ExecContext;
 use crate::stems::CeremoniesIntent;
+use crate::stems::action::ExecContext;
 
 /// A tool that bridges the ToolRegistry and SkillRegistry, allowing the LLM
 /// to invoke skills by name. When called, returns the skill's prompt content.

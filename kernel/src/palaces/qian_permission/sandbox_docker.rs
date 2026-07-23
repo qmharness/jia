@@ -98,12 +98,7 @@ impl ExecutionSandbox for DockerSandbox {
                 .output(),
         )
         .await
-        .map_err(|_| {
-            format!(
-                "Docker sandbox timed out after {}s",
-                self.timeout.as_secs()
-            )
-        })?
+        .map_err(|_| format!("Docker sandbox timed out after {}s", self.timeout.as_secs()))?
         .map_err(|e| format!("Docker sandbox error: {e}"))?;
 
         let exit_code = output.status.code().unwrap_or(-1);

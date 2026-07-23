@@ -24,9 +24,7 @@ impl Store {
         // defer foreign-key checks until commit; we manually cascade below.
         tx.execute("PRAGMA defer_foreign_keys = ON", [])?;
 
-        let mut stmt = tx.prepare(
-            "SELECT id, cwd FROM projects WHERE id = ?1 OR cwd = ?2",
-        )?;
+        let mut stmt = tx.prepare("SELECT id, cwd FROM projects WHERE id = ?1 OR cwd = ?2")?;
         let rows: Vec<(String, String)> = stmt
             .query_map(rusqlite::params![id, cwd], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -218,11 +216,13 @@ mod tests {
         store.ensure_project(id_a, cwd, "Alpha", "", "[]").unwrap();
         store.create_session("sess-1", "title", cwd, id_a).unwrap();
         store
-            .insert_seed(&serde_json::json!({
-                "id": "seed-1", "session_id": "sess-1", "project_id": id_a,
-                "content": {"type": "FreeText", "text": "alpha memory"},
-            })
-            .to_string())
+            .insert_seed(
+                &serde_json::json!({
+                    "id": "seed-1", "session_id": "sess-1", "project_id": id_a,
+                    "content": {"type": "FreeText", "text": "alpha memory"},
+                })
+                .to_string(),
+            )
             .unwrap();
 
         // Simulate re-init generating a new id for the same cwd.
@@ -260,7 +260,9 @@ mod tests {
         let cwd = "/tmp/jia-test-project";
         let id = "proj-id-same";
 
-        store.ensure_project(id, cwd, "First", "desc1", "[]").unwrap();
+        store
+            .ensure_project(id, cwd, "First", "desc1", "[]")
+            .unwrap();
         store.create_session("sess-same", "title", cwd, id).unwrap();
         // Same id + same cwd with changed metadata: must update in place,
         // keep one row, and not lose the session association.
@@ -288,10 +290,14 @@ mod tests {
         let new_cwd = "/tmp/jia-test-new";
 
         store.ensure_project(id, old_cwd, "Old", "", "[]").unwrap();
-        store.create_session("sess-1", "title", old_cwd, id).unwrap();
+        store
+            .create_session("sess-1", "title", old_cwd, id)
+            .unwrap();
 
         // Same project id, different cwd (directory moved/renamed).
-        store.ensure_project(id, new_cwd, "New", "desc", "[]").unwrap();
+        store
+            .ensure_project(id, new_cwd, "New", "desc", "[]")
+            .unwrap();
 
         let proj = store
             .get_project(id)
@@ -317,13 +323,23 @@ mod tests {
         let old_cwd = "/tmp/jia-test-old";
         let new_cwd = "/tmp/jia-test-new";
 
-        store.ensure_project(canonical_id, old_cwd, "Canonical", "", "[]").unwrap();
-        store.ensure_project(stale_id, new_cwd, "Stale", "", "[]").unwrap();
-        store.create_session("sess-old", "title", old_cwd, canonical_id).unwrap();
-        store.create_session("sess-stale", "title", new_cwd, stale_id).unwrap();
+        store
+            .ensure_project(canonical_id, old_cwd, "Canonical", "", "[]")
+            .unwrap();
+        store
+            .ensure_project(stale_id, new_cwd, "Stale", "", "[]")
+            .unwrap();
+        store
+            .create_session("sess-old", "title", old_cwd, canonical_id)
+            .unwrap();
+        store
+            .create_session("sess-stale", "title", new_cwd, stale_id)
+            .unwrap();
 
         // Directory moved to a cwd already occupied by a stale project row.
-        store.ensure_project(canonical_id, new_cwd, "Canonical", "", "[]").unwrap();
+        store
+            .ensure_project(canonical_id, new_cwd, "Canonical", "", "[]")
+            .unwrap();
 
         let proj = store
             .get_project(canonical_id)

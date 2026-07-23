@@ -11,8 +11,8 @@ use crate::palaces::zhen_tool::base::BaseTool;
 
 use crate::palaces::zhen_tool::registry::ToolRegistry;
 use crate::palaces::zhong_core::JiaCore;
-use crate::stems::action::ExecContext;
 use crate::stems::CeremoniesIntent;
+use crate::stems::action::ExecContext;
 use crate::stems::parse_tool_calls;
 use crate::types::{Message, Role};
 
@@ -274,11 +274,7 @@ async fn run_subagent_loop(
         }
         tracing::debug!(turn = turn + 1, max = max_turns, "Sub-agent turn");
 
-        let mut stream = core.infer(
-            messages.clone(),
-            None,
-            Some(exec_ctx.cancel_token.clone()),
-        );
+        let mut stream = core.infer(messages.clone(), None, Some(exec_ctx.cancel_token.clone()));
         let mut full_response = String::new();
         while let Some(chunk) = stream.next().await {
             match chunk {
@@ -691,9 +687,8 @@ mod tests {
             _messages: Vec<Message>,
             _tools: Option<&[crate::stems::action::ToolSchema]>,
             _cancel_token: Option<tokio_util::sync::CancellationToken>,
-        ) -> std::pin::Pin<
-            Box<dyn futures::Stream<Item = Result<StreamChunk, ProviderError>> + Send>,
-        > {
+        ) -> std::pin::Pin<Box<dyn futures::Stream<Item = Result<StreamChunk, ProviderError>> + Send>>
+        {
             let n = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
             if n == self.cancel_on_call {
                 self.token.cancel();
@@ -720,7 +715,12 @@ mod tests {
             token: token.clone(),
         });
         let router = crate::palaces::zhong_core::ProviderRouter::new(vec![(0u32, provider)]);
-        let core = Arc::new(JiaCore::with_router(router, "mock".into(), "mock".into(), 8192));
+        let core = Arc::new(JiaCore::with_router(
+            router,
+            "mock".into(),
+            "mock".into(),
+            8192,
+        ));
 
         let tool = DelegateTool::new(core, test_subtools(), test_store(), test_sessions());
         let mut ctx = test_ctx();

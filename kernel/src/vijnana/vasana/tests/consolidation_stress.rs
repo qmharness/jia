@@ -273,7 +273,10 @@ mod integration_tests {
                 tool_input: serde_json::json!({"command": "cargo test 2>&1"}),
                 tool_output: "running 120 tests\nall passed".into(),
                 tool_error: None,
-                timestamp: base_ts, certainty: None, active_seed_ids: vec![], tool_count: 1,
+                timestamp: base_ts,
+                certainty: None,
+                active_seed_ids: vec![],
+                tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 2,
@@ -285,7 +288,10 @@ mod integration_tests {
                 tool_input: serde_json::json!({"path": "src/config.rs", "old_string": "port: 3000", "new_string": "port: 8080"}),
                 tool_output: "Replaced 1 occurrence in src/config.rs".into(),
                 tool_error: None,
-                timestamp: base_ts + 1, certainty: None, active_seed_ids: vec![], tool_count: 1,
+                timestamp: base_ts + 1,
+                certainty: None,
+                active_seed_ids: vec![],
+                tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 3,
@@ -298,7 +304,10 @@ mod integration_tests {
                 tool_output:
                     "Compiling jia v0.2.0\nFinished release [optimized] target(s) in 12.34s".into(),
                 tool_error: None,
-                timestamp: base_ts + 2, certainty: None, active_seed_ids: vec![], tool_count: 1,
+                timestamp: base_ts + 2,
+                certainty: None,
+                active_seed_ids: vec![],
+                tool_count: 1,
             },
         ]
     }
@@ -929,7 +938,10 @@ mod integration_tests {
                     "[package]\nname = \"jia\"\ndependencies:\n  tokio = \"1\"\n  serde = \"1\""
                         .into(),
                 tool_error: None,
-                timestamp: base_ts, certainty: None, active_seed_ids: vec![], tool_count: 1,
+                timestamp: base_ts,
+                certainty: None,
+                active_seed_ids: vec![],
+                tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 2,
@@ -943,7 +955,10 @@ mod integration_tests {
                 tool_error: Some(
                     "error[E0432]: unresolved import `serde_json`\n  --> src/main.rs:3:5".into(),
                 ),
-                timestamp: base_ts + 1, certainty: None, active_seed_ids: vec![], tool_count: 1,
+                timestamp: base_ts + 1,
+                certainty: None,
+                active_seed_ids: vec![],
+                tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 3,
@@ -955,7 +970,10 @@ mod integration_tests {
                 tool_input: serde_json::json!({"path": "Cargo.toml", "old_string": "serde = \"1\"", "new_string": "serde = { version = \"1\", features = [\"derive\"] }\nserde_json = \"1\""}),
                 tool_output: "Replaced 1 occurrence in Cargo.toml".into(),
                 tool_error: None,
-                timestamp: base_ts + 2, certainty: None, active_seed_ids: vec![], tool_count: 1,
+                timestamp: base_ts + 2,
+                certainty: None,
+                active_seed_ids: vec![],
+                tool_count: 1,
             },
             TurnSnapshot {
                 turn_number: 4,
@@ -967,7 +985,10 @@ mod integration_tests {
                 tool_input: serde_json::json!({"command": "cargo build 2>&1"}),
                 tool_output: "Compiling jia v0.1.0\nFinished dev target(s) in 2.34s".into(),
                 tool_error: None,
-                timestamp: base_ts + 3, certainty: None, active_seed_ids: vec![], tool_count: 1,
+                timestamp: base_ts + 3,
+                certainty: None,
+                active_seed_ids: vec![],
+                tool_count: 1,
             },
         ];
 

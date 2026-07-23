@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use serde::Deserialize;
 
-use kernel::palaces::kun_config::TelegramBotConfig;
 use kernel::palaces::kan_io::{ChannelInput, ChannelSource};
+use kernel::palaces::kun_config::TelegramBotConfig;
 use kernel::types::{Message, Role};
 
 /// Raw Telegram API types (minimal, only what we need)

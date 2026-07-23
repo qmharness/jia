@@ -308,9 +308,9 @@ pub use webhooks::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::palaces::kun_config::CognitionSection;
     use crate::palaces::gen_store::Store;
     use crate::palaces::kan_io::ChannelManager;
+    use crate::palaces::kun_config::CognitionSection;
     use crate::palaces::kun_config::{AppConfig, BotsSection, ConfigLoader, SecuritySection};
     use crate::palaces::li_skill::Skill;
     use crate::palaces::li_skill::SkillRegistry;

@@ -58,7 +58,10 @@ fn compile_trajectory_collects_errors() {
             tool_input: serde_json::json!({"skill": "code-review"}),
             tool_output: "ok".into(),
             tool_error: None,
-            timestamp: 1, certainty: None, active_seed_ids: vec![], tool_count: 1,
+            timestamp: 1,
+            certainty: None,
+            active_seed_ids: vec![],
+            tool_count: 1,
         },
         TurnSnapshot {
             turn_number: 2,
@@ -70,7 +73,10 @@ fn compile_trajectory_collects_errors() {
             tool_input: serde_json::json!({"command": "rm -rf /"}),
             tool_output: "".into(),
             tool_error: Some("permission denied".into()),
-            timestamp: 2, certainty: None, active_seed_ids: vec![], tool_count: 1,
+            timestamp: 2,
+            certainty: None,
+            active_seed_ids: vec![],
+            tool_count: 1,
         },
     ];
     let trajectory =
@@ -95,7 +101,10 @@ fn compile_trajectory_no_errors_when_skill_not_invoked() {
         tool_input: serde_json::json!({"command": "ls"}),
         tool_output: "ok".into(),
         tool_error: None,
-        timestamp: 1, certainty: None, active_seed_ids: vec![], tool_count: 1,
+        timestamp: 1,
+        certainty: None,
+        active_seed_ids: vec![],
+        tool_count: 1,
     }];
     let trajectory =
         EvolutionEngine::compile_trajectory(&skill, &snapshots, &["other-skill".to_string()], &[]);
@@ -144,7 +153,10 @@ fn compile_trajectory_excludes_errors_before_first_invocation() {
             tool_input: serde_json::json!({"command": "ls"}),
             tool_output: "ok".into(),
             tool_error: Some("EACCES".into()),
-            timestamp: 1, certainty: None, active_seed_ids: vec![], tool_count: 1,
+            timestamp: 1,
+            certainty: None,
+            active_seed_ids: vec![],
+            tool_count: 1,
         },
         TurnSnapshot {
             turn_number: 2,
@@ -156,7 +168,10 @@ fn compile_trajectory_excludes_errors_before_first_invocation() {
             tool_input: serde_json::json!({"skill": "code-review"}),
             tool_output: "ok".into(),
             tool_error: None,
-            timestamp: 2, certainty: None, active_seed_ids: vec![], tool_count: 1,
+            timestamp: 2,
+            certainty: None,
+            active_seed_ids: vec![],
+            tool_count: 1,
         },
         TurnSnapshot {
             turn_number: 3,
@@ -168,7 +183,10 @@ fn compile_trajectory_excludes_errors_before_first_invocation() {
             tool_input: serde_json::json!({"command": "rm -rf /"}),
             tool_output: "".into(),
             tool_error: Some("blocked".into()),
-            timestamp: 3, certainty: None, active_seed_ids: vec![], tool_count: 1,
+            timestamp: 3,
+            certainty: None,
+            active_seed_ids: vec![],
+            tool_count: 1,
         },
     ];
     let trajectory =
@@ -192,7 +210,10 @@ fn compile_trajectory_multiple_geju_types() {
             tool_input: serde_json::json!({"skill": "safety"}),
             tool_output: "ok".into(),
             tool_error: None,
-            timestamp: 1, certainty: None, active_seed_ids: vec![], tool_count: 1,
+            timestamp: 1,
+            certainty: None,
+            active_seed_ids: vec![],
+            tool_count: 1,
         },
         TurnSnapshot {
             turn_number: 2,
@@ -204,7 +225,10 @@ fn compile_trajectory_multiple_geju_types() {
             tool_input: serde_json::json!({"command": "unsafe"}),
             tool_output: "".into(),
             tool_error: None,
-            timestamp: 2, certainty: None, active_seed_ids: vec![], tool_count: 1,
+            timestamp: 2,
+            certainty: None,
+            active_seed_ids: vec![],
+            tool_count: 1,
         },
         TurnSnapshot {
             turn_number: 3,
@@ -216,7 +240,10 @@ fn compile_trajectory_multiple_geju_types() {
             tool_input: serde_json::json!({"path": "/etc"}),
             tool_output: "".into(),
             tool_error: Some("forbidden".into()),
-            timestamp: 3, certainty: None, active_seed_ids: vec![], tool_count: 1,
+            timestamp: 3,
+            certainty: None,
+            active_seed_ids: vec![],
+            tool_count: 1,
         },
     ];
     let trajectory =
@@ -239,7 +266,10 @@ fn compile_trajectory_no_geju_for_direct_mode() {
             tool_input: serde_json::json!({"skill": "simple"}),
             tool_output: "ok".into(),
             tool_error: None,
-            timestamp: 1, certainty: None, active_seed_ids: vec![], tool_count: 1,
+            timestamp: 1,
+            certainty: None,
+            active_seed_ids: vec![],
+            tool_count: 1,
         },
         TurnSnapshot {
             turn_number: 2,
@@ -251,7 +281,10 @@ fn compile_trajectory_no_geju_for_direct_mode() {
             tool_input: serde_json::json!({"command": "ls"}),
             tool_output: "ok".into(),
             tool_error: None,
-            timestamp: 2, certainty: None, active_seed_ids: vec![], tool_count: 1,
+            timestamp: 2,
+            certainty: None,
+            active_seed_ids: vec![],
+            tool_count: 1,
         },
     ];
     let trajectory =

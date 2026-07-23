@@ -529,7 +529,8 @@ impl App {
             StreamEvent::Delta { content } => {
                 // OpenAI-compatible providers stream tool_call JSON as Delta text.
                 // Skip fragments that look like raw tool_call JSON.
-                let is_tool_json = content.contains("\"name\":") || content.contains("\"function\":");
+                let is_tool_json =
+                    content.contains("\"name\":") || content.contains("\"function\":");
                 if !is_tool_json {
                     // Skip whitespace-only deltas when last line is blank or a
                     // non-assistant line (user message / tool card) — prevents
@@ -537,7 +538,8 @@ impl App {
                     let whitespace_only = content.chars().all(|c| c.is_whitespace());
                     let last = self.lines.last();
                     let last_blank = last.map(|l| l.text.is_empty()).unwrap_or(true);
-                    let last_non_assistant = last.map(|l| l.style != Style::default()).unwrap_or(false);
+                    let last_non_assistant =
+                        last.map(|l| l.style != Style::default()).unwrap_or(false);
                     let skip = whitespace_only && (last_blank || last_non_assistant);
                     if !skip {
                         // Append to last line if it's an assistant (default style) line
@@ -946,7 +948,10 @@ mod p1_4_tests {
                 KeyModifiers::NONE,
             )));
         }
-        app.dispatch_event(Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)));
+        app.dispatch_event(Event::Key(KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::NONE,
+        )));
         assert_eq!(
             app.composer.text(),
             "hi",

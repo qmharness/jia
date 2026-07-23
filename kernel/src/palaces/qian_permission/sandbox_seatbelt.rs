@@ -186,10 +186,7 @@ mod tests {
         assert_eq!(escape_sb_string("/plain/path"), "/plain/path");
         assert_eq!(escape_sb_string("/a\"b"), "/a\\\"b");
         assert_eq!(escape_sb_string("/a\\b"), "/a\\\\b");
-        assert_eq!(
-            escape_sb_string("/q\"\\\""),
-            "/q\\\"\\\\\\\""
-        );
+        assert_eq!(escape_sb_string("/q\"\\\""), "/q\\\"\\\\\\\"");
     }
 
     #[test]

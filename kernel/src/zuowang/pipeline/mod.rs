@@ -454,9 +454,7 @@ impl VasanaScheduler {
 
         // 2. 层级预算（数量淘汰——Handoff 保护已在 step 1 中修复对齐）
         // SiMen (死门) gate — skip tier_budget enforcement when closed
-        if human_plate.gate_is_open(
-            crate::plates::ren_human::HumanGate::SiMen,
-        ) {
+        if human_plate.gate_is_open(crate::plates::ren_human::HumanGate::SiMen) {
             let budget = store.enforce_tier_budgets()?;
             report.budget = Some(budget);
         } else {
