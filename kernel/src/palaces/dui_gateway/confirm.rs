@@ -17,8 +17,14 @@ pub async fn handle_confirm(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ConfirmBody>,
 ) -> Json<serde_json::Value> {
+    // P2-1 收口:pending 表唯一来源是人盘 SessionBus(经 earth),AppState
+    // 不再持有重复句柄。
+    let Some(earth) = &state.earth else {
+        return Json(serde_json::json!({"error": "Agent not initialized"}));
+    };
     let pending = {
-        let mut map = state
+        let mut map = earth
+            .session_bus
             .pending_confirmations
             .lock()
             .unwrap_or_else(|e| e.into_inner());
@@ -62,8 +68,12 @@ pub async fn handle_answer(
     State(state): State<Arc<AppState>>,
     Json(body): Json<AnswerBody>,
 ) -> Json<serde_json::Value> {
+    let Some(earth) = &state.earth else {
+        return Json(serde_json::json!({"error": "Agent not initialized"}));
+    };
     let pending = {
-        let mut map = state
+        let mut map = earth
+            .session_bus
             .pending_questions
             .lock()
             .unwrap_or_else(|e| e.into_inner());

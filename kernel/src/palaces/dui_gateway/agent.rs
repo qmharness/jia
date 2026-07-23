@@ -440,8 +440,6 @@ mod tests {
             default_aux_model_provider: None,
             system_prompt: "test".into(),
             earth: Some(Arc::new(earth)),
-            pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
-            pending_questions: Arc::new(Mutex::new(HashMap::new())),
             api_key: None,
             rate_limiter: Arc::new(RateLimiter::new(0)),
             session_tokens: Arc::new(SessionTokens::new()),

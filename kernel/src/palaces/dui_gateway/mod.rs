@@ -108,8 +108,6 @@ pub struct AppState {
     pub default_aux_model_provider: Option<String>,
     pub system_prompt: String,
     pub earth: Option<Arc<EarthPlate>>,
-    pub pending_confirmations: Arc<Mutex<HashMap<String, PendingConfirmation>>>,
-    pub pending_questions: Arc<Mutex<HashMap<String, PendingQuestion>>>,
     pub api_key: Option<String>,
     pub rate_limiter: Arc<RateLimiter>,
     pub session_tokens: Arc<SessionTokens>,
@@ -237,8 +235,6 @@ pub fn create_app_with_earth(
         .app_config
         .default_main_provider_name()
         .to_string();
-    let pending_confirmations = earth.session_bus.pending_confirmations.clone();
-    let pending_questions = earth.session_bus.pending_questions.clone();
     let api_key = earth.config.app_config.security.api_key.clone();
     let rate_limiter = Arc::new(RateLimiter::new(
         earth.config.app_config.security.rate_limit_per_minute,
@@ -251,8 +247,6 @@ pub fn create_app_with_earth(
         default_aux_model_provider,
         system_prompt,
         earth: Some(earth),
-        pending_confirmations,
-        pending_questions,
         api_key,
         rate_limiter,
         session_tokens,
@@ -440,8 +434,6 @@ mod tests {
             default_aux_model_provider: None,
             system_prompt: "test".into(),
             earth: Some(Arc::new(earth)),
-            pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
-            pending_questions: Arc::new(Mutex::new(HashMap::new())),
             api_key: None,
             rate_limiter: Arc::new(RateLimiter::new(30)),
             session_tokens: Arc::new(SessionTokens::new()),
@@ -492,8 +484,6 @@ mod tests {
             default_aux_model_provider: None,
             system_prompt: String::new(),
             earth: None,
-            pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
-            pending_questions: Arc::new(Mutex::new(HashMap::new())),
             api_key: None,
             rate_limiter: Arc::new(RateLimiter::new(30)),
             session_tokens: Arc::new(SessionTokens::new()),
