@@ -1,6 +1,7 @@
 -- 002_alters — 增量迁移(逐条独立容错执行:ALTER 列已存在时失败无害,
--- CREATE 均带 IF NOT EXISTS;与原内联 `let _ = conn.execute(...)` 语义一致。
--- 执行方:gen_store/mod.rs 按 ';' 切分逐条 execute,顺序即迁移顺序。
+-- CREATE 均带 IF NOT EXISTS),与原内联 let _ = conn.execute(...) 语义一致。
+-- 执行方:gen_store/mod.rs 按分号切分逐条 execute,顺序即迁移顺序。
+-- 注意:本文件的注释里不得出现分号(会破坏切分边界)。
 
 -- Migrate: remove old tool_events_json column (now merged into messages_json)
 ALTER TABLE sessions DROP COLUMN tool_events_json;
