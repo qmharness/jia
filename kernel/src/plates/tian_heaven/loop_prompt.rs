@@ -1,6 +1,6 @@
 //! Prompt-building: ren prompt, system prompt, and todo block.
 
-use crate::palaces::zhen_tool::builtin::task::TaskStatus;
+use crate::palaces::zhen_tool::builtin::exec::task::TaskStatus;
 use crate::palaces::zhong_core::JiaCore;
 
 impl super::Agent {
@@ -68,7 +68,7 @@ After receiving tool results, continue reasoning to help the user.";
             Ok(t) => t,
             Err(_) => return String::new(),
         };
-        let active: Vec<crate::palaces::zhen_tool::builtin::task::Task> = todos
+        let active: Vec<crate::palaces::zhen_tool::builtin::exec::task::Task> = todos
             .into_iter()
             .filter(|t| matches!(t.status, TaskStatus::Pending | TaskStatus::InProgress))
             .collect();

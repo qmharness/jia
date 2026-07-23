@@ -481,9 +481,9 @@ mod tests {
     use crate::palaces::li_skill::SkillRegistry;
     use crate::palaces::qian_permission::PermissionMatrix;
     use crate::palaces::zhen_tool::ToolRegistry;
-    use crate::palaces::zhen_tool::builtin::{
-        read_file::ReadFileTool, shell::ShellTool, write_file::WriteFileTool,
-    };
+    use crate::palaces::zhen_tool::builtin::exec::shell::ShellTool;
+    use crate::palaces::zhen_tool::builtin::fs::read_file::ReadFileTool;
+    use crate::palaces::zhen_tool::builtin::fs::write_file::WriteFileTool;
     use crate::palaces::zhong_core::JiaCore;
     use crate::plates::di_earth::EarthPlate;
     use crate::plates::shen_spirit::SpiritPlate;
@@ -547,7 +547,7 @@ mod tests {
             cron: crate::palaces::zhen_tool::builtin::cron::CronStore::new(
                 tmp.to_path_buf().join("cron"),
             ),
-            task_store: crate::palaces::zhen_tool::builtin::task::TaskStore::new(),
+            task_store: crate::palaces::zhen_tool::builtin::exec::task::TaskStore::new(),
             store_async: crate::palaces::gen_store::async_store::StoreAsync::new(store.clone()),
             store,
             spirit: Arc::new(SpiritPlate::new()),

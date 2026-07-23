@@ -511,8 +511,8 @@ mod tests {
 
     fn test_subtools() -> Arc<ToolRegistry> {
         let mut reg = ToolRegistry::new();
-        reg.register(Arc::new(builtin::read_file::ReadFileTool::new()));
-        reg.register(Arc::new(builtin::grep::GrepTool::new()));
+        reg.register(Arc::new(builtin::fs::read_file::ReadFileTool::new()));
+        reg.register(Arc::new(builtin::fs::grep::GrepTool::new()));
         Arc::new(reg)
     }
 

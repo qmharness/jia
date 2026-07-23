@@ -159,7 +159,7 @@ mod tests {
             .execute(
                 serde_json::json!({
                     "pattern": "*.rs",
-                    "path": "src/palaces/zhen_tool/builtin"
+                    "path": "src/palaces/zhen_tool/builtin/fs"
                 }),
                 &ctx,
             )

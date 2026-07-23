@@ -10,37 +10,39 @@ use crate::palaces::li_skill::SkillRegistry;
 use crate::palaces::li_skill::loader::SkillLoader;
 use crate::palaces::li_skill::spawn_skill_watcher;
 use crate::palaces::qian_permission::PermissionMatrix;
-use crate::palaces::zhen_tool::builtin::browser_click::BrowserClickTool;
-use crate::palaces::zhen_tool::builtin::browser_console::BrowserConsoleTool;
-use crate::palaces::zhen_tool::builtin::browser_dialog::BrowserDialogTool;
-use crate::palaces::zhen_tool::builtin::browser_navigate::BrowserNavigateTool;
-use crate::palaces::zhen_tool::builtin::browser_press::BrowserPressKeyTool;
-use crate::palaces::zhen_tool::builtin::browser_screenshot::BrowserScreenshotTool;
-use crate::palaces::zhen_tool::builtin::browser_scroll::BrowserScrollTool;
-use crate::palaces::zhen_tool::builtin::browser_snapshot::BrowserSnapshotTool;
-use crate::palaces::zhen_tool::builtin::browser_type::BrowserTypeTool;
-use crate::palaces::zhen_tool::builtin::computer_use::ComputerUseTool;
+use crate::palaces::zhen_tool::builtin::browser::browser_click::BrowserClickTool;
+use crate::palaces::zhen_tool::builtin::browser::browser_console::BrowserConsoleTool;
+use crate::palaces::zhen_tool::builtin::browser::browser_dialog::BrowserDialogTool;
+use crate::palaces::zhen_tool::builtin::browser::browser_navigate::BrowserNavigateTool;
+use crate::palaces::zhen_tool::builtin::browser::browser_press::BrowserPressKeyTool;
+use crate::palaces::zhen_tool::builtin::browser::browser_screenshot::BrowserScreenshotTool;
+use crate::palaces::zhen_tool::builtin::browser::browser_scroll::BrowserScrollTool;
+use crate::palaces::zhen_tool::builtin::browser::browser_snapshot::BrowserSnapshotTool;
+use crate::palaces::zhen_tool::builtin::browser::browser_type::BrowserTypeTool;
+use crate::palaces::zhen_tool::builtin::browser::web_execute_js::WebExecuteJsTool;
+use crate::palaces::zhen_tool::builtin::browser::web_fetch::WebFetchTool;
+use crate::palaces::zhen_tool::builtin::computer::computer_use::ComputerUseTool;
 #[cfg(feature = "agent-tool")]
 use crate::palaces::zhen_tool::builtin::delegate::SendMessageTool;
-use crate::palaces::zhen_tool::builtin::glob::GlobTool;
-use crate::palaces::zhen_tool::builtin::grep::GrepTool;
-use crate::palaces::zhen_tool::builtin::lsp::LspTool;
-use crate::palaces::zhen_tool::builtin::patch_file::EditTool;
+use crate::palaces::zhen_tool::builtin::exec::lsp::LspTool;
+use crate::palaces::zhen_tool::builtin::exec::shell::ShellTool;
+use crate::palaces::zhen_tool::builtin::exec::task::{TaskStore, TaskTool};
+use crate::palaces::zhen_tool::builtin::exec::worktree::{EnterWorktreeTool, ExitWorktreeTool};
+use crate::palaces::zhen_tool::builtin::fs::glob::GlobTool;
+use crate::palaces::zhen_tool::builtin::fs::grep::GrepTool;
+use crate::palaces::zhen_tool::builtin::fs::patch_file::EditTool;
+use crate::palaces::zhen_tool::builtin::fs::read_file::ReadFileTool;
+use crate::palaces::zhen_tool::builtin::fs::scratchpad::{ScratchpadReadTool, ScratchpadWriteTool};
+use crate::palaces::zhen_tool::builtin::fs::write_file::WriteFileTool;
 use crate::palaces::zhen_tool::builtin::plan_mode::{EnterPlanModeTool, ExitPlanModeTool};
-use crate::palaces::zhen_tool::builtin::read_file::ReadFileTool;
-use crate::palaces::zhen_tool::builtin::scratchpad::{ScratchpadReadTool, ScratchpadWriteTool};
-use crate::palaces::zhen_tool::builtin::shell::ShellTool;
 use crate::palaces::zhen_tool::builtin::skill::SkillTool;
-use crate::palaces::zhen_tool::builtin::task::{TaskStore, TaskTool};
-use crate::palaces::zhen_tool::builtin::web_execute_js::WebExecuteJsTool;
-use crate::palaces::zhen_tool::builtin::web_fetch::WebFetchTool;
-use crate::palaces::zhen_tool::builtin::worktree::{EnterWorktreeTool, ExitWorktreeTool};
-use crate::palaces::zhen_tool::builtin::write_file::WriteFileTool;
 use crate::palaces::zhong_core::{JiaCore, LlmProvider};
 use crate::stems::action::ExecContext;
 
 use crate::palaces::zhen_tool::ToolRegistry;
 use crate::palaces::zhen_tool::builtin::ask_user::AskUserQuestionTool;
+#[cfg(feature = "web-search")]
+use crate::palaces::zhen_tool::builtin::browser::web_search::WebSearchTool;
 use crate::palaces::zhen_tool::builtin::cron::CronStore;
 #[cfg(feature = "cron")]
 use crate::palaces::zhen_tool::builtin::cron::CronTool;
@@ -48,10 +50,8 @@ use crate::palaces::zhen_tool::builtin::cron_runner;
 #[cfg(feature = "agent-tool")]
 use crate::palaces::zhen_tool::builtin::delegate::{DelegateTool, SubagentSession, SubagentType};
 #[cfg(feature = "git")]
-use crate::palaces::zhen_tool::builtin::git::GitTool;
+use crate::palaces::zhen_tool::builtin::exec::git::GitTool;
 use crate::palaces::zhen_tool::builtin::namarupa::NamaRupaTool;
-#[cfg(feature = "web-search")]
-use crate::palaces::zhen_tool::builtin::web_search::WebSearchTool;
 #[cfg(feature = "mcp")]
 use crate::palaces::zhen_tool::mcp::McpManager;
 #[cfg(feature = "wasm-plugin")]

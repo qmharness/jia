@@ -228,8 +228,7 @@ fn save_offset_to(path: &std::path::Path, last_update_id: u64) {
     let payload = serde_json::json!({ "last_update_id": last_update_id });
     // 原子写:temp + rename,避免写一半崩溃留下损坏文件(会回退 None→重投)。
     let tmp = path.with_extension("tmp");
-    if std::fs::write(&tmp, payload.to_string()).is_ok() && std::fs::rename(&tmp, path).is_ok()
-    {
+    if std::fs::write(&tmp, payload.to_string()).is_ok() && std::fs::rename(&tmp, path).is_ok() {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

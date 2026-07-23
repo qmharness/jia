@@ -310,7 +310,7 @@ mod tests {
     use crate::palaces::li_skill::SkillRegistry;
     use crate::palaces::qian_permission::PermissionMatrix;
     use crate::palaces::zhen_tool::builtin::cron::CronStore;
-    use crate::palaces::zhen_tool::builtin::task::TaskStore;
+    use crate::palaces::zhen_tool::builtin::exec::task::TaskStore;
     use crate::palaces::zhen_tool::registry::ToolRegistry;
     use crate::plates::shen_spirit::SpiritPlate;
     use crate::plates::shen_spirit::completion_check::CompletionChecklist;

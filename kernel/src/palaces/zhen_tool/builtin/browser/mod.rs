@@ -1,0 +1,12 @@
+pub mod browser_click;
+pub mod browser_console;
+pub mod browser_dialog;
+pub mod browser_navigate;
+pub mod browser_press;
+pub mod browser_screenshot;
+pub mod browser_scroll;
+pub mod browser_snapshot;
+pub mod browser_type;
+pub mod web_execute_js;
+pub mod web_fetch;
+pub mod web_search;

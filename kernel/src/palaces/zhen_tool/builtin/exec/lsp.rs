@@ -591,7 +591,7 @@ mod tests {
             .execute(
                 json!({
                     "operation": "hover",
-                    "file": "src/palaces/zhen_tool/builtin/grep.rs",
+                    "file": "src/palaces/zhen_tool/builtin/fs/grep.rs",
                     "line": 0,
                     "character": 0
                 }),
