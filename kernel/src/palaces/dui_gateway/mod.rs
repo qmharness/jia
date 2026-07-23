@@ -21,8 +21,6 @@ pub mod rin;
 
 use crate::palaces::kun_config::ProviderProfile;
 use crate::plates::di_earth::EarthPlate;
-use crate::plates::ren_human::PendingConfirmation;
-use crate::plates::ren_human::PendingQuestion;
 use crate::telemetry::metrics::JIA_ACTIVE_SESSIONS;
 
 /// Session metadata tracked alongside the cancellation token.

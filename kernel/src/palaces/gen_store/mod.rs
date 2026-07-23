@@ -76,6 +76,13 @@ impl Store {
             conn.execute_batch(INIT_SQL)
                 .expect("Failed to create tables");
             for stmt in ALTERS_SQL.split(';') {
+                // 去掉注释行再判空/执行——注释里的分号不会撕碎语句
+                // (002 文件头虽禁分号,此处防御未来编辑者)。
+                let stmt: String = stmt
+                    .lines()
+                    .filter(|l| !l.trim_start().starts_with("--"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
                 let stmt = stmt.trim();
                 if !stmt.is_empty() {
                     let _ = conn.execute(stmt, []);
