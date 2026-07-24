@@ -7,6 +7,24 @@ use kernel::palaces::kun_config::AppConfig;
 // jia crate removed
 
 pub fn spawn_daemon(config_path: Option<PathBuf>, host: Option<String>, port: Option<u16>) {
+    // Refuse to double-start: a live daemon already holds the pid file.
+    // Spawning a second would delete the running daemon's rin.sock and then
+    // die on TCP bind, leaving a dead socket (TUI "Connection refused").
+    let pid_path = kernel::palaces::kun_config::pid_file_path();
+    if let Ok(existing) = std::fs::read_to_string(&pid_path)
+        && let Ok(pid) = existing.trim().parse::<u32>()
+    {
+        #[cfg(unix)]
+        // SAFETY: kill(pid, 0) sends no signal; it only probes liveness.
+        let alive = unsafe { libc::kill(pid as i32, 0) } == 0;
+        #[cfg(not(unix))]
+        let alive = true;
+        if alive {
+            println!("jia gateway is already running (PID {pid})");
+            return;
+        }
+    }
+
     let exe = std::env::current_exe().unwrap_or_else(|_| {
         eprintln!("Cannot determine binary path");
         std::process::exit(1);
@@ -384,32 +402,45 @@ pub async fn run_start(
 
     // Write PID file atomically — OpenOptions::create_new fails if file exists,
     // preventing two daemons from racing on the same PID file.
+    // If a LIVE daemon already holds it, abort BEFORE touching rin.sock:
+    // proceeding would delete the running daemon's socket path and then die
+    // on TCP bind, leaving a dead socket behind (double-start race).
     let pid = std::process::id();
     let pid_file = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(&pid_path)
-        .or_else(|_| {
+        .or_else(|e| {
             // File exists — check if the process is still alive
             if let Ok(existing) = std::fs::read_to_string(&pid_path)
-                && let Ok(pid) = existing.trim().parse::<u32>()
+                && let Ok(existing_pid) = existing.trim().parse::<u32>()
             {
                 // kill(pid, 0) sends no signal — it only probes liveness:
                 // return 0 = process exists (alive), -1/ESRCH = no such process.
-                let alive = unsafe { libc::kill(pid as i32, 0) } == 0;
-                if !alive {
-                    let _ = std::fs::remove_file(&pid_path);
+                let alive = unsafe { libc::kill(existing_pid as i32, 0) } == 0;
+                if alive {
+                    eprintln!(
+                        "jia gateway is already running (PID {existing_pid}); refusing to start a second daemon"
+                    );
+                    std::process::exit(1);
                 }
+                let _ = std::fs::remove_file(&pid_path);
             }
             std::fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
                 .open(&pid_path)
+                .map_err(|_| e)
         });
-    if let Ok(mut f) = pid_file {
-        let pid_str = format!("{}\n", pid);
-        let _ = std::io::Write::write_all(&mut f, pid_str.as_bytes());
-    }
+    let mut pid_file = match pid_file {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("Failed to create pid file {}: {e}", pid_path.display());
+            std::process::exit(1);
+        }
+    };
+    let pid_str = format!("{}\n", pid);
+    let _ = std::io::Write::write_all(&mut pid_file, pid_str.as_bytes());
 
     // Spawn Unix Socket listener for jia-rin before building the router.
     // P1-3 · HTTP 与 rin(UDS)共用同一份 SessionTokens:/agent/cancel 与
@@ -419,14 +450,22 @@ pub async fn run_start(
     kernel::palaces::dui_gateway::rin::spawn_rin_listener(
         earth.clone(),
         session_tokens.clone(),
-        rin_sock,
+        rin_sock.clone(),
     );
 
     let app = kernel::palaces::dui_gateway::create_app_with_earth(web_dir, earth, session_tokens);
 
-    let listener = tokio::net::TcpListener::bind(&addr)
-        .await
-        .expect("Failed to bind TCP listener");
+    // TCP 绑定失败(端口被占等)时清理本进程创建的 rin.sock——
+    // 不留下指向死 listener 的 socket 文件(TUI 会 Connection refused)。
+    let listener = match tokio::net::TcpListener::bind(&addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            let _ = std::fs::remove_file(&rin_sock);
+            let _ = std::fs::remove_file(&pid_path);
+            eprintln!("Failed to bind TCP listener on {addr}: {e}");
+            std::process::exit(1);
+        }
+    };
 
     tracing::info!("listening on http://{addr}");
     tracing::info!("agent endpoint: POST http://{addr}/agent");

@@ -135,6 +135,14 @@ async fn main() {
                 host,
                 port,
             } => {
+                // 重复启动检查必须在 daemonize() 之前——之后 stderr 已重定向
+                // 到 /dev/null,拒绝信息用户将永远看不到。
+                if let Some((h, p)) = is_daemon_running() {
+                    eprintln!(
+                        "jia gateway is already running (http://{h}:{p}); refusing to start a second daemon"
+                    );
+                    std::process::exit(1);
+                }
                 daemonize();
                 run_start(config_path, host, port, None).await;
             }
