@@ -193,6 +193,9 @@ impl BaseTool for DelegateTool {
 
         let system_content = build_subagent_system(subagent_type, prompt, &self.subtools);
         let mut messages = vec![Message::text(Role::System, system_content)];
+        // 首轮必须带 user 消息——system-only 请求会被部分 provider 的提示词
+        // 模板拒绝(LMStudio jinja: "No user query found in messages.")。
+        messages.push(Message::text(Role::User, prompt.to_string()));
 
         let result =
             run_subagent_loop(&self.core, &self.subtools, &mut messages, max_turns, ctx).await?;
@@ -746,6 +749,79 @@ mod tests {
         assert!(
             res.unwrap_err().to_string().contains("cancel"),
             "error should mention cancellation"
+        );
+    }
+
+    /// Provider that captures the messages of its first invocation.
+    struct CapturingProvider {
+        seen: Arc<Mutex<Option<Vec<Message>>>>,
+    }
+
+    impl LlmProvider for CapturingProvider {
+        fn infer_stream(
+            &self,
+            messages: Vec<Message>,
+            _tools: Option<&[crate::stems::action::ToolSchema]>,
+            _cancel_token: Option<tokio_util::sync::CancellationToken>,
+        ) -> std::pin::Pin<Box<dyn futures::Stream<Item = Result<StreamChunk, ProviderError>> + Send>>
+        {
+            let mut seen = self.seen.lock().unwrap_or_else(|e| e.into_inner());
+            if seen.is_none() {
+                *seen = Some(messages);
+            }
+            let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+            tokio::spawn(async move {
+                let _ = tx.send(Ok(StreamChunk::Delta("done".to_string())));
+            });
+            Box::pin(tokio_stream::wrappers::UnboundedReceiverStream::new(rx))
+        }
+    }
+
+    /// 回归:delegate 首轮 LLM 调用必须包含 user 消息——system-only 请求会被
+    /// LMStudio 等 provider 的提示词模板拒绝("No user query found in messages.")。
+    #[tokio::test]
+    async fn delegate_first_infer_includes_user_message() {
+        let seen = Arc::new(Mutex::new(None));
+        let provider: Box<dyn LlmProvider> = Box::new(CapturingProvider { seen: seen.clone() });
+        let router = crate::palaces::zhong_core::ProviderRouter::new(vec![(0u32, provider)]);
+        let core = Arc::new(JiaCore::with_router(
+            router,
+            "mock".into(),
+            "mock".into(),
+            8192,
+        ));
+
+        let tool = DelegateTool::new(core, test_subtools(), test_store(), test_sessions());
+        let ctx = test_ctx();
+
+        let res = tool
+            .execute(
+                serde_json::json!({
+                    "subagent_type": "Explore",
+                    "prompt": "find the flux capacitor",
+                    "max_turns": 1
+                }),
+                &ctx,
+            )
+            .await;
+        assert!(res.is_ok(), "delegate failed: {res:?}");
+
+        let msgs = seen
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("provider must be called at least once");
+        assert!(
+            msgs.iter().any(|m| m.role == Role::System),
+            "must include a system message"
+        );
+        let user_msg = msgs
+            .iter()
+            .find(|m| m.role == Role::User)
+            .expect("first infer call must include a user message");
+        assert!(
+            user_msg.content.contains("flux capacitor"),
+            "user message should carry the task prompt"
         );
     }
 }
