@@ -105,11 +105,11 @@ fn temp_store() -> Arc<Store> {
 
 /// Build a minimal EarthPlate for e2e testing.
 ///
-/// Registers real read_file, write_file, shell tools with a temp project_root
+/// Registers real read_file, write_file, shell tools with a temp workspace_root
 /// so tool sandboxing works against the test's temp directory.
 fn temp_earth(store: Arc<Store>, temp_dir: &std::path::Path) -> Arc<EarthPlate> {
     let security = SecuritySection {
-        project_root: Some(temp_dir.to_str().unwrap().to_string()),
+        workspace_root: Some(temp_dir.to_str().unwrap().to_string()),
         sandbox_mode: SandboxMode::Disabled, // allow direct tool execution in test
         ..SecuritySection::default()
     };

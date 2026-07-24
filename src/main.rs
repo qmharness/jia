@@ -90,7 +90,7 @@ async fn main() {
             host,
             port,
         } => {
-            spawn_daemon(config_path, host, port);
+            spawn_daemon(config_path, host, port, None);
         }
         Commands::Stop => {
             stop_running_instance();
@@ -105,7 +105,7 @@ async fn main() {
         } => {
             stop_running_instance();
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            spawn_daemon(config_path, host, port);
+            spawn_daemon(config_path, host, port, None);
         }
         Commands::Gateway { action } => match action {
             GatewayAction::Start {
@@ -113,7 +113,7 @@ async fn main() {
                 host,
                 port,
             } => {
-                spawn_daemon(config_path, host, port);
+                spawn_daemon(config_path, host, port, None);
             }
             GatewayAction::Stop => {
                 stop_running_instance();
@@ -128,7 +128,7 @@ async fn main() {
             } => {
                 stop_running_instance();
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                spawn_daemon(config_path, host, port);
+                spawn_daemon(config_path, host, port, None);
             }
             GatewayAction::Daemon {
                 config_path,
@@ -172,7 +172,7 @@ async fn main() {
         Commands::Tui => {
             // If daemon is not running, start it first — the TUI needs the gateway.
             if is_daemon_running().is_none() {
-                spawn_daemon(args.config_path.clone(), None, None);
+                spawn_daemon(args.config_path.clone(), None, None, None);
 
                 // Wait up to 10 seconds for the server to become reachable
                 let addr = "127.0.0.1:3000";
@@ -203,7 +203,7 @@ async fn main() {
             config_path,
             host,
             port,
-            web_dir: _,
+            web_dir,
         } => {
             // If daemon is already running, just open the browser.
             if let Some((daemon_host, daemon_port)) = is_daemon_running() {
@@ -214,7 +214,7 @@ async fn main() {
             }
 
             // Otherwise, start daemon in background, wait for it, then open browser.
-            spawn_daemon(config_path, host.clone(), port);
+            spawn_daemon(config_path, host.clone(), port, web_dir);
 
             // Determine the address to wait for
             let target_host = host.unwrap_or_else(|| "127.0.0.1".to_string());
@@ -250,32 +250,32 @@ async fn main() {
                 eprintln!("Failed to create .jia directory: {e}");
                 std::process::exit(1);
             });
-            let project_id = uuid::Uuid::new_v4().to_string();
+            let workspace_id = uuid::Uuid::new_v4().to_string();
             let dir_name = abs_path
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
             let config_content = format!(
-                "[project]\nid = \"{}\"\nname = \"{}\"\n",
-                project_id, dir_name
+                "[workspace]\nid = \"{}\"\nname = \"{}\"\n",
+                workspace_id, dir_name
             );
             std::fs::write(jia_dir.join("config.toml"), &config_content).unwrap_or_else(|e| {
                 eprintln!("Failed to write .jia/config.toml: {e}");
                 std::process::exit(1);
             });
-            // Register in SQLite so `GET /projects` sees it immediately
+            // Register in SQLite so `GET /workspaces` sees it immediately
             let data_dir = kernel::palaces::kun_config::default_data_dir();
             let db_path = data_dir.join("store.db");
             let store =
                 kernel::palaces::gen_store::Store::open(db_path.to_str().unwrap_or(":memory:"));
             let cwd_str = abs_path.to_string_lossy().to_string();
-            if let Err(e) = store.ensure_project(&project_id, &cwd_str, &dir_name, "", "[]") {
+            if let Err(e) = store.ensure_workspace(&workspace_id, &cwd_str, &dir_name, "", "[]") {
                 eprintln!(
                     "Warning: project created on disk but failed to register in database: {e}"
                 );
             }
             println!("Initialized Jia project in {}", abs_path.display());
-            println!("  Project ID: {project_id}");
+            println!("  Project ID: {workspace_id}");
             println!("  Project name: {dir_name}");
         }
     }

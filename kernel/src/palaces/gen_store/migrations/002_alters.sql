@@ -30,8 +30,8 @@ ALTER TABLE seeds ADD COLUMN tier TEXT NOT NULL DEFAULT 'OnDemand';
 -- Migrate: add cwd column for project/workspace tracking
 ALTER TABLE sessions ADD COLUMN cwd TEXT NOT NULL DEFAULT '';
 
--- Migrate: projects table
-CREATE TABLE IF NOT EXISTS projects (
+-- Migrate: workspaces table
+CREATE TABLE IF NOT EXISTS workspaces (
     id TEXT PRIMARY KEY,
     cwd TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL DEFAULT '',
@@ -43,18 +43,18 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 
 -- Migrate: add name/desc/tags columns if upgrading from old schema
-ALTER TABLE projects ADD COLUMN name TEXT NOT NULL DEFAULT '';
-ALTER TABLE projects ADD COLUMN description TEXT NOT NULL DEFAULT '';
-ALTER TABLE projects ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE workspaces ADD COLUMN name TEXT NOT NULL DEFAULT '';
+ALTER TABLE workspaces ADD COLUMN description TEXT NOT NULL DEFAULT '';
+ALTER TABLE workspaces ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]';
 
--- Migrate: add project_id to sessions
-ALTER TABLE sessions ADD COLUMN project_id TEXT REFERENCES projects(id);
+-- Migrate: add workspace_id to sessions
+ALTER TABLE sessions ADD COLUMN workspace_id TEXT REFERENCES workspaces(id);
 
--- Migrate: stamp project_id on seeds for same-project recall bias and
+-- Migrate: stamp workspace_id on seeds for same-project recall bias and
 -- per-project filtering. '' = global/legacy seed (no project affiliation).
-ALTER TABLE seeds ADD COLUMN project_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE seeds ADD COLUMN workspace_id TEXT NOT NULL DEFAULT '';
 
-CREATE INDEX IF NOT EXISTS idx_seeds_project ON seeds(project_id);
+CREATE INDEX IF NOT EXISTS idx_seeds_workspace ON seeds(workspace_id);
 
 -- Create tier_access index after migration ensures the column exists
 CREATE INDEX IF NOT EXISTS idx_seeds_tier_access ON seeds(tier, access_count);

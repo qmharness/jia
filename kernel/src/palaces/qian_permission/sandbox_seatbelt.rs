@@ -14,11 +14,11 @@ use super::sandbox::{ExecutionSandbox, SandboxOutput};
 /// Generates a temporary .sb profile file that restricts:
 /// - Network access (denied)
 /// - Process forking (denied)
-/// - File writes (only project_root + allowed_paths)
+/// - File writes (only workspace_root + allowed_paths)
 ///
 /// Requires macOS 10.7+. Always available on macOS.
 pub struct SeatbeltSandbox {
-    pub project_root: PathBuf,
+    pub workspace_root: PathBuf,
     pub allowed_paths: Vec<PathBuf>,
     pub timeout: Duration,
 }
@@ -48,7 +48,7 @@ fn escape_sb_string(s: &str) -> String {
     out
 }
 
-fn build_profile(project_root: &PathBuf, allowed_paths: &[PathBuf]) -> String {
+fn build_profile(workspace_root: &PathBuf, allowed_paths: &[PathBuf]) -> String {
     let mut p = String::new();
     p.push_str("(version 1)\n");
     p.push_str("(allow default)\n");
@@ -56,8 +56,8 @@ fn build_profile(project_root: &PathBuf, allowed_paths: &[PathBuf]) -> String {
     p.push_str("(deny process-fork)\n");
     p.push_str("(deny file-write* (subpath \"/\"))\n");
 
-    // Carve out write permissions for project_root and allowed_paths
-    let mut paths: Vec<&PathBuf> = vec![project_root];
+    // Carve out write permissions for workspace_root and allowed_paths
+    let mut paths: Vec<&PathBuf> = vec![workspace_root];
     paths.extend(allowed_paths.iter());
 
     for path in paths {
@@ -81,7 +81,7 @@ impl ExecutionSandbox for SeatbeltSandbox {
         cwd: &Path,
         env: &HashMap<String, String>,
     ) -> Result<SandboxOutput, String> {
-        let profile = build_profile(&self.project_root, &self.allowed_paths);
+        let profile = build_profile(&self.workspace_root, &self.allowed_paths);
 
         let profile_path =
             std::env::temp_dir().join(format!("jia-seatbelt-{}.sb", uuid::Uuid::new_v4()));

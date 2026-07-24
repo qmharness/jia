@@ -272,7 +272,7 @@ mod tests {
 
         // PermissionMatrix rooted at the temp repo
         let mut sec = crate::palaces::kun_config::SecuritySection::default();
-        sec.project_root = Some(root.to_string_lossy().to_string());
+        sec.workspace_root = Some(root.to_string_lossy().to_string());
         let perms = Arc::new(
             crate::palaces::qian_permission::PermissionMatrix::from_config(
                 &sec,

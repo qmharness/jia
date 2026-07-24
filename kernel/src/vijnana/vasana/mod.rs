@@ -122,7 +122,7 @@ impl ConsolidationEngine {
             .filter(|n| !n.is_empty())
             .unwrap_or("consolidation");
 
-        let project_id = store.session_project_id(&session_id).unwrap_or_default();
+        let workspace_id = store.session_workspace_id(&session_id).unwrap_or_default();
         let seed_store = SeedStore::new(store.clone());
         let mut count = 0u64;
         for fact in facts {
@@ -150,7 +150,7 @@ impl ConsolidationEngine {
 
             let seed = Seed::new(
                 session_id.clone(),
-                project_id.clone(),
+                workspace_id.clone(),
                 SeedNature::Inference,
                 SeedSource::Consolidation,
                 content,

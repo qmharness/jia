@@ -94,8 +94,8 @@ pub async fn handle_chat(
     )
 }
 
-/// Resolve project_id from cwd by reading .jia/config.toml.
-/// Returns the UUID if found, otherwise generates a new one and creates the project.
+/// Resolve workspace_id from cwd by reading .jia/config.toml.
+/// Returns the workspace UUID if found, otherwise generates a new one and creates the workspace.
 pub async fn handle_agent(
     State(state): State<Arc<AppState>>,
     Json(req): Json<AgentRequest>,
@@ -150,9 +150,9 @@ pub async fn handle_agent(
 
             // Insert placeholder row immediately so session appears in list
             // Resolve effective cwd: validate the request cwd, and for old sessions
-            // where cwd="." fall back to project_id reverse-lookup.
+            // where cwd="." fall back to workspace_id reverse-lookup.
             let req_cwd = req.cwd.clone().unwrap_or_default();
-            let req_pid = req.project_id.clone().unwrap_or_default();
+            let req_pid = req.workspace_id.clone().unwrap_or_default();
 
             // Store in session row for new sessions
             if is_new {
@@ -242,19 +242,19 @@ pub async fn handle_agent(
                             req_cwd.clone()
                         } else if !req_pid.is_empty() {
                             // Old session: reverse-lookup cwd from project
-                            earth_for_spawn.store.get_project(&req_pid).ok().flatten()
+                            earth_for_spawn.store.get_workspace(&req_pid).ok().flatten()
                                 .and_then(|p| p.get("cwd").and_then(|v| v.as_str()).map(String::from))
                                 .unwrap_or_default()
                         } else {
                             String::new()
                         };
 
-                        // Validate: cwd must be a valid Jia project directory
+                        // Validate: cwd must be a valid Jia workspace directory
                         let config_path = std::path::Path::new(&effective_cwd)
                             .join(".jia").join("config.toml");
                         if effective_cwd.is_empty() || !config_path.exists() {
                             let _ = tx.send(AgentEvent::Error(
-                                "cwd must be a valid Jia project directory (with .jia/config.toml)".into()
+                                "cwd must be a valid Jia workspace directory (with .jia/config.toml)".into()
                             ));
                             let _ = tx.send(AgentEvent::Done);
                             session_tokens.remove(&sid);

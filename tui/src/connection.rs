@@ -45,7 +45,10 @@ pub enum SocketEvent {
     /// Daemon model info (provider + model name).
     ModelInfo { provider: String, model: String },
     /// Project resolution result from "hello".
-    ProjectResolved { project_id: String, approved: bool },
+    WorkspaceResolved {
+        workspace_id: String,
+        approved: bool,
+    },
 }
 
 /// Parsed StreamEvent — mirrors `kernel::types::StreamEvent` but implements
@@ -181,7 +184,7 @@ pub enum ClientMsg {
         cwd: Option<String>,
         /// Project ID from .jia/config.toml (if exists).
         #[serde(skip_serializing_if = "Option::is_none")]
-        project_id: Option<String>,
+        workspace_id: Option<String>,
     },
     #[serde(rename = "cancel")]
     Cancel { session_id: String },
@@ -287,8 +290,8 @@ impl Connection {
                         provider: value["provider"].as_str().unwrap_or("").to_string(),
                         model: value["model"].as_str().unwrap_or("").to_string(),
                     },
-                    "project_resolved" => SocketEvent::ProjectResolved {
-                        project_id: value["project_id"].as_str().unwrap_or("").to_string(),
+                    "workspace_resolved" => SocketEvent::WorkspaceResolved {
+                        workspace_id: value["workspace_id"].as_str().unwrap_or("").to_string(),
                         approved: value["approved"].as_bool().unwrap_or(false),
                     },
                     // All StreamEvent types

@@ -6,9 +6,9 @@ use axum::http::StatusCode;
 
 use super::AppState;
 
-// ── Project handlers ───────────────────────────────────────
+// ── Workspace handlers ─────────────────────────────────────
 
-pub async fn handle_list_projects(
+pub async fn handle_list_workspaces(
     State(state): State<Arc<AppState>>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
@@ -17,21 +17,21 @@ pub async fn handle_list_projects(
         .as_ref()
         .ok_or((StatusCode::SERVICE_UNAVAILABLE, "Not ready".into()))?;
     let include_archived = params.get("filter").map(|f| f == "all").unwrap_or(false);
-    match earth.store.list_projects(include_archived) {
-        Ok(projects) => Ok(Json(serde_json::json!({ "projects": projects }))),
+    match earth.store.list_workspaces(include_archived) {
+        Ok(workspaces) => Ok(Json(serde_json::json!({ "workspaces": workspaces }))),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
     }
 }
 
 #[derive(serde::Deserialize)]
-pub struct CreateProjectBody {
+pub struct CreateWorkspaceBody {
     pub name: String,
     pub cwd: String,
 }
 
-pub async fn handle_create_project(
+pub async fn handle_create_workspace(
     State(state): State<Arc<AppState>>,
-    Json(body): Json<CreateProjectBody>,
+    Json(body): Json<CreateWorkspaceBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     // Validate cwd is an absolute path
     if !std::path::Path::new(&body.cwd).is_absolute() {
@@ -41,6 +41,15 @@ pub async fn handle_create_project(
         ));
     }
     let cwd = &body.cwd;
+    // 拒绝覆盖已有工作区:已有 .jia/config.toml 说明该目录已归属某个
+    // workspace id——重复创建会静默换 id 并级联旧会话/种子(审计 F6)。
+    let config_path = format!("{cwd}/.jia/config.toml");
+    if std::path::Path::new(&config_path).exists() {
+        return Err((
+            StatusCode::CONFLICT,
+            format!("workspace already exists at {cwd} (.jia/config.toml present)"),
+        ));
+    }
     // Create directories
     std::fs::create_dir_all(cwd).map_err(|e| {
         (
@@ -54,11 +63,11 @@ pub async fn handle_create_project(
             format!("Failed to create .jia: {}", e),
         )
     })?;
-    // Generate project
+    // Generate workspace
     let id = uuid::Uuid::new_v4().to_string();
     std::fs::write(
-        format!("{cwd}/.jia/config.toml"),
-        format!("[project]\nid = \"{}\"\nname = \"{}\"\n", id, body.name),
+        &config_path,
+        format!("[workspace]\nid = \"{}\"\nname = \"{}\"\n", id, body.name),
     )
     .map_err(|e| {
         (
@@ -72,14 +81,14 @@ pub async fn handle_create_project(
         .ok_or((StatusCode::SERVICE_UNAVAILABLE, "Not ready".into()))?;
     earth
         .store
-        .ensure_project(&id, cwd, &body.name, "", "[]")
+        .ensure_workspace(&id, cwd, &body.name, "", "[]")
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(
         serde_json::json!({ "id": id, "cwd": cwd, "name": body.name }),
     ))
 }
 
-pub async fn handle_get_project(
+pub async fn handle_get_workspace(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
@@ -89,13 +98,13 @@ pub async fn handle_get_project(
         .ok_or((StatusCode::SERVICE_UNAVAILABLE, "Not ready".into()))?;
     let proj = earth
         .store
-        .get_project(&id)
+        .get_workspace(&id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Project not found".into()))?;
+        .ok_or((StatusCode::NOT_FOUND, "Workspace not found".into()))?;
     Ok(Json(proj))
 }
 
-pub async fn handle_archive_project(
+pub async fn handle_archive_workspace(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
@@ -103,14 +112,17 @@ pub async fn handle_archive_project(
         .earth
         .as_ref()
         .ok_or((StatusCode::SERVICE_UNAVAILABLE, "Not ready".into()))?;
-    earth
+    let n = earth
         .store
-        .archive_project(&id)
+        .archive_workspace(&id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if n == 0 {
+        return Err((StatusCode::NOT_FOUND, "Workspace not found".into()));
+    }
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
-pub async fn handle_unarchive_project(
+pub async fn handle_unarchive_workspace(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
@@ -118,24 +130,27 @@ pub async fn handle_unarchive_project(
         .earth
         .as_ref()
         .ok_or((StatusCode::SERVICE_UNAVAILABLE, "Not ready".into()))?;
-    earth
+    let n = earth
         .store
-        .unarchive_project(&id)
+        .unarchive_workspace(&id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if n == 0 {
+        return Err((StatusCode::NOT_FOUND, "Workspace not found".into()));
+    }
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
 #[derive(serde::Deserialize)]
-pub struct PatchProjectBody {
+pub struct PatchWorkspaceBody {
     name: Option<String>,
     description: Option<String>,
     tags: Option<Vec<String>>,
 }
 
-pub async fn handle_patch_project(
+pub async fn handle_patch_workspace(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-    Json(body): Json<PatchProjectBody>,
+    Json(body): Json<PatchWorkspaceBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let earth = state
         .earth
@@ -143,10 +158,9 @@ pub async fn handle_patch_project(
         .ok_or((StatusCode::SERVICE_UNAVAILABLE, "Not ready".into()))?;
     let proj = earth
         .store
-        .get_project(&id)
+        .get_workspace(&id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Project not found".into()))?;
-    let cwd = proj["cwd"].as_str().unwrap_or("");
+        .ok_or((StatusCode::NOT_FOUND, "Workspace not found".into()))?;
     let name = body
         .name
         .as_deref()
@@ -160,9 +174,11 @@ pub async fn handle_patch_project(
     } else {
         proj["tags"].to_string()
     };
+    // 元数据走专用更新;ensure_workspace 只维护身份(id/cwd/name),
+    // 不能在 PATCH 之外的路径改 description/tags(审计 F1)。
     earth
         .store
-        .ensure_project(&id, cwd, name, desc, &tags_json)
+        .update_workspace_metadata(&id, name, desc, &tags_json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
@@ -172,22 +188,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn create_project_body_deserializes() {
-        let b: CreateProjectBody =
+    fn create_workspace_body_deserializes() {
+        let b: CreateWorkspaceBody =
             serde_json::from_str(r#"{"name": "test", "cwd": "/tmp"}"#).unwrap();
         assert_eq!(b.name, "test");
         assert_eq!(b.cwd, "/tmp");
     }
 
     #[test]
-    fn create_project_body_requires_cwd() {
-        let b: Result<CreateProjectBody, _> = serde_json::from_str(r#"{"name": "test"}"#);
+    fn create_workspace_body_requires_cwd() {
+        let b: Result<CreateWorkspaceBody, _> = serde_json::from_str(r#"{"name": "test"}"#);
         assert!(b.is_err());
     }
 
     #[test]
-    fn patch_project_body_deserializes() {
-        let b: PatchProjectBody = serde_json::from_str(r#"{"name": "renamed"}"#).unwrap();
+    fn patch_workspace_body_deserializes() {
+        let b: PatchWorkspaceBody = serde_json::from_str(r#"{"name": "renamed"}"#).unwrap();
         assert_eq!(b.name, Some("renamed".into()));
     }
 }

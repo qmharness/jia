@@ -221,14 +221,14 @@ fn spawn_cron_forwarder(earth: Arc<EarthPlate>) -> tokio::sync::broadcast::Sende
 
 /// Resolve project from working directory.
 /// Checks for .jia/config.toml; if missing, asks the TUI user whether to create one.
-/// Returns (cwd, project_id). Falls back to ("", "") on error or user decline.
-async fn resolve_project(
+/// Returns (cwd, workspace_id). Falls back to ("", "") on error or user decline.
+async fn resolve_workspace(
     earth: &EarthPlate,
     cwd: &str,
     tx: tokio::sync::mpsc::UnboundedSender<AgentEvent>,
 ) -> (String, String) {
     let config_path = std::path::Path::new(cwd).join(".jia").join("config.toml");
-    tracing::info!(cwd = %cwd, "rin: resolve_project called");
+    tracing::info!(cwd = %cwd, "rin: resolve_workspace called");
 
     // Already a jia project — read existing ID.
     if config_path.exists()
@@ -239,8 +239,8 @@ async fn resolve_project(
         let id = project.get("id").and_then(|v| v.as_str()).unwrap_or("");
         let name = project.get("name").and_then(|v| v.as_str()).unwrap_or("");
         if !id.is_empty() {
-            if let Err(e) = earth.store.ensure_project(id, cwd, name, "", "[]") {
-                tracing::warn!(%id, cwd, ?e, "rin: ensure_project failed for existing project");
+            if let Err(e) = earth.store.ensure_workspace(id, cwd, name, "", "[]") {
+                tracing::warn!(%id, cwd, ?e, "rin: ensure_workspace failed for existing project");
             }
             return (cwd.to_string(), id.to_string());
         }
@@ -252,7 +252,7 @@ async fn resolve_project(
         return (cwd.to_string(), String::new());
     }
 
-    // Ask user via TUI confirmation whether to create a project here.
+    // Ask user via TUI confirmation whether to create a workspace here.
     let dir_name = std::path::Path::new(cwd)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -284,7 +284,7 @@ async fn resolve_project(
     let _ = tx.send(AgentEvent::ConfirmRequest {
         id: confirm_id.clone(),
         tool: "jia_init".into(),
-        reason: format!("Create Jia project in '{cwd}'?"),
+        reason: format!("Create Jia workspace in '{cwd}'?"),
         timeout_secs: 0,
         token: confirm_token,
     });
@@ -308,22 +308,22 @@ async fn resolve_project(
     }
 
     if approved {
-        let project_id = uuid::Uuid::new_v4().to_string();
+        let workspace_id = uuid::Uuid::new_v4().to_string();
         let proj_dir = std::path::Path::new(cwd).join(".jia");
         let _ = std::fs::create_dir_all(&proj_dir);
         let config_content = format!(
-            "[project]\nid = \"{}\"\nname = \"{}\"\n",
-            project_id, dir_name
+            "[workspace]\nid = \"{}\"\nname = \"{}\"\n",
+            workspace_id, dir_name
         );
         let _ = std::fs::write(&config_path, &config_content);
         if let Err(e) = earth
             .store
-            .ensure_project(&project_id, cwd, &dir_name, "", "[]")
+            .ensure_workspace(&workspace_id, cwd, &dir_name, "", "[]")
         {
-            tracing::warn!(%project_id, cwd, ?e, "rin: ensure_project failed for new project");
+            tracing::warn!(%workspace_id, cwd, ?e, "rin: ensure_workspace failed for new project");
         }
-        tracing::info!(cwd = %cwd, project_id = %project_id, "rin: created new project");
-        return (cwd.to_string(), project_id);
+        tracing::info!(cwd = %cwd, workspace_id = %workspace_id, "rin: created new workspace");
+        return (cwd.to_string(), workspace_id);
     }
 
     (cwd.to_string(), String::new())
@@ -379,9 +379,8 @@ async fn handle_rin_connection(
     let mut conn_sessions: Vec<String> = Vec::new();
 
     // hello 解析出的项目 id(写入于 hello 任务),agent 消息未显式携带
-    // project_id 时作为 create_session 的回退——避免会话与项目脱钩。
-    let resolved_pid: Arc<std::sync::Mutex<Option<String>>> =
-        Arc::new(std::sync::Mutex::new(None));
+    // workspace_id 时作为 create_session 的回退——避免会话与项目脱钩。
+    let resolved_pid: Arc<std::sync::Mutex<Option<String>>> = Arc::new(std::sync::Mutex::new(None));
 
     loop {
         line.clear();
@@ -452,17 +451,19 @@ async fn handle_rin_connection(
                             let _ = w.write_all(b"\n").await;
                         }
                     });
-                    let (pcwd, pid) = resolve_project(&earth_clone, &cwd, hello_tx).await;
-                    tracing::info!(cwd = %pcwd, project_id = %pid, "rin: hello project resolved");
-                    *resolved_pid_h
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner()) = if pid.is_empty() { None } else { Some(pid.clone()) };
+                    let (pcwd, pid) = resolve_workspace(&earth_clone, &cwd, hello_tx).await;
+                    tracing::info!(cwd = %pcwd, workspace_id = %pid, "rin: hello project resolved");
+                    *resolved_pid_h.lock().unwrap_or_else(|e| e.into_inner()) = if pid.is_empty() {
+                        None
+                    } else {
+                        Some(pid.clone())
+                    };
                     // Send result back to TUI
                     let approved = !pid.is_empty();
                     let resp = serde_json::json!({
-                        "type": "project_resolved",
+                        "type": "workspace_resolved",
                         "cwd": pcwd,
-                        "project_id": pid,
+                        "workspace_id": pid,
                         "approved": approved,
                     });
                     let mut w = w.lock().await;
@@ -501,10 +502,10 @@ async fn handle_rin_connection(
 
                 let is_new = msg["session_id"].as_str().is_none_or(|s| s.is_empty());
 
-                // Extract cwd and project_id from the message.
+                // Extract cwd and workspace_id from the message.
                 // Project resolution already happened in the "hello" handler.
                 let msg_cwd = msg["cwd"].as_str().unwrap_or(".").to_string();
-                let msg_pid = msg["project_id"].as_str().unwrap_or("").to_string();
+                let msg_pid = msg["workspace_id"].as_str().unwrap_or("").to_string();
 
                 // Channel and cancellation setup
                 let (tx, rx) = mpsc::unbounded_channel::<AgentEvent>();
@@ -520,8 +521,8 @@ async fn handle_rin_connection(
                     } else {
                         &msg_cwd
                     };
-                    // 消息未带 project_id 时回退到 hello 解析出的项目——
-                    // 否则会话以 NULL project_id 落库,与项目脱钩。
+                    // 消息未带 workspace_id 时回退到 hello 解析出的项目——
+                    // 否则会话以 NULL workspace_id 落库,与项目脱钩。
                     let fallback_pid = resolved_pid
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
@@ -716,7 +717,7 @@ async fn handle_rin_connection(
                                 msg_cwd.clone()
                             } else if !msg_pid.is_empty() {
                                 // Old session: reverse-lookup cwd from project
-                                store.get_project(&msg_pid).ok().flatten()
+                                store.get_workspace(&msg_pid).ok().flatten()
                                     .and_then(|p| p.get("cwd").and_then(|v| v.as_str()).map(String::from))
                                     .unwrap_or_default()
                             } else {
@@ -979,7 +980,7 @@ mod tests {
     }
 
     /// P0-4 quality: sweep 只移除归属给定 sid 的条目——其他会话与空 sid
-    /// (resolve_project 建项确认,靠超时兜底)的条目必须存活。
+    /// (resolve_workspace 建项确认,靠超时兜底)的条目必须存活。
     /// P1-2/L2: session_modes 一并按 sid 清扫。
     #[test]
     fn sweep_removes_only_target_sessions() {

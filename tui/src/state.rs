@@ -114,9 +114,9 @@ pub(crate) struct App {
     /// P3 · currently selected option in confirmation prompt (0 = approve, 1 = deny)
     pub(crate) confirm_selected: usize,
     /// P3 · project name from .jia/config.toml (for welcome screen)
-    pub(crate) project_name: String,
+    pub(crate) workspace_name: String,
     /// P3 · project ID from .jia/config.toml
-    pub(crate) project_id: String,
+    pub(crate) workspace_id: String,
     /// S2: rollback anchor for the in-flight LLM stream (see `StreamAnchor`).
     pub(crate) stream_anchor: Option<StreamAnchor>,
 }
@@ -166,7 +166,7 @@ impl App {
                         self.mode = Mode::Normal;
                         self.sending_allowed = true;
                         // Create project locally + notify daemon
-                        let project_id = uuid::Uuid::new_v4().to_string();
+                        let workspace_id = uuid::Uuid::new_v4().to_string();
                         let dir_name = std::path::Path::new(&cwd_str)
                             .file_name()
                             .map(|n| n.to_string_lossy().to_string())
@@ -174,8 +174,8 @@ impl App {
                         let proj_dir = std::path::Path::new(&cwd_str).join(".jia");
                         let _ = std::fs::create_dir_all(&proj_dir);
                         let config = format!(
-                            "[project]\nid = \"{}\"\nname = \"{}\"\n",
-                            project_id, dir_name
+                            "[workspace]\nid = \"{}\"\nname = \"{}\"\n",
+                            workspace_id, dir_name
                         );
                         let _ = std::fs::write(proj_dir.join("config.toml"), &config);
                         self.refresh_project_info();
@@ -183,7 +183,7 @@ impl App {
                         if let Some(ref conn) = self.connection {
                             let conn = conn.clone();
                             let c = cwd_str.clone();
-                            let _pid = project_id.clone();
+                            let _pid = workspace_id.clone();
                             tokio::spawn(async move {
                                 let _ = conn.send(&ClientMsg::Hello { cwd: c }).await;
                             });
@@ -503,13 +503,13 @@ impl App {
                     });
                 }
             }
-            SocketEvent::ProjectResolved {
-                project_id,
+            SocketEvent::WorkspaceResolved {
+                workspace_id,
                 approved,
                 ..
             } => {
                 if approved {
-                    self.project_id = project_id;
+                    self.workspace_id = workspace_id;
                 } else {
                     self.quit = true;
                 }
@@ -528,13 +528,13 @@ impl App {
                         .strip_prefix("id = \"")
                         .and_then(|s| s.strip_suffix('"'))
                     {
-                        self.project_id = v.to_string();
+                        self.workspace_id = v.to_string();
                     }
                     if let Some(v) = line
                         .strip_prefix("name = \"")
                         .and_then(|s| s.strip_suffix('"'))
                     {
-                        self.project_name = v.to_string();
+                        self.workspace_name = v.to_string();
                     }
                 }
             }
@@ -780,10 +780,10 @@ impl App {
             messages: vec![msg],
             session_id: self.session_id.clone(),
             cwd,
-            project_id: if self.project_id.is_empty() {
+            workspace_id: if self.workspace_id.is_empty() {
                 None
             } else {
-                Some(self.project_id.clone())
+                Some(self.workspace_id.clone())
             },
         };
         let conn = conn.clone();
@@ -907,8 +907,8 @@ mod tests {
             agent_phase: AgentPhase::Reasoning,
             quit: false,
             confirm_selected: 0,
-            project_name: String::new(),
-            project_id: String::new(),
+            workspace_name: String::new(),
+            workspace_id: String::new(),
             stream_anchor: None,
         }
     }
@@ -983,8 +983,8 @@ mod p1_4_tests {
             agent_phase: AgentPhase::Reasoning,
             quit: false,
             confirm_selected: 0,
-            project_name: String::new(),
-            project_id: String::new(),
+            workspace_name: String::new(),
+            workspace_id: String::new(),
             stream_anchor: None,
         }
     }
@@ -1058,8 +1058,8 @@ mod s2_retry_tests {
             agent_phase: AgentPhase::Reasoning,
             quit: false,
             confirm_selected: 0,
-            project_name: String::new(),
-            project_id: String::new(),
+            workspace_name: String::new(),
+            workspace_id: String::new(),
             stream_anchor: None,
         }
     }

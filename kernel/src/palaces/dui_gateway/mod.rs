@@ -160,12 +160,15 @@ pub fn build_router(state: Arc<AppState>, web_dir: String) -> Router {
         .route("/sessions/{id}/archive", post(handle_archive_session))
         .route("/sessions/{id}/unarchive", post(handle_unarchive_session))
         .route("/sessions/active", get(handle_active_sessions))
-        .route("/projects", get(handle_list_projects))
-        .route("/projects", post(handle_create_project))
-        .route("/projects/{id}", get(handle_get_project))
-        .route("/projects/{id}/archive", post(handle_archive_project))
-        .route("/projects/{id}/unarchive", post(handle_unarchive_project))
-        .route("/projects/{id}", patch(handle_patch_project))
+        .route("/workspaces", get(handle_list_workspaces))
+        .route("/workspaces", post(handle_create_workspace))
+        .route("/workspaces/{id}", get(handle_get_workspace))
+        .route("/workspaces/{id}/archive", post(handle_archive_workspace))
+        .route(
+            "/workspaces/{id}/unarchive",
+            post(handle_unarchive_workspace),
+        )
+        .route("/workspaces/{id}", patch(handle_patch_workspace))
         .route("/cron", get(handle_cron_list))
         .route("/cron", post(handle_cron_manage))
         .route("/events", get(handle_events))
@@ -277,12 +280,12 @@ mod confirm;
 mod cron;
 mod events;
 mod monitor;
-mod projects;
 mod providers;
 mod sessions;
 mod skills;
 mod vijnana;
 mod webhooks;
+mod workspaces;
 
 pub use agent::*;
 pub use auth::*;
@@ -290,12 +293,12 @@ pub use confirm::*;
 pub use cron::*;
 pub use events::*;
 pub use monitor::*;
-pub use projects::*;
 pub use providers::*;
 pub use sessions::*;
 pub use skills::*;
 pub use vijnana::*;
 pub use webhooks::*;
+pub use workspaces::*;
 
 #[cfg(test)]
 mod tests {

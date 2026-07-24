@@ -6,7 +6,12 @@ use std::sync::Arc;
 use kernel::palaces::kun_config::AppConfig;
 // jia crate removed
 
-pub fn spawn_daemon(config_path: Option<PathBuf>, host: Option<String>, port: Option<u16>) {
+pub fn spawn_daemon(
+    config_path: Option<PathBuf>,
+    host: Option<String>,
+    port: Option<u16>,
+    web_dir: Option<PathBuf>,
+) {
     // Refuse to double-start: a live daemon already holds the pid file.
     // Spawning a second would delete the running daemon's rin.sock and then
     // die on TCP bind, leaving a dead socket (TUI "Connection refused").
@@ -54,6 +59,9 @@ pub fn spawn_daemon(config_path: Option<PathBuf>, host: Option<String>, port: Op
     }
     if let Some(p) = port {
         cmd.arg("--port").arg(p.to_string());
+    }
+    if let Some(ref wd) = web_dir {
+        cmd.arg("--web-dir").arg(wd);
     }
 
     cmd.stdin(std::process::Stdio::null());
@@ -250,12 +258,17 @@ pub async fn run_start(
         }
     }
 
-    // web_dir resolution: CLI flag > config.toml server.web_dir > disabled
+    // web_dir resolution: CLI flag > config.toml server.web_dir > default
+    // (~/.jia/frontend 若已安装,否则仓内 frontend/dist)
     let web_dir = web_dir
         .as_ref()
         .map(|wd| wd.to_string_lossy().to_string())
         .or_else(|| config.web_dir.clone())
-        .unwrap_or_default();
+        .unwrap_or_else(|| {
+            kernel::palaces::kun_config::default_web_dir()
+                .to_string_lossy()
+                .to_string()
+        });
 
     // Fetch model lists for providers without explicit models configured
     for (name, p) in config.providers.iter_mut() {

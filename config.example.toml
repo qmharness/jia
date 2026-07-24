@@ -33,7 +33,7 @@ base_url = "https://open.bigmodel.cn/api/anthropic"
 
 # ── 安全沙箱配置（可选，以下为默认值） ───────────────────────────
 # [security]
-# project_root = "/path/to/project"     # 沙箱根目录（默认：当前工作目录）
+# workspace_root = "/path/to/workspace" # 沙箱根目录（默认：当前工作目录）
 # allowed_paths = ["/tmp"]              # 根目录外的允许路径
 # blocked_path_prefixes = [".git", ".env"]  # 始终阻止的路径前缀
 # command_allowlist = []                # 如果非空，仅允许这些 shell 命令

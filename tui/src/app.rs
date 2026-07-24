@@ -65,8 +65,8 @@ pub async fn run_app(
         agent_phase: AgentPhase::Reasoning,
         quit: false,
         confirm_selected: 0,
-        project_name: String::new(),
-        project_id: String::new(),
+        workspace_name: String::new(),
+        workspace_id: String::new(),
         stream_anchor: None,
     };
 
@@ -235,7 +235,7 @@ pub(crate) fn push_welcome_to_scrollback(
         version: env!("CARGO_PKG_VERSION"),
         model: &app.llm.model_id,
         provider: &app.llm.provider,
-        project: &app.project_name,
+        project: &app.workspace_name,
     };
     let wl = render::welcome_lines(&spec);
     let width = terminal.size().map(|s| s.width).unwrap_or(80);
@@ -316,7 +316,7 @@ pub(crate) fn reflow_on_resize(
         version: env!("CARGO_PKG_VERSION"),
         model: &app.llm.model_id,
         provider: &app.llm.provider,
-        project: &app.project_name,
+        project: &app.workspace_name,
     };
     let mut all = render::welcome_lines(&spec);
     all.extend(app.history.iter().cloned());
@@ -384,7 +384,7 @@ pub(crate) fn render_frame_with_cursor(
                 mode_label,
                 &format!("{} · {}", app.llm.model_id, app.llm.provider),
                 app.session_id.as_deref(),
-                &app.project_name,
+                &app.workspace_name,
             );
         }
     })?;

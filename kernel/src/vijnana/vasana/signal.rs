@@ -204,7 +204,7 @@ impl SignalDetector {
         }
 
         let seed_store = SeedStore::new(store.clone());
-        let project_id = store.session_project_id(session_id).unwrap_or_default();
+        let workspace_id = store.session_workspace_id(session_id).unwrap_or_default();
 
         // Load existing seeds to check for duplicates
         let existing = seed_store.load_all().unwrap_or_default();
@@ -235,7 +235,7 @@ impl SignalDetector {
 
             let seed = Seed::new(
                 session_id.to_string(),
-                project_id.clone(),
+                workspace_id.clone(),
                 sig.nature.clone(),
                 SeedSource::SignalDetection,
                 SeedContent::KeyValue {

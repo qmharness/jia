@@ -33,7 +33,7 @@ fn new_seed(session_id: &str, idx: usize) -> Seed {
     Seed {
         id: uuid::Uuid::new_v4().to_string(),
         session_id: session_id.to_string(),
-        project_id: String::new(),
+        workspace_id: String::new(),
         nature: if idx.is_multiple_of(3) {
             SeedNature::Fact
         } else if idx % 3 == 1 {
@@ -504,7 +504,7 @@ fn seed_row_to_json_roundtrip() {
     let original = Seed {
         id: uuid::Uuid::new_v4().to_string(),
         session_id: sid.to_string(),
-        project_id: String::new(),
+        workspace_id: String::new(),
         nature: SeedNature::Fact,
         source: SeedSource::ToolObservation,
         content: SeedContent::FreeText {
@@ -560,7 +560,7 @@ fn smoke_catalog_stats_mixed_tiers() {
         let seed = Seed {
             id: id.into(),
             session_id: "smoke".into(),
-            project_id: String::new(),
+            workspace_id: String::new(),
             nature,
             source: SeedSource::ToolObservation,
             content: SeedContent::FreeText { text: "x".into() },
@@ -587,7 +587,7 @@ fn smoke_load_always_seeds() {
     let seed = Seed {
         id: "always1".into(),
         session_id: "smoke".into(),
-        project_id: String::new(),
+        workspace_id: String::new(),
         nature: SeedNature::Fact,
         source: SeedSource::UserStatement,
         content: SeedContent::KeyValue {
@@ -618,7 +618,7 @@ fn smoke_memory_catalog_format() {
     let s1 = Seed {
         id: "a1".into(),
         session_id: "s".into(),
-        project_id: String::new(),
+        workspace_id: String::new(),
         nature: SeedNature::Preference,
         source: SeedSource::UserStatement,
         content: SeedContent::KeyValue {
@@ -638,7 +638,7 @@ fn smoke_memory_catalog_format() {
     let s2 = Seed {
         id: "o1".into(),
         session_id: "s".into(),
-        project_id: String::new(),
+        workspace_id: String::new(),
         nature: SeedNature::Fact,
         source: SeedSource::ToolObservation,
         content: SeedContent::FreeText {
@@ -656,7 +656,7 @@ fn smoke_memory_catalog_format() {
     let s3 = Seed {
         id: "o2".into(),
         session_id: "s".into(),
-        project_id: String::new(),
+        workspace_id: String::new(),
         nature: SeedNature::Preference,
         source: SeedSource::Consolidation,
         content: SeedContent::KeyValue {
@@ -675,7 +675,7 @@ fn smoke_memory_catalog_format() {
     let s4 = Seed {
         id: "o3".into(),
         session_id: "s".into(),
-        project_id: String::new(),
+        workspace_id: String::new(),
         nature: SeedNature::Inference,
         source: SeedSource::Consolidation,
         content: SeedContent::FreeText {
@@ -693,7 +693,7 @@ fn smoke_memory_catalog_format() {
     let s5 = Seed {
         id: "archive1".into(),
         session_id: "s".into(),
-        project_id: String::new(),
+        workspace_id: String::new(),
         nature: SeedNature::Fact,
         source: SeedSource::ToolObservation,
         content: SeedContent::FreeText { text: "old".into() },
@@ -737,7 +737,7 @@ fn smoke_enforce_tier_budgets_below_limit() {
         let seed = Seed {
             id: format!("od{i}"),
             session_id: "s".into(),
-            project_id: String::new(),
+            workspace_id: String::new(),
             nature: SeedNature::Fact,
             source: SeedSource::ToolObservation,
             content: SeedContent::FreeText { text: "x".into() },
@@ -767,7 +767,7 @@ fn smoke_enforce_tier_budgets_demotes_excess_ondemand() {
         let seed = Seed {
             id: format!("od{i}"),
             session_id: "s".into(),
-            project_id: String::new(),
+            workspace_id: String::new(),
             nature: SeedNature::Fact,
             source: SeedSource::ToolObservation,
             content: SeedContent::FreeText {
@@ -799,7 +799,7 @@ fn smoke_enforce_tier_budgets_protects_preference() {
         let seed = Seed {
             id: format!("pref{i}"),
             session_id: "s".into(),
-            project_id: String::new(),
+            workspace_id: String::new(),
             nature: SeedNature::Preference,
             source: SeedSource::UserStatement,
             content: SeedContent::KeyValue {
@@ -835,7 +835,7 @@ fn smoke_enforce_tier_budgets_deletes_excess_archive() {
         let seed = Seed {
             id: format!("ar{i}"),
             session_id: "s".into(),
-            project_id: String::new(),
+            workspace_id: String::new(),
             nature: SeedNature::Inference,
             source: SeedSource::Consolidation,
             content: SeedContent::FreeText {

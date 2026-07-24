@@ -84,7 +84,7 @@ pub struct AgentRequest {
     pub cwd: Option<String>,
     /// Project ID (UUID from .jia/config.toml)
     #[serde(default)]
-    pub project_id: Option<String>,
+    pub workspace_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

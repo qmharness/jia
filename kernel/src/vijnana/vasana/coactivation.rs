@@ -24,7 +24,7 @@ struct CoEntry {
 /// 指数衰减 + 共现增量，O(1) per pair per turn。
 #[derive(Debug, Clone)]
 pub struct SeedCoActivationMatrix {
-    /// 共现对：key = (seed_a, seed_b)，按 project 分矩阵（project_id → pairs）
+    /// 共现对：key = (seed_a, seed_b)，按 project 分矩阵（workspace_id → pairs）
     matrices: HashMap<String, HashMap<(String, String), CoEntry>>,
     /// 指数衰减因子（默认 0.95）
     decay: f32,
@@ -52,12 +52,12 @@ impl SeedCoActivationMatrix {
     ///
     /// 对给定的种子 ID 集合中的每一对 (i, j)，i < j，更新共现强度。
     /// 缺席的种子对其强度自然衰减。
-    pub fn record_coactivation(&mut self, project_id: &str, seed_ids: &[String], turn: u64) {
+    pub fn record_coactivation(&mut self, workspace_id: &str, seed_ids: &[String], turn: u64) {
         if seed_ids.len() < 2 {
             return;
         }
 
-        let matrix = self.matrices.entry(project_id.to_string()).or_default();
+        let matrix = self.matrices.entry(workspace_id.to_string()).or_default();
 
         for i in 0..seed_ids.len() {
             for j in (i + 1)..seed_ids.len() {
@@ -80,8 +80,8 @@ impl SeedCoActivationMatrix {
     /// 查询某种子参与的全部共现对的平均强度。
     ///
     /// 用于检索时的 sync_bonus 计算。
-    pub fn coactivation_strength(&self, project_id: &str, seed_id: &str) -> f32 {
-        let Some(matrix) = self.matrices.get(project_id) else {
+    pub fn coactivation_strength(&self, workspace_id: &str, seed_id: &str) -> f32 {
+        let Some(matrix) = self.matrices.get(workspace_id) else {
             return 0.0;
         };
         let mut total = 0.0f32;
@@ -102,8 +102,8 @@ impl SeedCoActivationMatrix {
     /// 查询某种子参与的共现对数。
     ///
     /// 关联广度由共现矩阵动态查询，非种子自身属性。
-    pub fn count_pairs_for(&self, project_id: &str, seed_id: &str) -> usize {
-        let Some(matrix) = self.matrices.get(project_id) else {
+    pub fn count_pairs_for(&self, workspace_id: &str, seed_id: &str) -> usize {
+        let Some(matrix) = self.matrices.get(workspace_id) else {
             return 0;
         };
         matrix
@@ -117,8 +117,8 @@ impl SeedCoActivationMatrix {
     /// 沉寂种子检测结果作为附条件输入喂给坐忘——
     /// 坐忘既有的 access_decay 是休眠检测主信号；
     /// 共现沉寂仅当 relevance_score 也低于中位数时作为加重因子。
-    pub fn dormant_seeds(&self, project_id: &str, threshold: f32) -> Vec<String> {
-        let Some(matrix) = self.matrices.get(project_id) else {
+    pub fn dormant_seeds(&self, workspace_id: &str, threshold: f32) -> Vec<String> {
+        let Some(matrix) = self.matrices.get(workspace_id) else {
             return vec![];
         };
         let mut seed_strengths: HashMap<String, f32> = HashMap::default();
@@ -134,14 +134,17 @@ impl SeedCoActivationMatrix {
     }
 
     /// 获取某项目的共现矩阵中的总对数。
-    pub fn total_pairs(&self, project_id: &str) -> usize {
-        self.matrices.get(project_id).map(|m| m.len()).unwrap_or(0)
+    pub fn total_pairs(&self, workspace_id: &str) -> usize {
+        self.matrices
+            .get(workspace_id)
+            .map(|m| m.len())
+            .unwrap_or(0)
     }
 
     /// Cap the number of pairs per seed to prevent unbounded growth.
     /// For each seed, keeps only the top `max_pairs` strongest coactivation entries.
-    pub fn enforce_cap(&mut self, project_id: &str, max_pairs_per_seed: usize) {
-        let Some(matrix) = self.matrices.get_mut(project_id) else {
+    pub fn enforce_cap(&mut self, workspace_id: &str, max_pairs_per_seed: usize) {
+        let Some(matrix) = self.matrices.get_mut(workspace_id) else {
             return;
         };
         // Collect per-seed pair counts and strengths

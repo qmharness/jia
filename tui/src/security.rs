@@ -5,7 +5,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Paragraph, Wrap};
 
-// ── Security Guide (Claude-style project trust check) ────────
+// ── Security Guide (Claude-style workspace trust check) ────────
 
 pub(crate) fn render_security_guide(f: &mut Frame, area: Rect, cwd: &str, selected: usize) {
     let w = area.width.saturating_sub(2).max(40) as usize;
@@ -41,7 +41,7 @@ pub(crate) fn render_security_guide(f: &mut Frame, area: Rect, cwd: &str, select
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source project, or work from your team). If not, take a moment to review what's in this folder first.",
+            "Quick safety check: Is this a workspace you created or one you trust? (Like your own code, a well-known open source project, or work from your team). If not, take a moment to review what's in this folder first.",
             dim,
         )),
         Line::from(""),

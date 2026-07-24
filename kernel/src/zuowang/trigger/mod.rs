@@ -252,7 +252,7 @@ mod tests {
         Seed {
             id: id.into(),
             session_id: "test".into(),
-            project_id: String::new(),
+            workspace_id: String::new(),
             nature: SeedNature::Fact,
             source: SeedSource::ToolObservation,
             content: SeedContent::FreeText { text: "x".into() },
@@ -271,7 +271,7 @@ mod tests {
         Seed {
             id: id.into(),
             session_id: "test".into(),
-            project_id: String::new(),
+            workspace_id: String::new(),
             nature: SeedNature::Preference,
             source: SeedSource::Consolidation,
             content: SeedContent::KeyValue {
@@ -570,7 +570,7 @@ mod tests {
         Seed {
             id: id.into(),
             session_id: "test".into(),
-            project_id: String::new(),
+            workspace_id: String::new(),
             nature: SeedNature::Inference,
             source: SeedSource::Consolidation,
             content: SeedContent::Triple {

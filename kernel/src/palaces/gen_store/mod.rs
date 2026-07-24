@@ -28,10 +28,10 @@ mod helpers;
 pub(crate) use helpers::*;
 mod manas;
 mod principles;
-mod projects;
 mod seeds;
 mod sessions;
 mod skills;
+mod workspaces;
 
 impl Store {
     pub fn open(path: &str) -> Self {
@@ -56,28 +56,21 @@ impl Store {
 
         // Run schema migration on one pooled connection.
         // Version-driven: PRAGMA user_version tracks applied migrations.
-        // Only runs migrations whose version > current user_version.
-        const CURRENT_SCHEMA_VERSION: i64 = 1;
+        // Each migration N runs only when user_version < N — future schema
+        // changes append migrations/00N_*.sql and bump CURRENT_SCHEMA_VERSION.
+        const CURRENT_SCHEMA_VERSION: i64 = 2;
         let conn = pool.get().expect("Failed to get connection for migration");
         let current_version: i64 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap_or(0);
-        if current_version < CURRENT_SCHEMA_VERSION {
-            tracing::info!(
-                from = current_version,
-                to = CURRENT_SCHEMA_VERSION,
-                "Running schema migration"
-            );
-            // L2 · DDL 抽到 migrations/*.sql(include_str! 嵌入,语义与原内联一致):
-            // 001 基础 schema 整体 execute_batch;002 增量迁移按 ';' 切分
-            // 逐条独立容错执行(ALTER 列已存在时失败无害,与原 `let _ =` 一致)。
-            const INIT_SQL: &str = include_str!("migrations/001_init.sql");
-            const ALTERS_SQL: &str = include_str!("migrations/002_alters.sql");
-            conn.execute_batch(INIT_SQL)
-                .expect("Failed to create tables");
-            for stmt in ALTERS_SQL.split(';') {
-                // 去掉注释行再判空/执行——注释里的分号不会撕碎语句
-                // (002 文件头虽禁分号,此处防御未来编辑者)。
+
+        /// Execute a migrations/*.sql file statement-by-statement, skipping
+        /// `--` comment lines (so semicolons inside comments can't tear
+        /// statements apart). Idempotent ALTERs may fail harmlessly — failures
+        /// are logged at debug level (previously they were silently swallowed,
+        /// which hid a real failure during the 003 rollout).
+        fn exec_tolerated(conn: &rusqlite::Connection, sql: &str) {
+            for stmt in sql.split(';') {
                 let stmt: String = stmt
                     .lines()
                     .filter(|l| !l.trim_start().starts_with("--"))
@@ -85,9 +78,41 @@ impl Store {
                     .join("\n");
                 let stmt = stmt.trim();
                 if !stmt.is_empty() {
-                    let _ = conn.execute(stmt, []);
+                    if let Err(e) = conn.execute(stmt, []) {
+                        tracing::debug!(error = %e, stmt = %&stmt[..stmt.len().min(60)], "migration statement failed (tolerated)");
+                    }
                 }
             }
+        }
+
+        if current_version < 1 {
+            tracing::info!(
+                from = current_version,
+                to = 1,
+                "Running schema migration 001+002"
+            );
+            // L2 · DDL 抽到 migrations/*.sql:001 基础 schema 整体 execute_batch;
+            // 002 增量迁移逐条独立容错执行(与原 `let _ =` 一致)。
+            const INIT_SQL: &str = include_str!("migrations/001_init.sql");
+            const ALTERS_SQL: &str = include_str!("migrations/002_alters.sql");
+            conn.execute_batch(INIT_SQL)
+                .expect("Failed to create tables");
+            exec_tolerated(&conn, ALTERS_SQL);
+            let _ = conn.pragma_update(None, "user_version", 1);
+        }
+        if current_version < 2 {
+            tracing::info!(
+                from = current_version,
+                to = 2,
+                "Running schema migration 003"
+            );
+            // project → workspace 概念重命名(存量库 RENAME;新库由 001/002
+            // 直接以新名建表,003 的 ALTER 对不存在的 projects 表失败无害)。
+            const RENAME_SQL: &str = include_str!("migrations/003_workspace_rename.sql");
+            exec_tolerated(&conn, RENAME_SQL);
+            let _ = conn.pragma_update(None, "user_version", 2);
+        }
+        if current_version < CURRENT_SCHEMA_VERSION {
             // TTL cleanup: prune history tables older than 90 days
             let cutoff = crate::utils::unix_now() - 90 * 86400;
             let _ = conn.execute(
@@ -98,9 +123,7 @@ impl Store {
                 "DELETE FROM dissolution_history WHERE timestamp < ?1",
                 rusqlite::params![cutoff],
             );
-
-            let _ = conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION);
-        } // end migration version guard
+        }
 
         Self {
             pool,
@@ -193,11 +216,86 @@ mod tests {
         Arc::new(Store::open(&dir.path().join("test.db").to_string_lossy()))
     }
 
+    /// v1 → v2 迁移回归:合成 v1 库(projects 表 + project_id 列)后打开,
+    /// 003 必须把 projects RENAME 为 workspaces、project_id RENAME 为
+    /// workspace_id。这是 2026-07-24 实机发现的"语句 1 静默失败"回归测试。
+    #[test]
+    fn migration_v1_to_v2_renames_projects_to_workspaces() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db").to_string_lossy().to_string();
+
+        // 合成 v1 库(不经 Store::open,绕过迁移)
+        {
+            let conn = rusqlite::Connection::open(&db_path).unwrap();
+            conn.execute_batch(
+                "PRAGMA foreign_keys=ON;
+                 CREATE TABLE projects (
+                     id TEXT PRIMARY KEY,
+                     cwd TEXT NOT NULL UNIQUE,
+                     name TEXT NOT NULL DEFAULT '',
+                     description TEXT NOT NULL DEFAULT '',
+                     tags_json TEXT NOT NULL DEFAULT '[]',
+                     archived INTEGER NOT NULL DEFAULT 0,
+                     created_at INTEGER NOT NULL,
+                     updated_at INTEGER NOT NULL
+                 );
+                 CREATE TABLE sessions (
+                     id TEXT PRIMARY KEY,
+                     messages_json TEXT NOT NULL,
+                     updated_at INTEGER NOT NULL,
+                     project_id TEXT REFERENCES projects(id)
+                 );
+                 CREATE TABLE seeds (
+                     id TEXT PRIMARY KEY,
+                     session_id TEXT NOT NULL,
+                     project_id TEXT NOT NULL DEFAULT ''
+                 );
+                 INSERT INTO projects (id, cwd, created_at, updated_at) VALUES ('w1', '/tmp/w1', 1, 1);
+                 INSERT INTO sessions (id, messages_json, updated_at, project_id) VALUES ('s1', '[]', 1, 'w1');
+                 INSERT INTO seeds (id, session_id, project_id) VALUES ('seed1', 's1', 'w1');
+                 PRAGMA user_version = 1;",
+            )
+            .unwrap();
+        }
+
+        let store = Store::open(&db_path);
+
+        let conn = store.pool.get().unwrap();
+        let has_workspaces: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='workspaces'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(has_workspaces, "projects must be renamed to workspaces");
+        let version: i64 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 2);
+        let sess_pid: Option<String> = conn
+            .query_row("SELECT workspace_id FROM sessions WHERE id='s1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(
+            sess_pid.as_deref(),
+            Some("w1"),
+            "FK row must survive rename"
+        );
+        let seed_pid: String = conn
+            .query_row("SELECT workspace_id FROM seeds WHERE id='seed1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(seed_pid, "w1");
+    }
+
     fn insert_seed(store: &Store, id: &str, content: SeedContent) {
         let seed = Seed {
             id: id.into(),
             session_id: "test".into(),
-            project_id: String::new(),
+            workspace_id: String::new(),
             nature: SeedNature::Fact,
             source: SeedSource::ToolObservation,
             content,

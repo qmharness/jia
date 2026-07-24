@@ -34,7 +34,7 @@ pub struct Seed {
     /// Used for same-project recall bias and per-project filtering; memory stays
     /// globally shared (one ālaya) regardless of this field.
     #[serde(default)]
-    pub project_id: String,
+    pub workspace_id: String,
     pub nature: SeedNature,
     pub source: SeedSource,
     pub content: SeedContent,
@@ -93,7 +93,7 @@ pub enum SeedContent {
 impl Seed {
     pub fn new(
         session_id: String,
-        project_id: String,
+        workspace_id: String,
         nature: SeedNature,
         source: SeedSource,
         content: SeedContent,
@@ -105,7 +105,7 @@ impl Seed {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             session_id,
-            project_id,
+            workspace_id,
             nature,
             source,
             content,
@@ -157,9 +157,9 @@ impl SeedStore {
             .collect()
     }
 
-    /// Load all seeds affiliated with a project (exact project_id match).
-    pub fn load_by_project(&self, project_id: &str) -> Result<Vec<Seed>, JiaError> {
-        let jsons = self.store.load_seeds_by_project(project_id)?;
+    /// Load all seeds affiliated with a project (exact workspace_id match).
+    pub fn load_by_workspace(&self, workspace_id: &str) -> Result<Vec<Seed>, JiaError> {
+        let jsons = self.store.load_seeds_by_workspace(workspace_id)?;
         jsons
             .into_iter()
             .map(|j| serde_json::from_str(&j).map_err(JiaError::from))
@@ -430,7 +430,7 @@ mod tests {
         let seed = Seed {
             id: id.into(),
             session_id: "test".into(),
-            project_id: String::new(),
+            workspace_id: String::new(),
             nature: SeedNature::Fact,
             source: SeedSource::ToolObservation,
             content,
@@ -571,7 +571,7 @@ mod tests {
         let seed = Seed {
             id: "s1".into(),
             session_id: "test".into(),
-            project_id: String::new(),
+            workspace_id: String::new(),
             nature: SeedNature::Fact,
             source: SeedSource::ToolObservation,
             content: SeedContent::FreeText { text: "x".into() },
@@ -600,7 +600,7 @@ mod tests {
         let seed = Seed {
             id: "s1".into(),
             session_id: "test".into(),
-            project_id: String::new(),
+            workspace_id: String::new(),
             nature: SeedNature::Fact,
             source: SeedSource::ToolObservation,
             content: SeedContent::FreeText { text: "x".into() },
@@ -627,7 +627,7 @@ mod tests {
         let seed = Seed {
             id: "s1".into(),
             session_id: "test".into(),
-            project_id: String::new(),
+            workspace_id: String::new(),
             nature: SeedNature::Fact,
             source: SeedSource::ToolObservation,
             content: SeedContent::FreeText { text: "x".into() },
@@ -653,7 +653,7 @@ mod tests {
         let seed_recent = Seed {
             id: "r".into(),
             session_id: "test".into(),
-            project_id: String::new(),
+            workspace_id: String::new(),
             nature: SeedNature::Fact,
             source: SeedSource::ToolObservation,
             content: SeedContent::FreeText { text: "x".into() },
@@ -669,7 +669,7 @@ mod tests {
         let seed_old = Seed {
             id: "o".into(),
             session_id: "test".into(),
-            project_id: String::new(),
+            workspace_id: String::new(),
             nature: SeedNature::Fact,
             source: SeedSource::ToolObservation,
             content: SeedContent::FreeText { text: "x".into() },
@@ -735,7 +735,7 @@ mod tests {
         let seed_a = Seed {
             id: "a".into(),
             session_id: "session_1".into(),
-            project_id: String::new(),
+            workspace_id: String::new(),
             nature: SeedNature::Fact,
             source: SeedSource::ToolObservation,
             content: SeedContent::FreeText {
@@ -753,7 +753,7 @@ mod tests {
         let seed_b = Seed {
             id: "b".into(),
             session_id: "session_2".into(),
-            project_id: String::new(),
+            workspace_id: String::new(),
             nature: SeedNature::Preference,
             source: SeedSource::UserStatement,
             content: SeedContent::KeyValue {
@@ -785,7 +785,7 @@ mod tests {
     }
 
     #[test]
-    fn load_by_project_filters_correctly() {
+    fn load_by_workspace_filters_correctly() {
         let ss = temp_seed_store();
         let mut a = Seed::new(
             "s1".into(),
@@ -817,13 +817,13 @@ mod tests {
         b.id = "b".into();
         ss.insert(&b).unwrap();
 
-        let in_a = ss.load_by_project("projA").unwrap();
+        let in_a = ss.load_by_workspace("projA").unwrap();
         assert_eq!(in_a.len(), 1);
         assert_eq!(in_a[0].id, "a");
-        let in_b = ss.load_by_project("projB").unwrap();
+        let in_b = ss.load_by_workspace("projB").unwrap();
         assert_eq!(in_b.len(), 1);
         assert_eq!(in_b[0].id, "b");
-        assert!(ss.load_by_project("nonexistent").unwrap().is_empty());
+        assert!(ss.load_by_workspace("nonexistent").unwrap().is_empty());
     }
 
     #[test]

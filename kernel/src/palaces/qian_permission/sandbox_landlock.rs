@@ -110,10 +110,10 @@ unsafe fn landlock_restrict_self(ruleset_fd: i32) -> libc::c_long {
 
 /// Linux Landlock sandbox using the Landlock LSM (kernel 5.13+).
 ///
-/// Restricts filesystem access to project_root + allowed_paths only.
+/// Restricts filesystem access to workspace_root + allowed_paths only.
 /// No network or process restrictions — purely filesystem.
 pub struct LandlockSandbox {
-    pub project_root: PathBuf,
+    pub workspace_root: PathBuf,
     pub allowed_paths: Vec<PathBuf>,
     pub timeout: Duration,
 }
@@ -168,7 +168,7 @@ pub fn is_available() -> bool {
 /// On error any partially-built ruleset fd is closed before returning.
 // SAFETY: all raw syscalls below operate on valid fds/structs as documented
 // on the individual wrappers; error paths close every fd they own.
-unsafe fn prepare_ruleset(project_root: &Path, allowed_paths: &[PathBuf]) -> Result<i32, String> {
+unsafe fn prepare_ruleset(workspace_root: &Path, allowed_paths: &[PathBuf]) -> Result<i32, String> {
     let attr = LandlockRulesetAttr {
         handled_access_fs: HANDLED_ACCESS_FS,
     };
@@ -193,8 +193,8 @@ unsafe fn prepare_ruleset(project_root: &Path, allowed_paths: &[PathBuf]) -> Res
     // CLOEXEC, so the child still sees it in pre_exec.
     unsafe { libc::fcntl(ruleset_fd, libc::F_SETFD, libc::FD_CLOEXEC) };
 
-    // Collect paths: project_root + all allowed_paths
-    let mut paths: Vec<PathBuf> = vec![project_root.to_path_buf()];
+    // Collect paths: workspace_root + all allowed_paths
+    let mut paths: Vec<PathBuf> = vec![workspace_root.to_path_buf()];
     paths.extend_from_slice(allowed_paths);
 
     for path in &paths {
@@ -248,7 +248,7 @@ impl ExecutionSandbox for LandlockSandbox {
         let cwd_owned = cwd.to_path_buf();
         let env_owned = env.clone();
         let timeout = self.timeout;
-        let project_root = self.project_root.clone();
+        let workspace_root = self.workspace_root.clone();
         let allowed_paths = self.allowed_paths.clone();
 
         tokio::task::spawn_blocking(move || {
@@ -257,7 +257,7 @@ impl ExecutionSandbox for LandlockSandbox {
                 timeout,
                 &cwd_owned,
                 &env_owned,
-                &project_root,
+                &workspace_root,
                 &allowed_paths,
             )
         })
@@ -271,7 +271,7 @@ fn run_landlock(
     timeout: Duration,
     cwd: &PathBuf,
     env: &HashMap<String, String>,
-    project_root: &Path,
+    workspace_root: &Path,
     allowed_paths: &[PathBuf],
 ) -> Result<SandboxOutput, String> {
     let mut cmd_builder = std::process::Command::new("sh");
@@ -289,7 +289,7 @@ fn run_landlock(
     // Build the ruleset in the parent, before fork: all allocation and
     // tracing happens here, so the pre_exec closure below performs only
     // syscalls (async-signal-safe) and never touches the heap.
-    let ruleset_fd = unsafe { prepare_ruleset(project_root, allowed_paths)? };
+    let ruleset_fd = unsafe { prepare_ruleset(workspace_root, allowed_paths)? };
 
     // SAFETY: the pre_exec closure runs in the child between fork and exec,
     // where only async-signal-safe operations are permitted. The closure

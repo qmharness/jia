@@ -116,7 +116,7 @@ pub enum PathOp {
 /// Resolved sandbox configuration with canonicalized paths.
 #[derive(Debug, Clone)]
 pub struct SandboxConfig {
-    pub project_root: PathBuf,
+    pub workspace_root: PathBuf,
     pub allowed_paths: Vec<PathBuf>,
     pub blocked_prefixes: Vec<String>,
 }
@@ -131,7 +131,7 @@ pub struct ShellPolicy {
 /// 乾六宫 — Permission Matrix
 ///
 /// Enforces tool execution boundaries:
-/// 1. Path sandboxing (confine reads/writes to project_root + allowed_paths)
+/// 1. Path sandboxing (confine reads/writes to workspace_root + allowed_paths)
 /// 2. Shell command filtering (allowlist/blocklist)
 /// 3. User confirmation timeout configuration
 pub struct PermissionMatrix {
@@ -149,7 +149,7 @@ pub struct PermissionMatrix {
 impl std::fmt::Debug for PermissionMatrix {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PermissionMatrix")
-            .field("sandbox.project_root", &self.sandbox.project_root)
+            .field("sandbox.workspace_root", &self.sandbox.workspace_root)
             .field("sandbox.blocked_prefixes", &self.sandbox.blocked_prefixes)
             .field("sandbox_mode", &self.sandbox_mode)
             .finish_non_exhaustive()
@@ -175,15 +175,15 @@ impl PermissionMatrix {
         default_root: &Path,
         backup_dir: PathBuf,
     ) -> Self {
-        let project_root = security
-            .project_root
+        let workspace_root = security
+            .workspace_root
             .as_deref()
             .map(PathBuf::from)
             .unwrap_or_else(|| default_root.to_path_buf());
 
-        let project_root = project_root
+        let workspace_root = workspace_root
             .canonicalize()
-            .unwrap_or_else(|_| project_root.clone());
+            .unwrap_or_else(|_| workspace_root.clone());
 
         let allowed_paths: Vec<PathBuf> = security
             .allowed_paths
@@ -196,7 +196,7 @@ impl PermissionMatrix {
 
         Self {
             sandbox: SandboxConfig {
-                project_root,
+                workspace_root,
                 allowed_paths,
                 blocked_prefixes: security.blocked_path_prefixes.clone(),
             },
@@ -216,18 +216,18 @@ impl PermissionMatrix {
     /// Verify a user-supplied path against sandbox boundaries.
     ///
     /// Steps:
-    /// 1. Resolve relative paths against project_root
+    /// 1. Resolve relative paths against workspace_root
     /// 2. Canonicalize (resolves symlinks, `..`) — for writes, canonicalize parent
-    /// 3. Check canonical path is within project_root or allowed_paths
+    /// 3. Check canonical path is within workspace_root or allowed_paths
     /// 4. Check no path component matches a blocked prefix
     ///
     /// Returns the canonical path on success, or an error string on denial.
     pub fn verify_path(&self, raw: &str, op: PathOp) -> Result<PathBuf, String> {
         let p = Path::new(raw);
 
-        // Resolve relative paths against project_root
+        // Resolve relative paths against workspace_root
         let resolved = if p.is_relative() {
-            self.sandbox.project_root.join(p)
+            self.sandbox.workspace_root.join(p)
         } else {
             p.to_path_buf()
         };
@@ -251,7 +251,7 @@ impl PermissionMatrix {
         };
 
         // Check root boundary
-        let within_root = canonical.starts_with(&self.sandbox.project_root);
+        let within_root = canonical.starts_with(&self.sandbox.workspace_root);
         let within_allowed = self
             .sandbox
             .allowed_paths
@@ -263,7 +263,7 @@ impl PermissionMatrix {
                 "path '{}' (→ {}) is outside project root '{}'",
                 raw,
                 canonical.display(),
-                self.sandbox.project_root.display(),
+                self.sandbox.workspace_root.display(),
             ));
         }
 
@@ -385,7 +385,7 @@ impl PermissionMatrix {
                 cpus: section.cpu_limit,
                 tmpfs_size_mb: section.file_size_limit_mb,
                 network_enabled: section.network_enabled,
-                workspace_dir: self.sandbox.project_root.clone(),
+                workspace_dir: self.sandbox.workspace_root.clone(),
             }));
             return self;
         }
@@ -393,7 +393,7 @@ impl PermissionMatrix {
         #[cfg(target_os = "linux")]
         if backend == SandboxBackend::Landlock {
             self.execution_sandbox = Some(Arc::new(sandbox_landlock::LandlockSandbox {
-                project_root: self.sandbox.project_root.clone(),
+                workspace_root: self.sandbox.workspace_root.clone(),
                 allowed_paths: self.sandbox.allowed_paths.clone(),
                 timeout: std::time::Duration::from_secs(section.timeout_seconds),
             }));
@@ -403,7 +403,7 @@ impl PermissionMatrix {
         #[cfg(target_os = "macos")]
         if backend == SandboxBackend::Seatbelt {
             self.execution_sandbox = Some(Arc::new(sandbox_seatbelt::SeatbeltSandbox {
-                project_root: self.sandbox.project_root.clone(),
+                workspace_root: self.sandbox.workspace_root.clone(),
                 allowed_paths: self.sandbox.allowed_paths.clone(),
                 timeout: std::time::Duration::from_secs(section.timeout_seconds),
             }));
@@ -433,7 +433,7 @@ impl PermissionMatrix {
     pub async fn execute_sandboxed(&self, cmd: &str) -> Result<String, String> {
         self.verify_command(cmd)?;
 
-        let cwd = self.sandbox.project_root.clone();
+        let cwd = self.sandbox.workspace_root.clone();
 
         if let Some(ref sandbox) = self.execution_sandbox {
             let output = sandbox
@@ -533,10 +533,10 @@ mod tests {
     use super::*;
 
     fn make_matrix() -> PermissionMatrix {
-        let project_root = std::env::current_dir().unwrap();
+        let workspace_root = std::env::current_dir().unwrap();
         PermissionMatrix {
             sandbox: SandboxConfig {
-                project_root: project_root.canonicalize().unwrap(),
+                workspace_root: workspace_root.canonicalize().unwrap(),
                 allowed_paths: vec![],
                 blocked_prefixes: vec![".git".into(), ".env".into()],
             },

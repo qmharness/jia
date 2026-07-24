@@ -39,7 +39,7 @@ pub async fn handle_files(
         None => return Json(serde_json::json!({"error": "Agent not initialized"})),
     };
 
-    // Use explicit root as sandbox boundary, or fall back to global project_root
+    // Use explicit root as sandbox boundary, or fall back to global workspace_root
     let sandbox_root = match &query.root {
         Some(r) => {
             let p = std::path::PathBuf::from(r);
@@ -48,7 +48,7 @@ pub async fn handle_files(
                 .await
                 .unwrap_or(p2)
         }
-        None => earth.permissions.sandbox.project_root.clone(),
+        None => earth.permissions.sandbox.workspace_root.clone(),
     };
 
     // Resolve path relative to sandbox root
@@ -164,7 +164,7 @@ pub async fn handle_config(State(state): State<Arc<AppState>>) -> Json<serde_jso
         });
 
         config["security"] = serde_json::json!({
-            "project_root": earth.permissions.sandbox.project_root.to_string_lossy(),
+            "workspace_root": earth.permissions.sandbox.workspace_root.to_string_lossy(),
             "sandbox_disabled": earth.permissions.sandbox_mode.clone(),
             "confirmation_timeout_secs": earth.permissions.confirmation_timeout.as_secs(),
         });

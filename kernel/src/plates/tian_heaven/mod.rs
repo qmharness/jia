@@ -303,7 +303,7 @@ Be attentive, truthful, and serve with sincerity.";
             let seed = Seed {
                 id: "ren_soul_root".to_string(),
                 session_id: "_jia_system".to_string(),
-                project_id: String::new(),
+                workspace_id: String::new(),
                 nature: SeedNature::Preference,
                 source: SeedSource::RenSoul,
                 content: SeedContent::FreeText { text },
@@ -436,7 +436,7 @@ Be attentive, truthful, and serve with sincerity.";
         }
 
         // Memory catalog: existence index for Alaya seeds
-        let cur_project = self.earth.store.session_project_id(&self.id);
+        let cur_project = self.earth.store.session_workspace_id(&self.id);
         let seed_store = SeedStore::new(self.earth.store.clone());
         let (catalog, always_ids) = seed_store.memory_catalog();
         prompt.push_str(&catalog);
@@ -492,7 +492,7 @@ mod tests {
 
     pub(super) fn temp_earth(tmp: &std::path::Path) -> Arc<EarthPlate> {
         let security = SecuritySection {
-            project_root: Some(tmp.to_str().unwrap().to_string()),
+            workspace_root: Some(tmp.to_str().unwrap().to_string()),
             sandbox_mode: crate::palaces::kun_config::SandboxMode::Disabled,
             ..SecuritySection::default()
         };

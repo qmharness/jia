@@ -9,7 +9,7 @@ impl Store {
         let v: serde_json::Value = serde_json::from_str(seed_json)?;
         let id = v["id"].as_str().unwrap_or("");
         let session_id = v["session_id"].as_str().unwrap_or("");
-        let project_id = v["project_id"].as_str().unwrap_or("");
+        let workspace_id = v["workspace_id"].as_str().unwrap_or("");
         let nature = v["nature"].as_str().unwrap_or("Fact");
         let source = v["source"].as_str().unwrap_or("SystemInferred");
         let content_type = v["content"]["type"].as_str().unwrap_or("FreeText");
@@ -48,10 +48,10 @@ impl Store {
 
         let content_text = extract_content_text(content_type, &content_json);
         conn.execute(
-            "INSERT OR IGNORE INTO seeds (id, session_id, project_id, nature, source, content_type, content_json,
+            "INSERT OR IGNORE INTO seeds (id, session_id, workspace_id, nature, source, content_type, content_json,
              content_text, palace, intent_stem, geju_key, created_at, access_count, last_accessed_at, strength, tier)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
-            rusqlite::params![id, session_id, project_id, nature, source, content_type, &content_json,
+            rusqlite::params![id, session_id, workspace_id, nature, source, content_type, &content_json,
                 &content_text, palace, intent_stem, geju_key, created_at, access_count, last_accessed_at, strength, tier],
         )?;
         // Keep FTS5 index in sync
@@ -66,7 +66,7 @@ impl Store {
         let conn = self.pool.get()?;
         let mut stmt = conn.prepare(
             "SELECT id, session_id, nature, source, content_type, content_json,
-             palace, intent_stem, geju_key, created_at, access_count, last_accessed_at, strength, tier, project_id
+             palace, intent_stem, geju_key, created_at, access_count, last_accessed_at, strength, tier, workspace_id
              FROM seeds WHERE session_id = ?1 ORDER BY created_at DESC"
         )?;
         let rows = stmt.query_map(rusqlite::params![session_id], |row| {
@@ -79,16 +79,16 @@ impl Store {
         Ok(result)
     }
 
-    /// Load all seeds affiliated with a project (exact project_id match).
-    /// Legacy/global seeds (project_id = '') are excluded.
-    pub fn load_seeds_by_project(&self, project_id: &str) -> Result<Vec<String>, StoreError> {
+    /// Load all seeds affiliated with a project (exact workspace_id match).
+    /// Legacy/global seeds (workspace_id = '') are excluded.
+    pub fn load_seeds_by_workspace(&self, workspace_id: &str) -> Result<Vec<String>, StoreError> {
         let conn = self.pool.get()?;
         let mut stmt = conn.prepare(
             "SELECT id, session_id, nature, source, content_type, content_json,
-             palace, intent_stem, geju_key, created_at, access_count, last_accessed_at, strength, tier, project_id
-             FROM seeds WHERE project_id = ?1 ORDER BY created_at DESC",
+             palace, intent_stem, geju_key, created_at, access_count, last_accessed_at, strength, tier, workspace_id
+             FROM seeds WHERE workspace_id = ?1 ORDER BY created_at DESC",
         )?;
-        let rows = stmt.query_map(rusqlite::params![project_id], |row| {
+        let rows = stmt.query_map(rusqlite::params![workspace_id], |row| {
             Ok(seed_row_to_json(row))
         })?;
         let mut result = Vec::new();
@@ -244,9 +244,9 @@ impl Store {
             Some(pid) if !pid.is_empty() => {
                 let mut stmt = conn.prepare(
                     "SELECT id, session_id, nature, source, content_type, content_json,
-                     palace, intent_stem, geju_key, created_at, access_count, last_accessed_at, strength, tier, project_id
+                     palace, intent_stem, geju_key, created_at, access_count, last_accessed_at, strength, tier, workspace_id
                      FROM seeds
-                     ORDER BY (strength + CASE WHEN project_id = ?1 THEN 0.1 ELSE 0 END) DESC,
+                     ORDER BY (strength + CASE WHEN workspace_id = ?1 THEN 0.1 ELSE 0 END) DESC,
                               strength DESC
                      LIMIT ?2",
                 )?;
@@ -260,7 +260,7 @@ impl Store {
             _ => {
                 let mut stmt = conn.prepare(
                     "SELECT id, session_id, nature, source, content_type, content_json,
-                     palace, intent_stem, geju_key, created_at, access_count, last_accessed_at, strength, tier, project_id
+                     palace, intent_stem, geju_key, created_at, access_count, last_accessed_at, strength, tier, workspace_id
                      FROM seeds
                      ORDER BY strength DESC
                      LIMIT ?1",
@@ -280,7 +280,7 @@ impl Store {
         let conn = self.pool.get()?;
         let mut stmt = conn.prepare(
             "SELECT id, session_id, nature, source, content_type, content_json,
-             palace, intent_stem, geju_key, created_at, access_count, last_accessed_at, strength, tier, project_id
+             palace, intent_stem, geju_key, created_at, access_count, last_accessed_at, strength, tier, workspace_id
              FROM seeds ORDER BY created_at DESC"
         )?;
         let rows = stmt.query_map([], |row| Ok(seed_row_to_json(row)))?;
@@ -297,7 +297,7 @@ impl Store {
         let conn = self.pool.get()?;
         let mut stmt = conn.prepare(
             "SELECT id, session_id, nature, source, content_type, content_json,
-             palace, intent_stem, geju_key, created_at, access_count, last_accessed_at, strength, tier, project_id
+             palace, intent_stem, geju_key, created_at, access_count, last_accessed_at, strength, tier, workspace_id
              FROM seeds
              WHERE nature = 'Preference' AND content_type = 'KeyValue'
              ORDER BY last_accessed_at DESC"
@@ -341,7 +341,7 @@ impl Store {
         let conn = self.pool.get()?;
         let mut stmt = conn.prepare(
             "SELECT id, session_id, nature, source, content_type, content_json,
-             palace, intent_stem, geju_key, created_at, access_count, last_accessed_at, strength, tier, project_id
+             palace, intent_stem, geju_key, created_at, access_count, last_accessed_at, strength, tier, workspace_id
              FROM seeds WHERE tier = 'Always' ORDER BY strength DESC LIMIT 10"
         )?;
         let rows = stmt.query_map([], |row| Ok(seed_row_to_json(row)))?;

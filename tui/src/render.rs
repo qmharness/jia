@@ -235,7 +235,7 @@ pub fn render_info_bar(
     mode_label: &str,
     model: &str,
     session_id: Option<&str>,
-    project: &str,
+    workspace: &str,
 ) {
     let white = Style::default().fg(Color::White);
     let sid = session_id
@@ -264,9 +264,9 @@ pub fn render_info_bar(
         left,
     );
 
-    if !project.is_empty() {
+    if !workspace.is_empty() {
         f.render_widget(
-            Paragraph::new(Line::from(Span::styled(format!("~/{}", project), white)))
+            Paragraph::new(Line::from(Span::styled(format!("~/{}", workspace), white)))
                 .alignment(ratatui::layout::Alignment::Right),
             right,
         );

@@ -23,7 +23,7 @@ pub struct PendingConfirmation {
     pub created_at: i64,
     pub token: String,
     /// 所属会话 — 断连时按会话清扫(rin 连接结束 → remove → sender drop)。
-    /// 空串 = 无会话归属(如 resolve_project 的建项确认,靠超时兜底)。
+    /// 空串 = 无会话归属(如 resolve_workspace 的建项确认,靠超时兜底)。
     pub session_id: String,
 }
 

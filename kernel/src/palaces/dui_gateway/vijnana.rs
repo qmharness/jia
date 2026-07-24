@@ -14,7 +14,7 @@ use super::AppState;
 #[derive(Debug, Deserialize)]
 pub struct VijnanaQuery {
     session_id: Option<String>,
-    project_id: Option<String>,
+    workspace_id: Option<String>,
 }
 
 pub async fn handle_vijnana_seeds(
@@ -26,8 +26,8 @@ pub async fn handle_vijnana_seeds(
         None => return Json(serde_json::json!({"error": "Agent not initialized"})),
     };
     let seed_store = SeedStore::new(earth.store.clone());
-    let seeds = match (&query.project_id, &query.session_id) {
-        (Some(pid), _) if !pid.is_empty() => seed_store.load_by_project(pid).unwrap_or_default(),
+    let seeds = match (&query.workspace_id, &query.session_id) {
+        (Some(pid), _) if !pid.is_empty() => seed_store.load_by_workspace(pid).unwrap_or_default(),
         (_, Some(sid)) => seed_store.load_by_session(sid).unwrap_or_default(),
         _ => seed_store.load_all().unwrap_or_default(),
     };
@@ -56,7 +56,7 @@ pub async fn handle_vijnana_seeds(
             "access_count": s.access_count,
             "last_accessed_at": s.last_accessed_at,
             "created_at": s.created_at,
-            "project_id": s.project_id,
+            "workspace_id": s.workspace_id,
         })
     }).collect();
     Json(serde_json::json!({"seeds": list, "count": list.len()}))
@@ -143,13 +143,13 @@ mod tests {
     fn vijnana_query_deserializes() {
         let q: VijnanaQuery = serde_json::from_str(r#"{"session_id": "sess-1"}"#).unwrap();
         assert_eq!(q.session_id, Some("sess-1".into()));
-        assert!(q.project_id.is_none());
+        assert!(q.workspace_id.is_none());
     }
 
     #[test]
-    fn vijnana_query_project_id() {
-        let q: VijnanaQuery = serde_json::from_str(r#"{"project_id": "proj-7"}"#).unwrap();
-        assert_eq!(q.project_id, Some("proj-7".into()));
+    fn vijnana_query_workspace_id() {
+        let q: VijnanaQuery = serde_json::from_str(r#"{"workspace_id": "proj-7"}"#).unwrap();
+        assert_eq!(q.workspace_id, Some("proj-7".into()));
         assert!(q.session_id.is_none());
     }
 
@@ -157,6 +157,6 @@ mod tests {
     fn vijnana_query_defaults() {
         let q: VijnanaQuery = serde_json::from_str(r#"{}"#).unwrap();
         assert!(q.session_id.is_none());
-        assert!(q.project_id.is_none());
+        assert!(q.workspace_id.is_none());
     }
 }

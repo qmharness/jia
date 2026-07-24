@@ -479,8 +479,8 @@ impl EarthPlate {
         cancel_token: tokio_util::sync::CancellationToken,
     ) -> ExecContext {
         let mut sec = self.config.app_config.security.clone();
-        sec.project_root = Some(root.to_string_lossy().to_string());
-        // Per-project backup dir: <project_root>/.jia/backups/
+        sec.workspace_root = Some(root.to_string_lossy().to_string());
+        // Per-project backup dir: <workspace_root>/.jia/backups/
         let backup_dir = root.join(".jia/backups");
         let _ = std::fs::create_dir_all(&backup_dir);
         let matrix = Arc::new(

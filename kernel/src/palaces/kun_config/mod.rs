@@ -273,11 +273,11 @@ pub enum SandboxMode {
 pub struct SecuritySection {
     /// Root directory for path sandboxing. Default: current working directory.
     #[serde(default)]
-    pub project_root: Option<String>,
-    /// Additional directories (outside project_root) where tools can read/write.
+    pub workspace_root: Option<String>,
+    /// Additional directories (outside workspace_root) where tools can read/write.
     #[serde(default)]
     pub allowed_paths: Vec<String>,
-    /// Path prefixes that are always blocked, even within project_root.
+    /// Path prefixes that are always blocked, even within workspace_root.
     #[serde(default = "default_blocked_prefixes")]
     pub blocked_path_prefixes: Vec<String>,
     /// If non-empty, only these shell commands are allowed.
@@ -486,7 +486,7 @@ pub struct McpServerConfig {
 impl Default for SecuritySection {
     fn default() -> Self {
         Self {
-            project_root: None,
+            workspace_root: None,
             allowed_paths: Vec::new(),
             blocked_path_prefixes: default_blocked_prefixes(),
             command_allowlist: Vec::new(),
@@ -527,7 +527,7 @@ pub fn pid_file_path() -> std::path::PathBuf {
 }
 
 /// Default project workspace root: `$HOME/Documents/jia-workspace`.
-/// Used when `security.project_root` is not explicitly configured.
+/// Used when `security.workspace_root` is not explicitly configured.
 pub fn default_workspace_dir() -> std::path::PathBuf {
     std::env::var("JIA_WORKSPACE")
         .map(std::path::PathBuf::from)
@@ -545,6 +545,12 @@ pub fn default_workspace_dir() -> std::path::PathBuf {
 /// the frontend without `--web-dir`. Within the repo layout, this is:
 /// `<jia>/frontend/dist`.
 pub fn default_web_dir() -> PathBuf {
+    // 优先用户安装的前端(<data_dir>/frontend,如 ~/.jia/frontend),
+    // 其次仓内构建产物(<crate_root>/frontend/dist)。
+    let user = default_data_dir().join("frontend");
+    if user.join("index.html").exists() {
+        return user;
+    }
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .map(|p| p.join("frontend").join("dist"))

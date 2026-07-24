@@ -16,9 +16,9 @@ impl Store {
         Ok(())
     }
 
-    /// Insert a new session with title, cwd, and project_id.
+    /// Insert a new session with title, cwd, and workspace_id.
     /// Uses INSERT OR IGNORE — safe to call even if session already exists.
-    /// Empty project_id is stored as NULL: the FK on sessions.project_id
+    /// Empty workspace_id is stored as NULL: the FK on sessions.workspace_id
     /// rejects '' (V3 smoke 发现:'' 触发 FOREIGN KEY constraint failed,
     /// 被调用方 let _ = 静默吞掉,占位行从未建成,title/cwd 全部丢失)。
     pub fn create_session(
@@ -26,17 +26,17 @@ impl Store {
         id: &str,
         title: &str,
         cwd: &str,
-        project_id: &str,
+        workspace_id: &str,
     ) -> Result<(), StoreError> {
         let conn = self.pool.get()?;
         let now = crate::utils::unix_now();
-        let pid: Option<&str> = if project_id.is_empty() {
+        let pid: Option<&str> = if workspace_id.is_empty() {
             None
         } else {
-            Some(project_id)
+            Some(workspace_id)
         };
         conn.execute(
-            "INSERT OR IGNORE INTO sessions (id, messages_json, title, cwd, project_id, updated_at) VALUES (?1, '[]', ?2, ?3, ?4, ?5)",
+            "INSERT OR IGNORE INTO sessions (id, messages_json, title, cwd, workspace_id, updated_at) VALUES (?1, '[]', ?2, ?3, ?4, ?5)",
             rusqlite::params![id, title, cwd, pid, now],
         )?;
         Ok(())
@@ -49,13 +49,13 @@ impl Store {
         Ok(rows.next().transpose()?)
     }
 
-    /// Look up the project_id of a session (None if session missing or unaffiliated).
+    /// Look up the workspace_id of a session (None if session missing or unaffiliated).
     /// Used at seed-create time to stamp project provenance without threading
-    /// project_id through the agent/engines.
-    pub fn session_project_id(&self, session_id: &str) -> Option<String> {
+    /// workspace_id through the agent/engines.
+    pub fn session_workspace_id(&self, session_id: &str) -> Option<String> {
         let conn = self.pool.get().ok()?;
         conn.query_row(
-            "SELECT project_id FROM sessions WHERE id = ?1",
+            "SELECT workspace_id FROM sessions WHERE id = ?1",
             rusqlite::params![session_id],
             |row| row.get::<_, Option<String>>(0),
         )
@@ -116,13 +116,13 @@ impl Store {
         let conn = self.pool.get()?;
         let sql = match filter {
             "archived" => {
-                "SELECT s.id, s.messages_json, s.title, s.updated_at, s.cwd, s.archived, s.project_id, COALESCE(p.name, '') as project_name FROM sessions s LEFT JOIN projects p ON s.project_id = p.id WHERE s.archived = 1 ORDER BY s.updated_at DESC"
+                "SELECT s.id, s.messages_json, s.title, s.updated_at, s.cwd, s.archived, s.workspace_id, COALESCE(p.name, '') as workspace_name FROM sessions s LEFT JOIN workspaces p ON s.workspace_id = p.id WHERE s.archived = 1 ORDER BY s.updated_at DESC"
             }
             "active" => {
-                "SELECT s.id, s.messages_json, s.title, s.updated_at, s.cwd, s.archived, s.project_id, COALESCE(p.name, '') as project_name FROM sessions s LEFT JOIN projects p ON s.project_id = p.id WHERE s.archived = 0 ORDER BY s.updated_at DESC"
+                "SELECT s.id, s.messages_json, s.title, s.updated_at, s.cwd, s.archived, s.workspace_id, COALESCE(p.name, '') as workspace_name FROM sessions s LEFT JOIN workspaces p ON s.workspace_id = p.id WHERE s.archived = 0 ORDER BY s.updated_at DESC"
             }
             _ => {
-                "SELECT s.id, s.messages_json, s.title, s.updated_at, s.cwd, s.archived, s.project_id, COALESCE(p.name, '') as project_name FROM sessions s LEFT JOIN projects p ON s.project_id = p.id ORDER BY s.updated_at DESC"
+                "SELECT s.id, s.messages_json, s.title, s.updated_at, s.cwd, s.archived, s.workspace_id, COALESCE(p.name, '') as workspace_name FROM sessions s LEFT JOIN workspaces p ON s.workspace_id = p.id ORDER BY s.updated_at DESC"
             }
         };
         let mut stmt = conn.prepare(sql)?;
@@ -133,8 +133,8 @@ impl Store {
             let updated_at: i64 = row.get(3)?;
             let cwd: String = row.get(4)?;
             let archived: i32 = row.get(5)?;
-            let project_id: Option<String> = row.get(6)?;
-            let project_name: String = row.get(7)?;
+            let workspace_id: Option<String> = row.get(6)?;
+            let workspace_name: String = row.get(7)?;
 
             let (derived_title, message_count, has_error) = parse_session_meta(&messages_json);
             let title = stored_title
@@ -146,8 +146,8 @@ impl Store {
                 "id": id,
                 "title": title,
                 "cwd": cwd,
-                "projectId": project_id,
-                "projectName": project_name,
+                "workspaceId": workspace_id,
+                "workspaceName": workspace_name,
                 "messageCount": message_count,
                 "updatedAt": updated_at,
                 "archived": archived != 0,
@@ -225,37 +225,38 @@ mod tests {
         Arc::new(Store::open(&dir.path().join("test.db").to_string_lossy()))
     }
 
-    /// V3 smoke 发现:sessions.project_id 的 FK 拒绝 '' → create_session 静默
-    /// 失败、占位行从未建成。空 project_id 必须存为 NULL 且插入成功。
+    /// V3 smoke 发现:sessions.workspace_id 的 FK 拒绝 '' → create_session 静默
+    /// 失败、占位行从未建成。空 workspace_id 必须存为 NULL 且插入成功。
     #[test]
-    fn create_session_with_empty_project_id_succeeds_as_null() {
+    fn create_session_with_empty_workspace_id_succeeds_as_null() {
         let store = temp_store();
         store
             .create_session("sess-fk", "标题", "/tmp/ws", "")
-            .expect("empty project_id must not violate FK");
+            .expect("empty workspace_id must not violate FK");
         let title: Option<String> = store
             .pool
             .get()
             .unwrap()
-            .query_row(
-                "SELECT title FROM sessions WHERE id = 'sess-fk'",
-                [],
-                |r| r.get(0),
-            )
+            .query_row("SELECT title FROM sessions WHERE id = 'sess-fk'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(title.as_deref(), Some("标题"));
-        assert_eq!(store.session_project_id("sess-fk"), None);
+        assert_eq!(store.session_workspace_id("sess-fk"), None);
     }
 
     #[test]
-    fn create_session_with_valid_project_id_unchanged() {
+    fn create_session_with_valid_workspace_id_unchanged() {
         let store = temp_store();
         store
-            .ensure_project("proj-1", "/tmp/ws", "ws", "", "[]")
+            .ensure_workspace("proj-1", "/tmp/ws", "ws", "", "[]")
             .unwrap();
         store
             .create_session("sess-ok", "t", "/tmp/ws", "proj-1")
             .unwrap();
-        assert_eq!(store.session_project_id("sess-ok").as_deref(), Some("proj-1"));
+        assert_eq!(
+            store.session_workspace_id("sess-ok").as_deref(),
+            Some("proj-1")
+        );
     }
 }

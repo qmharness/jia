@@ -9,11 +9,11 @@ use crate::stems::action::ExecContext;
 
 /// P8 · cross-worker scratchpad (跨 agent 共享知识).
 ///
-/// A simple key→content file store under `<project_root>/.jia/scratchpad/`,
+/// A simple key→content file store under `<workspace_root>/.jia/scratchpad/`,
 /// shared by the main agent and all sub-agents (any worker can read/write the
 /// same keys). Lets a delegate sub-agent leave findings for the coordinator or
 /// for a sibling sub-agent. Keys are restricted to `[A-Za-z0-9_-]+` (no path
-/// traversal). PermissionMatrix confines the directory to project_root.
+/// traversal). PermissionMatrix confines the directory to workspace_root.
 fn valid_key(key: &str) -> bool {
     !key.is_empty()
         && key
@@ -25,7 +25,7 @@ fn scratchpad_path(exec_ctx: &ExecContext, key: &str) -> std::path::PathBuf {
     exec_ctx
         .permissions
         .sandbox
-        .project_root
+        .workspace_root
         .join(".jia")
         .join("scratchpad")
         .join(key)
@@ -190,7 +190,7 @@ mod tests {
 
     fn test_perms_at(root: &std::path::Path) -> Arc<PermissionMatrix> {
         let mut sec = crate::palaces::kun_config::SecuritySection::default();
-        sec.project_root = Some(root.to_string_lossy().to_string());
+        sec.workspace_root = Some(root.to_string_lossy().to_string());
         Arc::new(PermissionMatrix::from_config(
             &sec,
             root,

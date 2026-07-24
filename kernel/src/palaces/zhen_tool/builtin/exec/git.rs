@@ -15,7 +15,7 @@ const ALLOWED_COMMANDS: &[&str] = &[
 
 /// Dangerous patterns. Only `--no-index` is reachable: it lets `git diff`
 /// operate on files outside a git repository and is read-only.
-/// 拦截理由(勿删):`git diff --no-index <a> <b>` 可读取 project_root 之外
+/// 拦截理由(勿删):`git diff --no-index <a> <b>` 可读取 workspace_root 之外
 /// 的任意文件并把内容回显给模型——这是沙箱逃逸向量,必须拦截。
 /// The other historically listed patterns (`push --force`, `reset --hard`,
 /// `clean -f`, `clean -d`) are subcommands that are already rejected because
@@ -93,11 +93,11 @@ impl BaseTool for GitTool {
             }
         }
 
-        let project_root = &ctx.permissions.sandbox.project_root;
+        let workspace_root = &ctx.permissions.sandbox.workspace_root;
 
         let output = tokio::process::Command::new("git")
             .args(subcmd.split_whitespace())
-            .current_dir(project_root)
+            .current_dir(workspace_root)
             .output()
             .await
             .map_err(|e| format!("git error: {e}"))?;

@@ -673,7 +673,7 @@ impl super::Agent {
                         && let Some(name) = tc.parameters.get("name").and_then(|v| v.as_str())
                     {
                         if self.worktree_root.is_none() {
-                            let main_root = self.earth.permissions.sandbox.project_root.clone();
+                            let main_root = self.earth.permissions.sandbox.workspace_root.clone();
                             let path =
                                 crate::palaces::zhen_tool::builtin::exec::worktree::worktree_path(
                                     &main_root, name,
@@ -705,7 +705,8 @@ impl super::Agent {
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("keep");
                             if action == "remove" {
-                                let main_root = self.earth.permissions.sandbox.project_root.clone();
+                                let main_root =
+                                    self.earth.permissions.sandbox.workspace_root.clone();
                                 if let Err(e) =
                                     crate::palaces::zhen_tool::builtin::exec::worktree::remove_worktree(
                                         &main_root, &wt, false,
