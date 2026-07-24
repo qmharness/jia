@@ -201,6 +201,9 @@ impl App {
             Mode::Normal => {
                 if key.code == KeyCode::Char('l') && key.modifiers.contains(KeyModifiers::CONTROL) {
                     self.lines.clear();
+                    // M3: 同步重置 scrollback 记账——不清 inserted_rows 会导致
+                    // finalize 跳过新内容,永远进不了 scrollback。
+                    self.inserted_rows = 0;
                     return;
                 }
                 if key.code == KeyCode::Char('r') && key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -324,7 +327,9 @@ impl App {
                         // 契约:末项被约定为 "Other (free-text)",此处劫持为自由输入;
                         // 该约定来自 kernel ask_user 工具的 schema 描述,见
                         // kernel/src/palaces/zhen_tool/builtin/ask_user.rs。两端必须同步修改。
-                        if selected == opts.len() - 1 {
+                        // H3: 空 options(LLM 传 [])按自由文本处理——
+                        // opts.len()-1 在空 vec 上溢出,opts[selected] 越界 panic。
+                        if opts.is_empty() || selected == opts.len() - 1 {
                             // Switch to free-text mode: remove option lines, keep question
                             let opt_count = opts.len() + 1; // skip leading blank + options
                             let start: usize = first_line - 1; // back to leading blank
@@ -483,7 +488,11 @@ impl App {
                 });
             }
             SocketEvent::ConfirmResolved { id, resolved } => {
-                self.mode = Mode::Normal;
+                // M2: 只在 Confirm 模式下复位——旧确认超时/迟到到达时不得
+                // 踩掉用户正在进行的 Question/其他模式(丢失 id/token/options)。
+                if matches!(self.mode, Mode::Confirm { .. }) {
+                    self.mode = Mode::Normal;
+                }
                 self.composer.set_placeholder("");
                 if !resolved {
                     self.lines.push(ChatLine {

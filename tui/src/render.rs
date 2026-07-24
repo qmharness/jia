@@ -314,8 +314,9 @@ pub fn format_tool_result(
     };
     // Show output text for all tools except ask_user (answer already shown locally)
     if tool != "ask_user" && !output.is_empty() {
+        // H2: 按字符截断,不按字节——&output[..500] 切在多字节字符中间会 panic。
         let preview = if output.len() > 500 {
-            format!("{}…", &output[..500])
+            format!("{}…", output.chars().take(500).collect::<String>())
         } else {
             output.to_string()
         };
@@ -345,8 +346,9 @@ fn tool_summary(tool: &str, input: &str) -> String {
         "task",
     ] {
         if let Some(val) = v.get(key).and_then(|v| v.as_str()) {
+            // H2: 同上,字符截断防多字节边界 panic。
             let val = if val.len() > 80 {
-                format!("{}…", &val[..80])
+                format!("{}…", val.chars().take(80).collect::<String>())
             } else {
                 val.to_string()
             };

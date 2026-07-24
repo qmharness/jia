@@ -246,7 +246,9 @@ pub async fn handle_agent(
                                 .and_then(|p| p.get("cwd").and_then(|v| v.as_str()).map(String::from))
                                 .unwrap_or_default()
                         } else {
-                            String::new()
+                            // B1 · web 续聊不带 cwd/workspace_id:按 session_id 回退
+                            // 查会话落库时的 cwd(此前必然报 "cwd must be valid")。
+                            earth_for_spawn.store.session_cwd(&session_id).unwrap_or_default()
                         };
 
                         // Validate: cwd must be a valid Jia workspace directory

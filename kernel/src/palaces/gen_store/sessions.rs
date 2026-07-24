@@ -109,6 +109,19 @@ impl Store {
         Ok(())
     }
 
+    /// Look up a session's recorded cwd (B1 · web 续聊回退:请求不带
+    /// cwd/workspace_id 时,handle_agent 用它解析 effective_cwd)。
+    pub fn session_cwd(&self, session_id: &str) -> Option<String> {
+        let conn = self.pool.get().ok()?;
+        conn.query_row(
+            "SELECT cwd FROM sessions WHERE id = ?1",
+            rusqlite::params![session_id],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+        .filter(|c| !c.is_empty())
+    }
+
     pub fn list_sessions_filtered(
         &self,
         filter: &str,

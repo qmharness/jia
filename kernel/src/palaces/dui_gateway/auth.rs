@@ -118,6 +118,13 @@ pub async fn auth_middleware(
         return next.run(request).await;
     }
 
+    // B2 · /events 是 EventSource 通道(浏览器 API 无法自定义 Authorization
+    // 头),配置 api_key 时若被中间件 401,handler 内的 ?token= 校验就成为
+    // 不可达代码、cron 通知全灭。放行给 handler 自行做 ?token= 校验。
+    if path == "/events" && state.api_key.is_some() {
+        return next.run(request).await;
+    }
+
     match &state.api_key {
         None => {
             // No API key configured: allow loopback, reject remote by default.

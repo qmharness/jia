@@ -29,7 +29,9 @@ jia-rin(macOS 常驻 agent)。实现见 `kernel/src/palaces/dui_gateway/rin.rs`�
 
 ## jia → client(事件)
 
-### 连接级响应(请求-应答)
+#`retrying`（流事件,LLM 重试重发,attempt 为第几次重试;客户端应截断当前流式气泡到本轮起点)
+
+## 连接级响应(请求-应答)
 
 ```json
 {"type":"workspace_resolved","cwd":"...","workspace_id":"...","approved":true}

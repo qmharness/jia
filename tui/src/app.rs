@@ -135,7 +135,9 @@ pub async fn run_app(
                 false
             }
 
-            socket_event = socket_rx.recv() => match socket_event {
+            // H1: 断连后禁用 socket 分支——否则 recv() 每轮立即就绪返回 None,
+            // select! 空转成 100% CPU 忙循环(还带全量 draw)。
+            socket_event = socket_rx.recv(), if app.connection.is_some() => match socket_event {
                 Some(se) => {
                     if next_reconnect.is_some() {
                         next_reconnect = None;
@@ -145,9 +147,9 @@ pub async fn run_app(
                     false
                 }
                 // Daemon socket closed. The reader task has exited, so recv()
-                // will keep returning None — guard with `connection.is_some()`
-                // so we only react once, then let the tick arm drive reconnect.
-                None if app.connection.is_some() => {
+                // will keep returning None — react once (guard above then
+                // disables this branch until reconnect makes connection Some again).
+                None => {
                     app.connection = None;
                     app.status = StatusIcon::Disconnected;
                     app.reconnect_attempts = 0;
@@ -155,6 +157,9 @@ pub async fn run_app(
                     // sending_allowed 永久卡 false(Done/Error 永远不到达),
                     // Enter 被静默吞掉。复位后用户可输入,发送时走断连提示。
                     app.sending_allowed = true;
+                    // M1: 断连时丢弃 stream_anchor——旧流永不会收尾,残留锚点会让
+                    // 下一轮重连后的 Retrying 误删新内容。
+                    app.stream_anchor = None;
                     next_reconnect = Some(
                         tokio::time::Instant::now() + std::time::Duration::from_millis(500),
                     );

@@ -111,10 +111,19 @@ pub fn spawn_cron_agent(earth: Arc<EarthPlate>, job_name: String, prompt: String
         let collect_handle = tokio::spawn(async move {
             let mut rx = UnboundedReceiverStream::new(rx);
             let mut response = String::new();
+            // 重试回滚锚点:失败轮的半截 Delta 已在 response 里,Retrying 到达时
+            // 截断回本流起点(与 TUI 的 StreamAnchor 同一语义,审计 W1-1)。
+            let mut attempt_start = 0usize;
             let mut tool_calls: Vec<String> = Vec::new();
             while let Some(event) = rx.next().await {
                 match event {
                     AgentEvent::Delta(content) => response.push_str(&content),
+                    AgentEvent::Retrying { .. } => {
+                        response.truncate(attempt_start);
+                    }
+                    AgentEvent::StreamEnd => {
+                        attempt_start = response.len();
+                    }
                     AgentEvent::ToolCall { tool, input } => {
                         tool_calls.push(format!("{tool}({input})"));
                     }
@@ -313,10 +322,18 @@ async fn run_io_agent(earth: Arc<EarthPlate>, input: ChannelInput) {
     let collect_handle = tokio::spawn(async move {
         let mut rx = UnboundedReceiverStream::new(rx);
         let mut response = String::new();
+        // 重试回滚锚点(同 cron 收集器,审计 W1-1)。
+        let mut attempt_start = 0usize;
         let mut tool_calls: Vec<String> = Vec::new();
         while let Some(event) = rx.next().await {
             match event {
                 AgentEvent::Delta(content) => response.push_str(&content),
+                AgentEvent::Retrying { .. } => {
+                    response.truncate(attempt_start);
+                }
+                AgentEvent::StreamEnd => {
+                    attempt_start = response.len();
+                }
                 AgentEvent::ToolCall { tool, input } => {
                     tool_calls.push(format!("{tool}({input})"));
                 }
