@@ -248,9 +248,7 @@ mod tests {
     #[test]
     fn create_session_with_valid_workspace_id_unchanged() {
         let store = temp_store();
-        store
-            .ensure_workspace("proj-1", "/tmp/ws", "ws", "", "[]")
-            .unwrap();
+        store.ensure_workspace("proj-1", "/tmp/ws", "ws").unwrap();
         store
             .create_session("sess-ok", "t", "/tmp/ws", "proj-1")
             .unwrap();

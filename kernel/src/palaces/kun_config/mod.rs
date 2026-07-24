@@ -272,7 +272,9 @@ pub enum SandboxMode {
 #[derive(Debug, Clone, Deserialize)]
 pub struct SecuritySection {
     /// Root directory for path sandboxing. Default: current working directory.
-    #[serde(default)]
+    /// (alias: 重命名前为 project_root——无 alias 时旧配置键会被静默丢弃,
+    /// 沙箱根回落默认目录,边界悄悄移动。)
+    #[serde(default, alias = "project_root")]
     pub workspace_root: Option<String>,
     /// Additional directories (outside workspace_root) where tools can read/write.
     #[serde(default)]

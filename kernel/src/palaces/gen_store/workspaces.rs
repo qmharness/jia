@@ -4,14 +4,9 @@
 use super::{Store, StoreError};
 
 impl Store {
-    pub fn ensure_workspace(
-        &self,
-        id: &str,
-        cwd: &str,
-        name: &str,
-        description: &str,
-        tags_json: &str,
-    ) -> Result<(), StoreError> {
+    /// 只维护工作区身份(id/cwd/name);description/tags 元数据由
+    /// update_workspace_metadata 专门维护(契约在类型层面自证)。
+    pub fn ensure_workspace(&self, id: &str, cwd: &str, name: &str) -> Result<(), StoreError> {
         let mut conn = self.pool.get()?;
         let now = crate::utils::unix_now();
         // BEGIN IMMEDIATE: the SELECT-then-write below must be serialized
@@ -41,8 +36,8 @@ impl Store {
             (None, None) => {
                 tx.execute(
                     "INSERT INTO workspaces (id, cwd, name, description, tags_json, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
-                    rusqlite::params![id, cwd, name, description, tags_json, now],
+                     VALUES (?1, ?2, ?3, '', '[]', ?4, ?4)",
+                    rusqlite::params![id, cwd, name, now],
                 )?;
             }
             // Existing project with the same id: follow directory moves.
@@ -72,8 +67,8 @@ impl Store {
                     // 只更新身份字段——description/tags 是 PATCH 写入的元数据,
                     // resolve_workspace(rin,每次 hello 都调本函数且只传身份)
                     // 不得抹掉它们(审计 F1 元数据漂移)。
-                    "UPDATE workspaces SET cwd = ?2, name = ?3, updated_at = ?6 WHERE id = ?1",
-                    rusqlite::params![id, cwd, name, description, tags_json, now],
+                    "UPDATE workspaces SET cwd = ?2, name = ?3, updated_at = ?4 WHERE id = ?1",
+                    rusqlite::params![id, cwd, name, now],
                 )?;
             }
             // Same cwd with a different id: upstream id drifted. Update the
@@ -90,8 +85,8 @@ impl Store {
                 )?;
                 tx.execute(
                     // 同上:漂移对齐 id 与 name,保留已有 description/tags。
-                    "UPDATE workspaces SET id = ?1, name = ?3, updated_at = ?6 WHERE cwd = ?2",
-                    rusqlite::params![id, cwd, name, description, tags_json, now],
+                    "UPDATE workspaces SET id = ?1, name = ?3, updated_at = ?4 WHERE cwd = ?2",
+                    rusqlite::params![id, cwd, name, now],
                 )?;
             }
         }
@@ -212,8 +207,9 @@ impl Store {
         Ok(n)
     }
 
-    /// 取消归档:恢复工作区,并级联恢复其会话(与 archive 对称;
-    /// 注意会连带恢复此前被单独归档的会话——当前无单独归档会话的入口)。
+    /// 取消归档:只恢复工作区行。**不**级联恢复会话——/sessions/{id}/archive
+    /// 支持单独归档会话,级联会把用户有意归档的会话一并复活(审计复核发现)。
+    /// 已知不对称:archive 级联归档的会话在此保持归档,需逐个恢复。
     pub fn unarchive_workspace(&self, id: &str) -> Result<usize, StoreError> {
         let mut conn = self.pool.get()?;
         let now = crate::utils::unix_now();
@@ -221,10 +217,6 @@ impl Store {
         let n = tx.execute(
             "UPDATE workspaces SET archived = 0, updated_at = ?2 WHERE id = ?1",
             rusqlite::params![id, now],
-        )?;
-        tx.execute(
-            "UPDATE sessions SET archived = 0 WHERE workspace_id = ?1",
-            rusqlite::params![id],
         )?;
         tx.commit()?;
         Ok(n)
@@ -248,9 +240,7 @@ mod tests {
         let id_a = "proj-id-a";
         let id_b = "proj-id-b";
 
-        store
-            .ensure_workspace(id_a, cwd, "Alpha", "", "[]")
-            .unwrap();
+        store.ensure_workspace(id_a, cwd, "Alpha").unwrap();
         store.create_session("sess-1", "title", cwd, id_a).unwrap();
         store
             .insert_seed(
@@ -263,7 +253,7 @@ mod tests {
             .unwrap();
 
         // Simulate re-init generating a new id for the same cwd.
-        store.ensure_workspace(id_b, cwd, "Beta", "", "[]").unwrap();
+        store.ensure_workspace(id_b, cwd, "Beta").unwrap();
 
         // New id should be queryable.
         let proj = store
@@ -297,17 +287,16 @@ mod tests {
         let cwd = "/tmp/jia-test-project";
         let id = "proj-id-same";
 
+        store.ensure_workspace(id, cwd, "First").unwrap();
         store
-            .ensure_workspace(id, cwd, "First", "desc1", "[]")
+            .update_workspace_metadata(id, "First", "desc1", "[]")
             .unwrap();
         store.create_session("sess-same", "title", cwd, id).unwrap();
         // Same id + same cwd with changed name: updates identity in place,
         // keeps one row, does not lose the session association — and must NOT
         // touch description/tags (audit F1: resolve paths call ensure on
         // every hello; metadata belongs to update_workspace_metadata).
-        store
-            .ensure_workspace(id, cwd, "Renamed", "SHOULD-NOT-WIN", "[\"x\"]")
-            .unwrap();
+        store.ensure_workspace(id, cwd, "Renamed").unwrap();
 
         let projects = store.list_workspaces(false).unwrap();
         assert_eq!(projects.len(), 1);
@@ -339,17 +328,13 @@ mod tests {
         let old_cwd = "/tmp/jia-test-old";
         let new_cwd = "/tmp/jia-test-new";
 
-        store
-            .ensure_workspace(id, old_cwd, "Old", "", "[]")
-            .unwrap();
+        store.ensure_workspace(id, old_cwd, "Old").unwrap();
         store
             .create_session("sess-1", "title", old_cwd, id)
             .unwrap();
 
         // Same project id, different cwd (directory moved/renamed).
-        store
-            .ensure_workspace(id, new_cwd, "New", "desc", "[]")
-            .unwrap();
+        store.ensure_workspace(id, new_cwd, "New").unwrap();
 
         let proj = store
             .get_workspace(id)
@@ -377,11 +362,9 @@ mod tests {
         let new_cwd = "/tmp/jia-test-new";
 
         store
-            .ensure_workspace(canonical_id, old_cwd, "Canonical", "", "[]")
+            .ensure_workspace(canonical_id, old_cwd, "Canonical")
             .unwrap();
-        store
-            .ensure_workspace(stale_id, new_cwd, "Stale", "", "[]")
-            .unwrap();
+        store.ensure_workspace(stale_id, new_cwd, "Stale").unwrap();
         store
             .create_session("sess-old", "title", old_cwd, canonical_id)
             .unwrap();
@@ -391,7 +374,7 @@ mod tests {
 
         // Directory moved to a cwd already occupied by a stale project row.
         store
-            .ensure_workspace(canonical_id, new_cwd, "Canonical", "", "[]")
+            .ensure_workspace(canonical_id, new_cwd, "Canonical")
             .unwrap();
 
         let proj = store

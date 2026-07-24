@@ -81,7 +81,7 @@ pub async fn handle_create_workspace(
         .ok_or((StatusCode::SERVICE_UNAVAILABLE, "Not ready".into()))?;
     earth
         .store
-        .ensure_workspace(&id, cwd, &body.name, "", "[]")
+        .ensure_workspace(&id, cwd, &body.name)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(
         serde_json::json!({ "id": id, "cwd": cwd, "name": body.name }),
@@ -176,10 +176,14 @@ pub async fn handle_patch_workspace(
     };
     // 元数据走专用更新;ensure_workspace 只维护身份(id/cwd/name),
     // 不能在 PATCH 之外的路径改 description/tags(审计 F1)。
-    earth
+    let n = earth
         .store
         .update_workspace_metadata(&id, name, desc, &tags_json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if n == 0 {
+        // get_workspace 预检后行被并发删除/换 id——不得假报成功。
+        return Err((StatusCode::NOT_FOUND, "Workspace not found".into()));
+    }
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 

@@ -230,16 +230,19 @@ async fn resolve_workspace(
     let config_path = std::path::Path::new(cwd).join(".jia").join("config.toml");
     tracing::info!(cwd = %cwd, "rin: resolve_workspace called");
 
-    // Already a jia project — read existing ID.
+    // Already a jia workspace — read existing ID.
+    // 读端双段名:写端已统一发 [workspace],但存量配置仍是 [project]
+    // (重命名只改了 4 个写端;此处若只认 [workspace],存量工作区会在
+    // 每次 hello 重复触发建项确认并被换新 id,会话/种子被级联漂移)。
     if config_path.exists()
         && let Ok(content) = std::fs::read_to_string(&config_path)
         && let Ok(parsed) = content.parse::<toml::Table>()
-        && let Some(project) = parsed.get("project")
+        && let Some(project) = parsed.get("workspace").or_else(|| parsed.get("project"))
     {
         let id = project.get("id").and_then(|v| v.as_str()).unwrap_or("");
         let name = project.get("name").and_then(|v| v.as_str()).unwrap_or("");
         if !id.is_empty() {
-            if let Err(e) = earth.store.ensure_workspace(id, cwd, name, "", "[]") {
+            if let Err(e) = earth.store.ensure_workspace(id, cwd, name) {
                 tracing::warn!(%id, cwd, ?e, "rin: ensure_workspace failed for existing project");
             }
             return (cwd.to_string(), id.to_string());
@@ -316,10 +319,7 @@ async fn resolve_workspace(
             workspace_id, dir_name
         );
         let _ = std::fs::write(&config_path, &config_content);
-        if let Err(e) = earth
-            .store
-            .ensure_workspace(&workspace_id, cwd, &dir_name, "", "[]")
-        {
+        if let Err(e) = earth.store.ensure_workspace(&workspace_id, cwd, &dir_name) {
             tracing::warn!(%workspace_id, cwd, ?e, "rin: ensure_workspace failed for new project");
         }
         tracing::info!(cwd = %cwd, workspace_id = %workspace_id, "rin: created new workspace");

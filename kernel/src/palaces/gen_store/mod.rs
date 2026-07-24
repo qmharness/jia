@@ -64,25 +64,29 @@ impl Store {
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap_or(0);
 
-        /// Execute a migrations/*.sql file statement-by-statement, skipping
-        /// `--` comment lines (so semicolons inside comments can't tear
-        /// statements apart). Idempotent ALTERs may fail harmlessly — failures
-        /// are logged at debug level (previously they were silently swallowed,
-        /// which hid a real failure during the 003 rollout).
-        fn exec_tolerated(conn: &rusqlite::Connection, sql: &str) {
-            for stmt in sql.split(';') {
-                let stmt: String = stmt
-                    .lines()
-                    .filter(|l| !l.trim_start().starts_with("--"))
-                    .collect::<Vec<_>>()
-                    .join("\n");
+        /// Execute a migrations/*.sql file statement-by-statement.
+        /// Comments are filtered BEFORE splitting on ';' — so a semicolon
+        /// inside a comment can never tear a statement apart (this trap bit
+        /// twice: 002/003 都曾因此静默跳过语句). Idempotent ALTERs may fail
+        /// harmlessly. Returns the number of failed statements; caller must
+        /// not bump user_version when > 0 (半迁移不应封版,下次启动重试)。
+        fn exec_tolerated(conn: &rusqlite::Connection, sql: &str) -> usize {
+            let no_comments: String = sql
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("--"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let mut failures = 0;
+            for stmt in no_comments.split(';') {
                 let stmt = stmt.trim();
                 if !stmt.is_empty() {
                     if let Err(e) = conn.execute(stmt, []) {
-                        tracing::debug!(error = %e, stmt = %&stmt[..stmt.len().min(60)], "migration statement failed (tolerated)");
+                        failures += 1;
+                        tracing::warn!(error = %e, stmt = %&stmt[..stmt.len().min(60)], "migration statement failed (tolerated)");
                     }
                 }
             }
+            failures
         }
 
         if current_version < 1 {
@@ -97,8 +101,15 @@ impl Store {
             const ALTERS_SQL: &str = include_str!("migrations/002_alters.sql");
             conn.execute_batch(INIT_SQL)
                 .expect("Failed to create tables");
-            exec_tolerated(&conn, ALTERS_SQL);
-            let _ = conn.pragma_update(None, "user_version", 1);
+            let failures = exec_tolerated(&conn, ALTERS_SQL);
+            if failures == 0 {
+                let _ = conn.pragma_update(None, "user_version", 1);
+            } else {
+                tracing::warn!(
+                    failures,
+                    "migration 002 partially failed — user_version stays, will retry next start"
+                );
+            }
         }
         if current_version < 2 {
             tracing::info!(
@@ -109,8 +120,18 @@ impl Store {
             // project → workspace 概念重命名(存量库 RENAME;新库由 001/002
             // 直接以新名建表,003 的 ALTER 对不存在的 projects 表失败无害)。
             const RENAME_SQL: &str = include_str!("migrations/003_workspace_rename.sql");
-            exec_tolerated(&conn, RENAME_SQL);
-            let _ = conn.pragma_update(None, "user_version", 2);
+            let from_v1 = current_version == 1;
+            let failures = exec_tolerated(&conn, RENAME_SQL);
+            // 存量库(v1)的失败=真半迁移,不封版、下次启动重试;
+            // 新库(v0,001/002 已直接建新名)跑 003 全部失败是预期噪音。
+            if from_v1 && failures > 0 {
+                tracing::warn!(
+                    failures,
+                    "migration 003 partially failed — user_version stays, will retry next start"
+                );
+            } else {
+                let _ = conn.pragma_update(None, "user_version", 2);
+            }
         }
         if current_version < CURRENT_SCHEMA_VERSION {
             // TTL cleanup: prune history tables older than 90 days

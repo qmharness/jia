@@ -269,14 +269,14 @@ async fn main() {
             let store =
                 kernel::palaces::gen_store::Store::open(db_path.to_str().unwrap_or(":memory:"));
             let cwd_str = abs_path.to_string_lossy().to_string();
-            if let Err(e) = store.ensure_workspace(&workspace_id, &cwd_str, &dir_name, "", "[]") {
+            if let Err(e) = store.ensure_workspace(&workspace_id, &cwd_str, &dir_name) {
                 eprintln!(
-                    "Warning: project created on disk but failed to register in database: {e}"
+                    "Warning: workspace created on disk but failed to register in database: {e}"
                 );
             }
-            println!("Initialized Jia project in {}", abs_path.display());
-            println!("  Project ID: {workspace_id}");
-            println!("  Project name: {dir_name}");
+            println!("Initialized Jia workspace in {}", abs_path.display());
+            println!("  Workspace ID: {workspace_id}");
+            println!("  Workspace name: {dir_name}");
         }
     }
 }
