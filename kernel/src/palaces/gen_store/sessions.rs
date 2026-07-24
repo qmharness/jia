@@ -18,6 +18,9 @@ impl Store {
 
     /// Insert a new session with title, cwd, and project_id.
     /// Uses INSERT OR IGNORE — safe to call even if session already exists.
+    /// Empty project_id is stored as NULL: the FK on sessions.project_id
+    /// rejects '' (V3 smoke 发现:'' 触发 FOREIGN KEY constraint failed,
+    /// 被调用方 let _ = 静默吞掉,占位行从未建成,title/cwd 全部丢失)。
     pub fn create_session(
         &self,
         id: &str,
@@ -27,9 +30,14 @@ impl Store {
     ) -> Result<(), StoreError> {
         let conn = self.pool.get()?;
         let now = crate::utils::unix_now();
+        let pid: Option<&str> = if project_id.is_empty() {
+            None
+        } else {
+            Some(project_id)
+        };
         conn.execute(
             "INSERT OR IGNORE INTO sessions (id, messages_json, title, cwd, project_id, updated_at) VALUES (?1, '[]', ?2, ?3, ?4, ?5)",
-            rusqlite::params![id, title, cwd, project_id, now],
+            rusqlite::params![id, title, cwd, pid, now],
         )?;
         Ok(())
     }
@@ -205,4 +213,49 @@ impl Store {
     }
 
     // ── Projects ──────────────────────────────────────────
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn temp_store() -> Arc<Store> {
+        let dir = tempfile::tempdir().unwrap();
+        Arc::new(Store::open(&dir.path().join("test.db").to_string_lossy()))
+    }
+
+    /// V3 smoke 发现:sessions.project_id 的 FK 拒绝 '' → create_session 静默
+    /// 失败、占位行从未建成。空 project_id 必须存为 NULL 且插入成功。
+    #[test]
+    fn create_session_with_empty_project_id_succeeds_as_null() {
+        let store = temp_store();
+        store
+            .create_session("sess-fk", "标题", "/tmp/ws", "")
+            .expect("empty project_id must not violate FK");
+        let title: Option<String> = store
+            .pool
+            .get()
+            .unwrap()
+            .query_row(
+                "SELECT title FROM sessions WHERE id = 'sess-fk'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(title.as_deref(), Some("标题"));
+        assert_eq!(store.session_project_id("sess-fk"), None);
+    }
+
+    #[test]
+    fn create_session_with_valid_project_id_unchanged() {
+        let store = temp_store();
+        store
+            .ensure_project("proj-1", "/tmp/ws", "ws", "", "[]")
+            .unwrap();
+        store
+            .create_session("sess-ok", "t", "/tmp/ws", "proj-1")
+            .unwrap();
+        assert_eq!(store.session_project_id("sess-ok").as_deref(), Some("proj-1"));
+    }
 }

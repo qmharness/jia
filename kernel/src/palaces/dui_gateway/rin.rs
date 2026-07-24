@@ -378,6 +378,11 @@ async fn handle_rin_connection(
     // P0-4 · 本连接上启动过 agent run 的会话 id(断连清扫的归属依据)。
     let mut conn_sessions: Vec<String> = Vec::new();
 
+    // hello 解析出的项目 id(写入于 hello 任务),agent 消息未显式携带
+    // project_id 时作为 create_session 的回退——避免会话与项目脱钩。
+    let resolved_pid: Arc<std::sync::Mutex<Option<String>>> =
+        Arc::new(std::sync::Mutex::new(None));
+
     loop {
         line.clear();
         // P1-7 · 带界读取:单行超 1MB 视为恶意/异常客户端,清扫后断连。
@@ -414,6 +419,7 @@ async fn handle_rin_connection(
                 let cwd = msg["cwd"].as_str().unwrap_or(".").to_string();
                 let earth_clone = earth.clone();
                 let w = writer.clone();
+                let resolved_pid_h = resolved_pid.clone();
                 tokio::spawn(async move {
                     // Create a temporary channel for event forwarding.
                     let (hello_tx, hello_rx) = mpsc::unbounded_channel::<AgentEvent>();
@@ -448,6 +454,9 @@ async fn handle_rin_connection(
                     });
                     let (pcwd, pid) = resolve_project(&earth_clone, &cwd, hello_tx).await;
                     tracing::info!(cwd = %pcwd, project_id = %pid, "rin: hello project resolved");
+                    *resolved_pid_h
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner()) = if pid.is_empty() { None } else { Some(pid.clone()) };
                     // Send result back to TUI
                     let approved = !pid.is_empty();
                     let resp = serde_json::json!({
@@ -511,7 +520,18 @@ async fn handle_rin_connection(
                     } else {
                         &msg_cwd
                     };
-                    let init_pid = if msg_pid.is_empty() { "" } else { &msg_pid };
+                    // 消息未带 project_id 时回退到 hello 解析出的项目——
+                    // 否则会话以 NULL project_id 落库,与项目脱钩。
+                    let fallback_pid = resolved_pid
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clone()
+                        .unwrap_or_default();
+                    let init_pid = if msg_pid.is_empty() {
+                        fallback_pid.as_str()
+                    } else {
+                        &msg_pid
+                    };
                     let _ = earth
                         .store
                         .create_session(&session_id, &title, init_cwd, init_pid);
