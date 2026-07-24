@@ -52,7 +52,7 @@ API keys and other secrets go in `config.toml`.
 ```bash
 jia                  # Launch TUI (terminal interface)
 jia web              # Start gateway with web dashboard
-jia init             # Initialize a Jia project in current directory
+jia init             # Initialize a Jia workspace in current directory
 jia start            # Start gateway (shortcut)
 jia stop             # Stop gateway (shortcut)
 jia restart          # Restart gateway (shortcut)

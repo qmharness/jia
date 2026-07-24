@@ -92,7 +92,7 @@ Agent 完整 推理→格局判断→工具执行→结果反馈 循环。
 
 ## Phase 5: 安全与沙箱 ✅
 
-- [x] `SecuritySection` 配置 schema（project_root, allowed_paths, blocked_prefixes, command_allowlist/blocklist）
+- [x] `SecuritySection` 配置 schema（workspace_root, allowed_paths, blocked_prefixes, command_allowlist/blocklist）
 - [x] PermissionMatrix 完整实现（路径 canonicalize + 根边界检查 + 写操作父目录处理 + 命令提取检查）
 - [x] 工具注入沙箱（read_file/write_file/shell 均带权限校验）
 - [x] HumanPlate 分发执法（八门实时检查 + approval_chain 遍历 + UserConfirmation oneshot 通道）
