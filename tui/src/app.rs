@@ -390,6 +390,7 @@ pub(crate) fn render_frame_with_cursor(
                 &format!("{} · {}", app.llm.model_id, app.llm.provider),
                 app.session_id.as_deref(),
                 &app.workspace_name,
+                app.status == StatusIcon::Working,
             );
         }
     })?;

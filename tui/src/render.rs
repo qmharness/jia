@@ -236,6 +236,7 @@ pub fn render_info_bar(
     model: &str,
     session_id: Option<&str>,
     workspace: &str,
+    working: bool,
 ) {
     let white = Style::default().fg(Color::White);
     let sid = session_id
@@ -264,10 +265,25 @@ pub fn render_info_bar(
         left,
     );
 
-    if !workspace.is_empty() {
+    // agent 运行中:右侧提示 Esc 可取消;否则显示工作区。
+    let right_text = if working {
+        "esc to interrupt".to_string()
+    } else if !workspace.is_empty() {
+        format!("~/{}", workspace)
+    } else {
+        String::new()
+    };
+    if !right_text.is_empty() {
         f.render_widget(
-            Paragraph::new(Line::from(Span::styled(format!("~/{}", workspace), white)))
-                .alignment(ratatui::layout::Alignment::Right),
+            Paragraph::new(Line::from(Span::styled(
+                right_text,
+                if working {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    white
+                },
+            )))
+            .alignment(ratatui::layout::Alignment::Right),
             right,
         );
     }
