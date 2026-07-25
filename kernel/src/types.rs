@@ -135,7 +135,7 @@ pub enum StreamEvent {
     Error { message: String },
     /// P3 · interaction mode changed (auto mode ↔ plan mode toggle).
     #[serde(rename = "interaction_mode_changed")]
-    InteractionModeChanged { planning: bool },
+    InteractionModeChanged { mode: crate::stems::InteractionMode },
     #[serde(rename = "context_pressure")]
     ContextPressure { tokens: usize, threshold: usize },
     #[serde(rename = "compacting")]

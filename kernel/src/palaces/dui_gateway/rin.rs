@@ -631,18 +631,13 @@ async fn handle_rin_connection(
                             AgentEvent::Retrying { attempt } => StreamEvent::Retrying { attempt },
                             AgentEvent::Done => StreamEvent::Done,
                             AgentEvent::Error(message) => StreamEvent::Error { message },
-                            AgentEvent::InteractionModeChanged { planning } => {
+                            AgentEvent::InteractionModeChanged { mode } => {
                                 // Keep session_modes in sync so the next run
                                 // continues in the agent's actual mode.
-                                let mode = if planning {
-                                    InteractionMode::Plan
-                                } else {
-                                    InteractionMode::Auto
-                                };
                                 if let Ok(mut m) = fwd_modes.lock() {
                                     m.insert(fwd_sid.clone(), mode);
                                 }
-                                StreamEvent::InteractionModeChanged { planning }
+                                StreamEvent::InteractionModeChanged { mode }
                             }
                             _ => continue,
                         };
@@ -770,13 +765,11 @@ async fn handle_rin_connection(
             // next agent run, and echo the change back to the TUI immediately.
             "set_mode" => {
                 let sid = msg["session_id"].as_str().unwrap_or("").to_string();
-                let planning = msg["planning"].as_bool().unwrap_or(false);
+                let mode: InteractionMode = match msg["mode"].as_str() {
+                    Some("plan") => InteractionMode::Plan,
+                    _ => InteractionMode::Auto,
+                };
                 if !sid.is_empty() {
-                    let mode = if planning {
-                        InteractionMode::Plan
-                    } else {
-                        InteractionMode::Auto
-                    };
                     earth
                         .session_bus
                         .session_modes
@@ -785,7 +778,7 @@ async fn handle_rin_connection(
                         .insert(sid, mode);
                     let resp = serde_json::json!({
                         "type": "interaction_mode_changed",
-                        "planning": planning,
+                        "mode": mode,
                     });
                     let mut w = writer.lock().await;
                     let _ = w.write_all(resp.to_string().as_bytes()).await;

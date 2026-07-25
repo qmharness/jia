@@ -35,7 +35,7 @@ jia-rin(macOS 常驻 agent)。实现见 `kernel/src/palaces/dui_gateway/rin.rs`�
 
 ```json
 {"type":"workspace_resolved","cwd":"...","workspace_id":"...","approved":true}
-{"type":"interaction_mode_changed","planning":true}
+{"type":"interaction_mode_changed","mode":"plan"}
 {"type":"confirm_resolved","id":"...","resolved":true}
 {"type":"answer_resolved","id":"...","resolved":true}
 {"type":"model_info","provider":"...","model":"..."}
@@ -56,7 +56,7 @@ jia-rin(macOS 常驻 agent)。实现见 `kernel/src/palaces/dui_gateway/rin.rs`�
 {"type":"stream_end"}
 {"type":"context_pressure","tokens":123,"threshold":456}
 {"type":"compacting"}
-{"type":"interaction_mode_changed","planning":false}
+{"type":"interaction_mode_changed","mode":"auto"}
 {"type":"error","message":"..."}
 {"type":"done"}
 ```

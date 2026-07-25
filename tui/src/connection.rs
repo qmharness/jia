@@ -92,9 +92,9 @@ pub enum StreamEvent {
     Error {
         message: String,
     },
-    /// P3 · interaction mode changed (谋划态 toggle).
+    /// P3 · interaction mode changed ("plan" | "auto").
     InteractionModeChanged {
-        planning: bool,
+        mode: String,
     },
     ContextPressure,
     Compacting,
@@ -154,7 +154,7 @@ impl StreamEvent {
                     .to_string(),
             }),
             "interaction_mode_changed" => Some(StreamEvent::InteractionModeChanged {
-                planning: value["planning"].as_bool().unwrap_or(false),
+                mode: value["mode"].as_str().unwrap_or("auto").to_string(),
             }),
             "context_pressure" => Some(StreamEvent::ContextPressure),
             "compacting" => Some(StreamEvent::Compacting),
@@ -209,7 +209,7 @@ pub enum ClientMsg {
     #[serde(rename = "set_mode")]
     SetInteractionMode {
         session_id: Option<String>,
-        planning: bool,
+        mode: String,
     },
 }
 
@@ -348,19 +348,19 @@ mod tests {
     fn parse_interaction_mode_changed() {
         let v: Value = serde_json::json!({
             "type": "interaction_mode_changed",
-            "planning": true
+            "mode": "plan"
         });
         match StreamEvent::from_value(&v) {
-            Some(StreamEvent::InteractionModeChanged { planning }) => assert!(planning),
+            Some(StreamEvent::InteractionModeChanged { mode }) => assert_eq!(mode, "plan"),
             other => panic!("expected InteractionModeChanged, got {other:?}"),
         }
 
         let v2: Value = serde_json::json!({
             "type": "interaction_mode_changed",
-            "planning": false
+            "mode": "auto"
         });
         match StreamEvent::from_value(&v2) {
-            Some(StreamEvent::InteractionModeChanged { planning }) => assert!(!planning),
+            Some(StreamEvent::InteractionModeChanged { mode }) => assert_eq!(mode, "auto"),
             other => panic!("expected InteractionModeChanged, got {other:?}"),
         }
     }

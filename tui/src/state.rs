@@ -97,7 +97,7 @@ pub(crate) struct App {
     pub(crate) composer: Composer,
     pub(crate) session_id: Option<String>,
     pub(crate) status: StatusIcon,
-    /// P3 · whether the agent is in planning mode (谋划态) — shown in status.
+    /// P3 · whether the agent is in plan mode — mirrors daemon InteractionMode.
     pub(crate) planning: bool,
     pub(crate) start_time: Instant,
     /// Frozen elapsed seconds of the last completed request (frozen on Done/Error).
@@ -670,16 +670,16 @@ impl App {
                 // stale anchor so the next turn re-anchors correctly.
                 self.stream_anchor = None;
             }
-            StreamEvent::InteractionModeChanged { planning } => {
-                self.planning = planning;
-                if planning {
+            StreamEvent::InteractionModeChanged { mode } => {
+                self.planning = mode == "plan";
+                if self.planning {
                     self.lines.push(ChatLine {
-                        text: "🗺 进入谋划态（只读）".to_string(),
+                        text: "◈ plan mode — read-only".to_string(),
                         style: Style::default().fg(Color::Cyan),
                     });
                 } else {
                     self.lines.push(ChatLine {
-                        text: "退出谋划态".to_string(),
+                        text: "◈ auto mode".to_string(),
                         style: Style::default().fg(Color::DarkGray),
                     });
                 }
@@ -847,7 +847,7 @@ impl App {
         if let Some(conn) = &self.connection {
             let client_msg = ClientMsg::SetInteractionMode {
                 session_id: self.session_id.clone(),
-                planning,
+                mode: if planning { "plan".into() } else { "auto".into() },
             };
             let conn = conn.clone();
             tokio::spawn(async move {

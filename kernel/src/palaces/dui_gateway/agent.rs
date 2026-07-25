@@ -348,8 +348,8 @@ pub async fn handle_agent(
                 },
                 AgentEvent::Done => StreamEvent::Done,
                 AgentEvent::Error(message) => StreamEvent::Error { message },
-                AgentEvent::InteractionModeChanged { planning } => {
-                    StreamEvent::InteractionModeChanged { planning }
+                AgentEvent::InteractionModeChanged { mode } => {
+                    StreamEvent::InteractionModeChanged { mode }
                 }
                 AgentEvent::ContextPressure { tokens, threshold } => {
                     StreamEvent::ContextPressure { tokens, threshold }

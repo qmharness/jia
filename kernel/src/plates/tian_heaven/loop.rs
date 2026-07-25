@@ -827,7 +827,9 @@ impl super::Agent {
                         tracing::info!(session = %self.id, "entered planning mode");
                         let _ = ctx
                             .tx
-                            .send(AgentEvent::InteractionModeChanged { planning: true });
+                            .send(AgentEvent::InteractionModeChanged {
+                                mode: InteractionMode::Plan,
+                            });
                     }
                     "exit_plan_mode" => {
                         self.interaction_mode = InteractionMode::Auto;
@@ -835,7 +837,9 @@ impl super::Agent {
                         tracing::info!(session = %self.id, "exited planning mode");
                         let _ = ctx
                             .tx
-                            .send(AgentEvent::InteractionModeChanged { planning: false });
+                            .send(AgentEvent::InteractionModeChanged {
+                                mode: InteractionMode::Auto,
+                            });
                     }
                     _ => {}
                 }

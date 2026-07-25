@@ -47,7 +47,7 @@ pub enum AgentEvent {
     },
     /// P3 · interaction mode changed (auto mode ↔ plan mode toggle).
     InteractionModeChanged {
-        planning: bool,
+        mode: InteractionMode,
     },
     /// Context window nearing limit — 天辅.
     ContextPressure {
@@ -72,7 +72,8 @@ pub enum AgentEvent {
 /// loop-level short-circuit before GeJu evaluation, so GeJu stays a pure
 /// 干叠加 evaluator (A2). User-triggered primarily (Shift+Tab / slash);
 /// the model may also call enter/exit_plan_mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum InteractionMode {
     /// auto mode — 默认,正常执行。
     #[default]
