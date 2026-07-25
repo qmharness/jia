@@ -195,6 +195,8 @@ pub fn render_status_bar(
     elapsed_secs: u64,
     reconnect_attempts: u32,
     spinner_idx: usize,
+    model: &str,
+    session_id: Option<&str>,
 ) {
     let (icon, icon_style) = if status == StatusIcon::Working {
         (
@@ -218,6 +220,24 @@ pub fn render_status_bar(
         format!(" {phase}")
     };
 
+    // 右侧:model · provider · session_id(会话未生成则省略 sid 段)。
+    let sid = session_id
+        .map(|s| if s.len() > 8 { &s[..8] } else { s })
+        .map(|s| format!(" · {s}"))
+        .unwrap_or_default();
+    let right_text = format!("{model}{sid}");
+
+    let right_w = (right_text.len() as u16 + 1).min(area.width / 2);
+    let left = Rect {
+        width: area.width.saturating_sub(right_w),
+        ..area
+    };
+    let right = Rect {
+        x: area.x + left.width,
+        width: right_w,
+        ..area
+    };
+
     f.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled(icon, icon_style),
@@ -226,7 +246,15 @@ pub fn render_status_bar(
                 Style::default().fg(Color::Indexed(245)),
             ),
         ])),
-        area,
+        left,
+    );
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            right_text,
+            Style::default().fg(Color::Indexed(245)),
+        )))
+        .alignment(ratatui::layout::Alignment::Right),
+        right,
     );
 }
 
@@ -235,22 +263,15 @@ pub fn render_info_bar(
     f: &mut Frame,
     area: Rect,
     mode_label: &str,
-    model: &str,
-    session_id: Option<&str>,
     workspace: &str,
     working: bool,
 ) {
     let white = Style::default().fg(Color::White);
-    // session_id 未生成时整段省略——占位 "·" 会与前面的分隔符连成悬挂双点。
-    let sid = session_id
-        .map(|s| if s.len() > 8 { &s[..8] } else { s })
-        .map(|s| format!(" · {s}"))
-        .unwrap_or_default();
-
+    // info_bar 左侧只留模式段(model/provider/session_id 已移到 status_bar 右侧)。
     let left_text = if mode_label.is_empty() {
-        format!("⏵⏵ {model}{sid}")
+        "⏵⏵".to_string()
     } else {
-        format!("⏵⏵ {mode_label} · {model}{sid}")
+        format!("⏵⏵ {mode_label}")
     };
 
     let mid = area.width.saturating_sub(30).max(area.width / 2);

@@ -372,16 +372,17 @@ pub(crate) fn render_frame_with_cursor(
                 },
                 app.reconnect_attempts,
                 app.spinner_idx,
+                &format!("{} · {}", app.llm.model_id, app.llm.provider),
+                app.session_id.as_deref(),
             );
             cursor = render::render_input(f, areas.input, &app.composer);
             // info_bar 显示 InteractionMode(plan mode / auto mode)——这是
             // agent 行为模式,与 InputMode(界面态)不同,用户需要看见。
+            // (model/provider/session_id 已移入 status_bar 右侧。)
             render::render_info_bar(
                 f,
                 areas.info_bar,
                 if app.planning { "plan mode" } else { "auto mode" },
-                &format!("{} · {}", app.llm.model_id, app.llm.provider),
-                app.session_id.as_deref(),
                 &app.workspace_name,
                 app.status == StatusIcon::Working,
             );
