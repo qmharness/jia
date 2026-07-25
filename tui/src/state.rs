@@ -201,17 +201,10 @@ impl App {
             InputMode::Normal => {
                 // Shift+Tab(crossterm BackTab):在 auto mode ↔ plan mode 之间循环。
                 // 与 /plan slash 同链路:set_mode 同步 daemon 的 InteractionMode。
+                // 不推反馈行——info_bar 已实时显示当前模式。
                 if key.code == KeyCode::BackTab {
                     self.planning = !self.planning;
                     self.send_set_mode(self.planning);
-                    self.lines.push(ChatLine {
-                        text: if self.planning {
-                            "◈ plan mode — read-only research/planning (Shift+Tab to cycle)".into()
-                        } else {
-                            "◈ auto mode — normal execution (Shift+Tab to cycle)".into()
-                        },
-                        style: Style::default().fg(Color::Cyan),
-                    });
                     return;
                 }
                 if key.code == KeyCode::Char('l') && key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -671,18 +664,8 @@ impl App {
                 self.stream_anchor = None;
             }
             StreamEvent::InteractionModeChanged { mode } => {
+                // 只同步镜像,不推行——info_bar 已实时显示当前模式。
                 self.planning = mode == "plan";
-                if self.planning {
-                    self.lines.push(ChatLine {
-                        text: "◈ plan mode — read-only".to_string(),
-                        style: Style::default().fg(Color::Cyan),
-                    });
-                } else {
-                    self.lines.push(ChatLine {
-                        text: "◈ auto mode".to_string(),
-                        style: Style::default().fg(Color::DarkGray),
-                    });
-                }
             }
             StreamEvent::ConfirmationRequest {
                 id, token, reason, ..
