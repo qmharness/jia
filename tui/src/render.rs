@@ -210,10 +210,11 @@ pub fn render_status_bar(
         format!(" · {}s", elapsed_secs)
     };
 
+    // mid 不再自带尾分隔——tail 已有前导 ` · `,两个分隔符紧邻会显示成 "· ·"。
     let mid = if geju.is_empty() {
         String::new()
     } else {
-        format!(" {geju} ·")
+        format!(" {geju}")
     };
 
     f.render_widget(
