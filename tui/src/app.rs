@@ -359,13 +359,6 @@ pub(crate) fn render_frame_with_cursor(
             }
         }
 
-        let input_label = match &app.input_mode {
-            InputMode::Normal if app.planning => "谋划",
-            InputMode::Normal => "Normal",
-            InputMode::Confirm { .. } => "Confirm",
-            InputMode::Question { .. } => "Question",
-            InputMode::Welcome { .. } => "",
-        };
         if !matches!(app.input_mode, InputMode::Welcome { .. }) {
             render::render_status_bar(
                 f,
@@ -381,10 +374,12 @@ pub(crate) fn render_frame_with_cursor(
                 app.spinner_idx,
             );
             cursor = render::render_input(f, areas.input, &app.composer);
+            // info_bar 不显示 InputMode(界面态不言自明:Confirm/Question 有专门
+            // 渲染,plan mode 有 Shift+Tab 反馈行);mode_label 恒为空串。
             render::render_info_bar(
                 f,
                 areas.info_bar,
-                input_label,
+                "",
                 &format!("{} · {}", app.llm.model_id, app.llm.provider),
                 app.session_id.as_deref(),
                 &app.workspace_name,

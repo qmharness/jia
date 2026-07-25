@@ -80,7 +80,7 @@ pub struct Agent {
     /// 仁 — user-defined character loaded from ren_soul.md.
     /// None if the file does not exist or is empty.
     pub ren_soul: Option<String>,
-    /// P3 · Interaction mode (谋划态). A user-facing interaction state, NOT a
+    /// P3 · Interaction mode (auto/plan mode). A user-facing interaction state, NOT a
     /// nine-star AgentPhase (which is the loop's internal execution phase). In
     /// Planning mode the loop short-circuits destructive tools before GeJu.
     pub interaction_mode: InteractionMode,
@@ -135,7 +135,7 @@ impl Agent {
             activated_skills: Vec::new(),
             skill_tool_calls: Vec::new(),
             worktree_root: None,
-            interaction_mode: InteractionMode::Normal,
+            interaction_mode: InteractionMode::Auto,
             certainty_history: Vec::new(),
             coactivation: Default::default(),
         };
@@ -193,7 +193,7 @@ impl Agent {
             activated_skills: Vec::new(),
             skill_tool_calls: Vec::new(),
             worktree_root: None,
-            interaction_mode: InteractionMode::Normal,
+            interaction_mode: InteractionMode::Auto,
             certainty_history: Vec::new(),
             coactivation: Default::default(),
         };

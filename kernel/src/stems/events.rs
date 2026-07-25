@@ -3,7 +3,7 @@
 //! 哲学依据:天干 = 四盘共享语义层。`AgentEvent` 是天盘 loop 向外界
 //! (SSE / REPL / bots) 发出的事件词汇,人盘(ren_human)、震宫工具
 //! (ask_user/delegate)、兑宫网关(rin/agent)皆需引用——它是跨盘
-//! 共享语义,非天盘私有。`InteractionMode`(谋划态)同理:它是
+//! 共享语义,非天盘私有。`InteractionMode`(auto/plan mode)同理:它是
 //! 用户面向的交互状态,会话模式表存于人盘 SessionBus,事件经天盘
 //! 发出,消费在兑宫/TUI。
 //!
@@ -45,7 +45,7 @@ pub enum AgentEvent {
         token: String,
         options: Option<Vec<String>>,
     },
-    /// P3 · interaction mode changed (谋划态 toggle).
+    /// P3 · interaction mode changed (auto mode ↔ plan mode toggle).
     InteractionModeChanged {
         planning: bool,
     },
@@ -64,17 +64,19 @@ pub enum AgentEvent {
     },
 }
 
-/// P3 · Interaction mode — 谋划态 (planning) vs Normal.
+/// P3 · Interaction mode — Plan (plan mode) vs Auto (auto mode).
 ///
-/// Distinct from `AgentPhase` (九星, loop execution phase, 居天盘): this is a
-/// user-facing interaction state. `Planning` forces read-only operation —
-/// destructive tools are rejected by a loop-level short-circuit before GeJu
-/// evaluation, so GeJu stays a pure 干叠加 evaluator (A2). User-triggered
-/// primarily (slash/TUI); the model may also call enter/exit_plan_mode.
+/// Distinct from `AgentPhase` (九星, loop execution phase, 居天盘) and from
+/// TUI `InputMode` (界面态): this is a user-facing interaction state. `Plan`
+/// forces read-only operation — destructive tools are rejected by a
+/// loop-level short-circuit before GeJu evaluation, so GeJu stays a pure
+/// 干叠加 evaluator (A2). User-triggered primarily (Shift+Tab / slash);
+/// the model may also call enter/exit_plan_mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum InteractionMode {
+    /// auto mode — 默认,正常执行。
     #[default]
-    Normal,
-    /// 谋划态 — read-only research/planning. Destructive tools blocked.
-    Planning,
+    Auto,
+    /// plan mode — 只读研究/规划,破坏性工具被拦截(原"谋划态")。
+    Plan,
 }

@@ -133,7 +133,7 @@ pub enum StreamEvent {
     Done,
     #[serde(rename = "error")]
     Error { message: String },
-    /// P3 · interaction mode changed (谋划态 toggle).
+    /// P3 · interaction mode changed (auto mode ↔ plan mode toggle).
     #[serde(rename = "interaction_mode_changed")]
     InteractionModeChanged { planning: bool },
     #[serde(rename = "context_pressure")]

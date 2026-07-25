@@ -635,9 +635,9 @@ async fn handle_rin_connection(
                                 // Keep session_modes in sync so the next run
                                 // continues in the agent's actual mode.
                                 let mode = if planning {
-                                    InteractionMode::Planning
+                                    InteractionMode::Plan
                                 } else {
-                                    InteractionMode::Normal
+                                    InteractionMode::Auto
                                 };
                                 if let Ok(mut m) = fwd_modes.lock() {
                                     m.insert(fwd_sid.clone(), mode);
@@ -773,9 +773,9 @@ async fn handle_rin_connection(
                 let planning = msg["planning"].as_bool().unwrap_or(false);
                 if !sid.is_empty() {
                     let mode = if planning {
-                        InteractionMode::Planning
+                        InteractionMode::Plan
                     } else {
-                        InteractionMode::Normal
+                        InteractionMode::Auto
                     };
                     earth
                         .session_bus
@@ -1022,8 +1022,8 @@ mod tests {
             c.insert("c-other".into(), mk_c("s2"));
             c.insert("c-anon".into(), mk_c(""));
             let mut m = modes.lock().unwrap();
-            m.insert("s1".into(), InteractionMode::Planning);
-            m.insert("s2".into(), InteractionMode::Normal);
+            m.insert("s1".into(), InteractionMode::Plan);
+            m.insert("s2".into(), InteractionMode::Auto);
         }
 
         sweep_pending_for_sessions(&questions, &confirmations, &modes, &["s1".to_string()]);

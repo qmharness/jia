@@ -36,10 +36,10 @@ After receiving tool results, continue reasoning to help the user.";
         let stable = format!("{ren}{stable_suffix}");
 
         let mut dynamic = self.build_dynamic_prompt();
-        // P3 · 谋划态 notice (in dynamic segment — it is a per-mode instruction,
+        // P3 · plan mode notice (in dynamic segment — it is a per-mode instruction,
         // not part of the stable identity). Tells the agent it is read-only.
-        if self.interaction_mode == crate::stems::InteractionMode::Planning {
-            let notice = "【谋划态】当前为只读计划模式：可探查代码、设计方案，但不得写文件或执行变更类工具。完成方案后调用 exit_plan_mode 提交待审。";
+        if self.interaction_mode == crate::stems::InteractionMode::Plan {
+            let notice = "【plan mode】当前为只读计划模式：可探查代码、设计方案，但不得写文件或执行变更类工具。完成方案后调用 exit_plan_mode 提交待审。";
             if !dynamic.is_empty() {
                 dynamic.push_str("\n\n");
             }

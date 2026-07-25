@@ -25,7 +25,7 @@ impl BaseTool for EnterPlanModeTool {
     }
 
     fn description(&self) -> String {
-        "Enter read-only planning mode (谋划态). In this mode you may investigate \
+        "Enter plan mode (read-only). In this mode you may investigate \
          the codebase and design a plan, but cannot make changes (write_file, \
          shell, git commit, etc. are blocked). Use this when the user asks you \
          to plan or research before acting. Submit your plan via exit_plan_mode."
@@ -50,7 +50,7 @@ impl BaseTool for EnterPlanModeTool {
 
     async fn execute(&self, _input: Value, _ctx: &ExecContext) -> Result<String, ToolError> {
         Ok(
-            "Entered planning mode (谋划态). You are now read-only: investigate \
+            "Entered plan mode (read-only). You are now read-only: investigate \
             and design a plan, then call exit_plan_mode to submit it for approval."
                 .to_string(),
         )
@@ -124,7 +124,7 @@ mod tests {
             .execute(serde_json::json!({}), &test_ctx())
             .await
             .unwrap();
-        assert!(out.contains("planning mode"));
+        assert!(out.contains("plan mode"));
     }
 
     #[tokio::test]

@@ -108,7 +108,7 @@ pub async fn dispatch_one_tool(
     // GeJu.evaluate so GeJu remains a pure 干叠加 evaluator (A2) — the planning
     // gate is a 人盘 concern, not a 格局 concern. enter/exit_plan_mode are
     // is_destructive()=false so they pass (D1: no self-deadlock).
-    if interaction_mode == InteractionMode::Planning && tool.is_destructive() {
+    if interaction_mode == InteractionMode::Plan && tool.is_destructive() {
         let err = format!(
             "【谋划态】当前为只读计划模式，变更类工具 '{}' 被拒。完成方案后用 exit_plan_mode 退出谋划态再执行。",
             tc.name
