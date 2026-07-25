@@ -578,27 +578,32 @@ mod tests {
             version: "0.2.0",
             model: "gemini-2.5-pro",
             provider: "gemini",
-            project: "demo",
+            workspace: "demo",
         };
         let lines = welcome_lines(&spec);
 
-        // Four rows: head+version / eyes / chin+model·provider / beard+path.
+        // Four rows: tiger back / stripes+version / stripes+eye+model / bottom curve+path.
         assert_eq!(lines.len(), 4, "rows: {:?}", lines);
 
         assert!(
-            lines[1].text.contains("Jia v0.2.0"),
-            "head with version: {:?}",
-            lines[1].text
-        );
-        assert!(
-            lines[0].text.contains('▗'),
-            "head logo: {:?}",
+            lines[0].text.contains('▗') && lines[0].text.contains('▖'),
+            "tally top edge: {:?}",
             lines[0].text
         );
         assert!(
-            lines[1].text.contains('▘') && lines[1].text.contains('▝'),
-            "eyes: {:?}",
+            lines[1].text.contains("Jia v0.2.0"),
+            "stripes row with version: {:?}",
             lines[1].text
+        );
+        assert!(
+            lines[1].text.contains('▛') && lines[1].text.contains('▙'),
+            "tiger stripes: {:?}",
+            lines[1].text
+        );
+        assert!(
+            lines[2].text.contains('▐') && lines[2].text.contains('█'),
+            "eye facing right: {:?}",
+            lines[2].text
         );
         assert!(
             lines[2].text.contains("gemini-2.5-pro · gemini"),
@@ -610,16 +615,16 @@ mod tests {
             "path: {:?}",
             lines[3].text
         );
-        assert!(lines[3].text.contains('█'), "beard: {:?}", lines[3].text);
+        assert!(lines[3].text.contains('▟'), "bottom curve: {:?}", lines[3].text);
     }
 
     #[test]
-    fn welcome_lines_handles_empty_model_and_project() {
+    fn welcome_lines_handles_empty_model_and_workspace() {
         let spec = WelcomeSpec {
             version: "0.2.0",
             model: "",
             provider: "gemini",
-            project: "",
+            workspace: "",
         };
         let lines = welcome_lines(&spec);
         assert_eq!(lines.len(), 4);

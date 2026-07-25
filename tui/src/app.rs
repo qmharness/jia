@@ -238,7 +238,7 @@ pub(crate) fn push_welcome_to_scrollback(
         version: env!("CARGO_PKG_VERSION"),
         model: &app.llm.model_id,
         provider: &app.llm.provider,
-        project: &app.workspace_name,
+        workspace: &app.workspace_name,
     };
     let wl = render::welcome_lines(&spec);
     let width = terminal.size().map(|s| s.width).unwrap_or(80);
@@ -319,7 +319,7 @@ pub(crate) fn reflow_on_resize(
         version: env!("CARGO_PKG_VERSION"),
         model: &app.llm.model_id,
         provider: &app.llm.provider,
-        project: &app.workspace_name,
+        workspace: &app.workspace_name,
     };
     let mut all = render::welcome_lines(&spec);
     all.extend(app.history.iter().cloned());

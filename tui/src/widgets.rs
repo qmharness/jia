@@ -20,18 +20,19 @@ pub struct WelcomeSpec<'a> {
     pub version: &'a str,
     pub model: &'a str,
     pub provider: &'a str,
-    pub project: &'a str,
+    pub workspace: &'a str,
 }
 
-/// Build the welcome block as a little agent robot (4 borderless lines):
+/// Build the welcome block as a tiger tally (虎符, 4 borderless lines),
+/// tiger head facing right:
 ///
-///   ▗▄▄▄▖  Jia v{version}
-///   ▌▘ ▝▐
-///   ▝▀▀▀▘  {model} · {provider}
-///     █    ~/{project}
+///   ▗▄▄▄▄▄▄▄▖
+///   ▐▛▀▛▀▀▀▀▀█▙▖  Jia v{version}
+///   ▐▌▐▌ ▄   ▀▜█▌  {model} · {provider}
+///   ▝▀▄▄▄▄▄▄▄▄▄▟▘   ~/{workspace}
 ///
-/// Round head + two eyes + centered hanging "beard" — nods to 甲's frame
-/// and downward stroke. Lives in the normal scrollback (PageUp reveals it),
+/// 甲为大将军,大将军持虎符——条纹虎身居左,右眼与虎口朝右,符形收拢。
+/// Lives in the normal scrollback (PageUp reveals it),
 /// prepended to the message stream inside `render_messages`.
 pub(crate) fn welcome_lines(spec: &WelcomeSpec) -> Vec<ChatLine> {
     let cyan = Style::default().fg(Color::Cyan);
@@ -42,27 +43,27 @@ pub(crate) fn welcome_lines(spec: &WelcomeSpec) -> Vec<ChatLine> {
     } else {
         format!("{} · {}", spec.model, spec.provider)
     };
-    let path_label = if spec.project.is_empty() {
+    let path_label = if spec.workspace.is_empty() {
         String::new()
     } else {
-        format!("~/{}", spec.project)
+        format!("~/{}", spec.workspace)
     };
 
     vec![
         ChatLine {
-            text: "▗▄▄▄▖".to_string(),
+            text: "▗▄▄▄▄▄▄▄▖".to_string(),
             style: cyan,
         },
         ChatLine {
-            text: format!("▌▘ ▝▐  Jia v{}", spec.version),
+            text: format!("▐▛▀▛▀▀▀▀▀█▙▖  Jia v{}", spec.version),
             style: cyan,
         },
         ChatLine {
-            text: format!("▝▀▀▀▘  {}", model_label),
+            text: format!("▐▌▐▌ ▄   ▀▜█▌  {}", model_label),
             style: dim,
         },
         ChatLine {
-            text: format!("  █    {}", path_label),
+            text: format!("▝▀▄▄▄▄▄▄▄▄▄▟▘   {}", path_label),
             style: dim,
         },
     ]
