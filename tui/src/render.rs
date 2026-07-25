@@ -258,32 +258,21 @@ pub fn render_info_bar(
     };
 
     f.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            left_text,
-            Style::default().fg(Color::Indexed(245)),
-        ))),
+        Paragraph::new(Line::from(vec![
+            Span::styled(left_text, Style::default().fg(Color::Indexed(245))),
+            Span::styled(
+                if working { " · esc to interrupt" } else { "" },
+                Style::default().fg(Color::Yellow),
+            ),
+        ])),
         left,
     );
 
-    // agent 运行中:右侧提示 Esc 可取消;否则显示工作区。
-    let right_text = if working {
-        "esc to interrupt".to_string()
-    } else if !workspace.is_empty() {
-        format!("~/{}", workspace)
-    } else {
-        String::new()
-    };
-    if !right_text.is_empty() {
+    // 右侧恒为工作区名("esc to interrupt" 提示在左侧 session_id 之后)。
+    if !workspace.is_empty() {
         f.render_widget(
-            Paragraph::new(Line::from(Span::styled(
-                right_text,
-                if working {
-                    Style::default().fg(Color::Yellow)
-                } else {
-                    white
-                },
-            )))
-            .alignment(ratatui::layout::Alignment::Right),
+            Paragraph::new(Line::from(Span::styled(format!("~/{}", workspace), white)))
+                .alignment(ratatui::layout::Alignment::Right),
             right,
         );
     }
