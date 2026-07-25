@@ -28,10 +28,10 @@ pub(crate) enum Event {
     Tick,
 }
 
-// ── Input Mode ─────────────────────────────────────────────
+// ── Input Mode(输入模式/界面态,TUI 本地按键状态机;勿与 daemon 的 InteractionMode 交互模式混淆) ──
 
 #[derive(Debug, Clone)]
-pub(crate) enum Mode {
+pub(crate) enum InputMode {
     Normal,
     /// Claude-style project trust check on startup
     Welcome {
@@ -79,7 +79,7 @@ pub(crate) enum StreamAnchor {
 // ── App State ──────────────────────────────────────────────
 
 pub(crate) struct App {
-    pub(crate) mode: Mode,
+    pub(crate) input_mode: InputMode,
     /// Active turn lines (rendered in the viewport); pushed to scrollback on Done.
     pub(crate) lines: Vec<ChatLine>,
     /// Finalized history (source of truth; already pushed to terminal scrollback).
@@ -147,23 +147,23 @@ impl App {
             return;
         }
 
-        match self.mode.clone() {
-            Mode::Welcome { cwd, selected: _ } => match key.code {
+        match self.input_mode.clone() {
+            InputMode::Welcome { cwd, selected: _ } => match key.code {
                 KeyCode::Up | KeyCode::Char('k') => {
-                    if let Mode::Welcome { selected, .. } = &mut self.mode {
+                    if let InputMode::Welcome { selected, .. } = &mut self.input_mode {
                         *selected = selected.saturating_sub(1);
                     }
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
-                    if let Mode::Welcome { selected, .. } = &mut self.mode {
+                    if let InputMode::Welcome { selected, .. } = &mut self.input_mode {
                         *selected = (*selected + 1).min(1);
                     }
                 }
                 KeyCode::Enter => {
-                    let approved = matches!(&self.mode, Mode::Welcome { selected: 0, .. });
+                    let approved = matches!(&self.input_mode, InputMode::Welcome { selected: 0, .. });
                     if approved {
                         let cwd_str = cwd.clone();
-                        self.mode = Mode::Normal;
+                        self.input_mode = InputMode::Normal;
                         self.sending_allowed = true;
                         // Create project locally + notify daemon
                         let workspace_id = uuid::Uuid::new_v4().to_string();
@@ -198,7 +198,7 @@ impl App {
                 _ => {}
             },
 
-            Mode::Normal => {
+            InputMode::Normal => {
                 if key.code == KeyCode::Char('l') && key.modifiers.contains(KeyModifiers::CONTROL) {
                     self.lines.clear();
                     // M3: 同步重置 scrollback 记账——不清 inserted_rows 会导致
@@ -255,10 +255,10 @@ impl App {
                 // Agent working — Enter is silently ignored
             }
 
-            Mode::Confirm { id, token, .. } => match key.code {
+            InputMode::Confirm { id, token, .. } => match key.code {
                 KeyCode::Char('1') | KeyCode::Char('y') | KeyCode::Char('Y') => {
                     self.send_confirm(&id, &token, true);
-                    self.mode = Mode::Normal;
+                    self.input_mode = InputMode::Normal;
                     self.confirm_selected = 0;
                     self.composer.set_placeholder("");
                     // Re-read project info after creation
@@ -267,14 +267,14 @@ impl App {
                 KeyCode::Char('2') | KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
                     self.send_confirm(&id, &token, false);
                     // P0-5: 拒绝确认只返回 Normal,不退出应用(审计 H1 / 07-14 P0-4)。
-                    self.mode = Mode::Normal;
+                    self.input_mode = InputMode::Normal;
                     self.confirm_selected = 0;
                     self.composer.set_placeholder("");
                 }
                 _ => {}
             },
 
-            Mode::Question {
+            InputMode::Question {
                 ref id,
                 ref token,
                 ref options,
@@ -291,7 +291,7 @@ impl App {
                             let new_idx = first_line + selected;
                             render::update_option_style(&mut self.lines[old_idx], false);
                             render::update_option_style(&mut self.lines[new_idx], true);
-                            self.mode = Mode::Question {
+                            self.input_mode = InputMode::Question {
                                 id: id.clone(),
                                 token: token.clone(),
                                 options: options.clone(),
@@ -308,7 +308,7 @@ impl App {
                             let new_idx = first_line + selected;
                             render::update_option_style(&mut self.lines[old_idx], false);
                             render::update_option_style(&mut self.lines[new_idx], true);
-                            self.mode = Mode::Question {
+                            self.input_mode = InputMode::Question {
                                 id: id.clone(),
                                 token: token.clone(),
                                 options: options.clone(),
@@ -326,7 +326,7 @@ impl App {
                             render::update_option_style(&mut self.lines[old_idx], false);
                             let new_idx = first_line + new_selected;
                             render::update_option_style(&mut self.lines[new_idx], true);
-                            self.mode = Mode::Question {
+                            self.input_mode = InputMode::Question {
                                 id: id.clone(),
                                 token: token.clone(),
                                 options: options.clone(),
@@ -348,7 +348,7 @@ impl App {
                             let opt_count = opts.len() + 1; // skip leading blank + options
                             let start: usize = first_line - 1; // back to leading blank
                             self.lines.drain(start..start + opt_count);
-                            self.mode = Mode::Question {
+                            self.input_mode = InputMode::Question {
                                 id: id.clone(),
                                 token: token.clone(),
                                 options: None,
@@ -371,7 +371,7 @@ impl App {
                                 text: format!("  └ Selected: {answer}"),
                                 style: Style::default().fg(Color::Green),
                             });
-                            self.mode = Mode::Normal;
+                            self.input_mode = InputMode::Normal;
                         }
                     }
                     KeyCode::Esc => {
@@ -389,7 +389,7 @@ impl App {
                         });
                         self.composer.clear();
                         self.composer.set_placeholder("");
-                        self.mode = Mode::Normal;
+                        self.input_mode = InputMode::Normal;
                     }
                     // Free-text fallback (no options, or user starts typing)
                     KeyCode::Enter => {
@@ -409,7 +409,7 @@ impl App {
                             text: format!("  └ Answered: {answer}"),
                             style: Style::default().fg(Color::Green),
                         });
-                        self.mode = Mode::Normal;
+                        self.input_mode = InputMode::Normal;
                     }
                     _ => {
                         // In option-selection mode, input is locked — only
@@ -504,8 +504,8 @@ impl App {
             SocketEvent::ConfirmResolved { id, resolved } => {
                 // M2: 只在 Confirm 模式下复位——旧确认超时/迟到到达时不得
                 // 踩掉用户正在进行的 Question/其他模式(丢失 id/token/options)。
-                if matches!(self.mode, Mode::Confirm { .. }) {
-                    self.mode = Mode::Normal;
+                if matches!(self.input_mode, InputMode::Confirm { .. }) {
+                    self.input_mode = InputMode::Normal;
                 }
                 self.composer.set_placeholder("");
                 if !resolved {
@@ -673,7 +673,7 @@ impl App {
                 id, token, reason, ..
             } => {
                 self.agent_phase = AgentPhase::AwaitingResult;
-                self.mode = Mode::Confirm { id, token };
+                self.input_mode = InputMode::Confirm { id, token };
                 self.composer
                     .set_placeholder(&format!("{reason}  [1] Yes  [2] No  · Esc to cancel"));
             }
@@ -705,7 +705,7 @@ impl App {
                         .set_placeholder("Type your answer... (Enter to send, Esc to cancel)");
                     (None, 0usize, 0usize)
                 };
-                self.mode = Mode::Question {
+                self.input_mode = InputMode::Question {
                     id,
                     token,
                     options: opts_store,
@@ -921,7 +921,7 @@ mod tests {
 
     fn test_app() -> App {
         App {
-            mode: Mode::Normal,
+            input_mode: InputMode::Normal,
             lines: Vec::new(),
             history: Vec::new(),
             needs_finalize: false,
@@ -955,19 +955,19 @@ mod tests {
     #[test]
     fn confirm_deny_returns_to_normal_without_quitting() {
         let mut app = test_app();
-        app.mode = Mode::Confirm {
+        app.input_mode = InputMode::Confirm {
             id: "c1".into(),
             token: "t1".into(),
         };
         for code in [KeyCode::Char('n'), KeyCode::Char('2'), KeyCode::Esc] {
-            app.mode = Mode::Confirm {
+            app.input_mode = InputMode::Confirm {
                 id: "c1".into(),
                 token: "t1".into(),
             };
             app.dispatch_event(Event::Key(KeyEvent::new(code, KeyModifiers::NONE)));
             assert!(!app.quit, "deny via {code:?} must not quit the app");
             assert!(
-                matches!(app.mode, Mode::Normal),
+                matches!(app.input_mode, InputMode::Normal),
                 "deny via {code:?} must return to Normal mode"
             );
         }
@@ -976,7 +976,7 @@ mod tests {
     #[test]
     fn confirm_approve_also_returns_to_normal() {
         let mut app = test_app();
-        app.mode = Mode::Confirm {
+        app.input_mode = InputMode::Confirm {
             id: "c1".into(),
             token: "t1".into(),
         };
@@ -985,7 +985,7 @@ mod tests {
             KeyModifiers::NONE,
         )));
         assert!(!app.quit);
-        assert!(matches!(app.mode, Mode::Normal));
+        assert!(matches!(app.input_mode, InputMode::Normal));
     }
 }
 
@@ -997,7 +997,7 @@ mod p1_4_tests {
 
     fn test_app() -> App {
         App {
-            mode: Mode::Normal,
+            input_mode: InputMode::Normal,
             lines: Vec::new(),
             history: Vec::new(),
             needs_finalize: false,
@@ -1072,7 +1072,7 @@ mod s2_retry_tests {
 
     fn test_app() -> App {
         App {
-            mode: Mode::Normal,
+            input_mode: InputMode::Normal,
             lines: Vec::new(),
             history: Vec::new(),
             needs_finalize: false,
@@ -1211,7 +1211,7 @@ mod cancel_tests {
 
     fn working_app() -> App {
         let mut app = App {
-            mode: Mode::Normal,
+            input_mode: InputMode::Normal,
             lines: Vec::new(),
             history: Vec::new(),
             needs_finalize: false,

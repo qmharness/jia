@@ -12,7 +12,7 @@ use tokio_util::sync::CancellationToken;
 use super::composer::Composer;
 use super::connection::{ClientMsg, Connection};
 use super::render::{self, ChatLine, StatusIcon};
-use super::state::{App, Event, LlmInfo, Mode};
+use super::state::{App, Event, InputMode, LlmInfo};
 use kernel::plates::tian_heaven::AgentPhase;
 
 pub async fn run_app(
@@ -35,10 +35,10 @@ pub async fn run_app(
         .exists();
 
     let mut app = App {
-        mode: if has_project {
-            Mode::Normal
+        input_mode: if has_project {
+            InputMode::Normal
         } else {
-            Mode::Welcome {
+            InputMode::Welcome {
                 cwd: cwd.clone(),
                 selected: 0,
             }
@@ -349,8 +349,8 @@ pub(crate) fn render_frame_with_cursor(
         let input_height = 2 + app.composer.line_count(f.area().width).min(6) as u16;
         let areas = render::layout(f.area(), input_height);
 
-        match &app.mode {
-            Mode::Welcome { cwd, selected } => {
+        match &app.input_mode {
+            InputMode::Welcome { cwd, selected } => {
                 // First-run trust check takes the full screen.
                 render::render_security_guide(f, f.area(), cwd, *selected);
             }
@@ -361,14 +361,14 @@ pub(crate) fn render_frame_with_cursor(
             }
         }
 
-        let mode_label = match &app.mode {
-            Mode::Normal if app.planning => "谋划",
-            Mode::Normal => "Normal",
-            Mode::Confirm { .. } => "Confirm",
-            Mode::Question { .. } => "Question",
-            Mode::Welcome { .. } => "",
+        let input_label = match &app.input_mode {
+            InputMode::Normal if app.planning => "谋划",
+            InputMode::Normal => "Normal",
+            InputMode::Confirm { .. } => "Confirm",
+            InputMode::Question { .. } => "Question",
+            InputMode::Welcome { .. } => "",
         };
-        if !matches!(app.mode, Mode::Welcome { .. }) {
+        if !matches!(app.input_mode, InputMode::Welcome { .. }) {
             render::render_status_bar(
                 f,
                 areas.status_bar,
