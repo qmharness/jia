@@ -268,10 +268,13 @@ pub fn render_info_bar(
 ) {
     let white = Style::default().fg(Color::White);
     // info_bar 左侧只留模式段(model/provider/session_id 已移到 status_bar 右侧)。
-    let left_text = if mode_label.is_empty() {
-        "⏵⏵".to_string()
+    // 模式着色:auto mode 醒目绿加粗,plan mode 青——一眼可辨当前模式。
+    let mode_style = if mode_label.contains("plan") {
+        Style::default().fg(Color::Cyan)
     } else {
-        format!("⏵⏵ {mode_label}")
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(ratatui::style::Modifier::BOLD)
     };
 
     let mid = area.width.saturating_sub(30).max(area.width / 2);
@@ -284,7 +287,8 @@ pub fn render_info_bar(
 
     f.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled(left_text, Style::default().fg(Color::Indexed(245))),
+            Span::styled("⏵⏵ ".to_string(), Style::default().fg(Color::Indexed(245))),
+            Span::styled(mode_label.to_string(), mode_style),
             Span::styled(
                 if working { " · esc to interrupt" } else { "" },
                 Style::default().fg(Color::Yellow),
