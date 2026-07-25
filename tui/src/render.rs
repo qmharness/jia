@@ -582,27 +582,27 @@ mod tests {
         };
         let lines = welcome_lines(&spec);
 
-        // Four rows: tiger back / stripes+version / stripes+eye+model / bottom curve+path.
+        // Four rows: tail curl / long back+head+version / belly+jaw+model / ground+path.
         assert_eq!(lines.len(), 4, "rows: {:?}", lines);
 
         assert!(
             lines[0].text.contains('▗') && lines[0].text.contains('▖'),
-            "tally top edge: {:?}",
+            "tail curl tip: {:?}",
             lines[0].text
         );
         assert!(
             lines[1].text.contains("Jia v0.2.0"),
-            "stripes row with version: {:?}",
+            "back+head row with version: {:?}",
             lines[1].text
         );
         assert!(
-            lines[1].text.contains('▛') && lines[1].text.contains('▙'),
-            "tiger stripes: {:?}",
+            lines[1].text.contains('▟') && lines[1].text.contains('▙'),
+            "head facing right: {:?}",
             lines[1].text
         );
         assert!(
-            lines[2].text.contains('▐') && lines[2].text.contains('█'),
-            "eye facing right: {:?}",
+            lines[2].text.contains('█') && lines[2].text.contains('▟'),
+            "open jaw: {:?}",
             lines[2].text
         );
         assert!(
@@ -615,7 +615,7 @@ mod tests {
             "path: {:?}",
             lines[3].text
         );
-        assert!(lines[3].text.contains('▟'), "bottom curve: {:?}", lines[3].text);
+        assert!(lines[3].text.contains('▀'), "ground line: {:?}", lines[3].text);
     }
 
     #[test]
