@@ -312,9 +312,8 @@ impl PermissionMatrix {
                     }
                 }
                 // Reject shell metacharacters on the fallback path too
-                const METACHARS: &[char] = &[';', '&', '|', '$', '`'];
-                if let Some(c) = cmd.chars().find(|ch| METACHARS.contains(ch)) {
-                    return Err(format!("command contains disallowed metacharacter '{c}'"));
+                if let Some(c) = disallowed_metachar(cmd) {
+                    return Err(metachar_error(c));
                 }
                 return Ok(());
             }
@@ -324,24 +323,31 @@ impl PermissionMatrix {
             return Ok(());
         }
 
-        // Reject shell metacharacters that could chain or nest commands
-        const METACHARS: &[char] = &[';', '&', '|', '$', '`'];
-        if let Some(c) = cmd.chars().find(|ch| METACHARS.contains(ch)) {
-            return Err(format!("command contains disallowed metacharacter '{c}'"));
+        // Reject chaining/nesting metacharacters OUTSIDE quotes (quoted
+        // literals like "a & b" or URLs are fine). `&&` is allowed — each
+        // segment is allowlist-verified individually below.
+        if let Some(c) = disallowed_metachar(cmd) {
+            return Err(metachar_error(c));
         }
 
-        // Extract the command name (first token, stripped of path)
-        let cmd_name = tokens[0].split('/').next_back().unwrap_or(&tokens[0]);
-
-        // Allowlist check
+        // Allowlist check — every `&&` segment must be allowed individually
+        // (`cd proj && mv a b` checks both `cd` and `mv`).
         if !self.shell_policy.allowlist.is_empty() {
-            let allowed = self
-                .shell_policy
-                .allowlist
-                .iter()
-                .any(|a| a == cmd_name || a == &tokens[0]);
-            if !allowed {
-                return Err(format!("command '{cmd_name}' is not in the allowlist"));
+            for segment in cmd.split("&&") {
+                let seg_tokens: Vec<String> =
+                    shell_words::split(segment.trim()).unwrap_or_default();
+                let Some(first) = seg_tokens.first() else {
+                    continue;
+                };
+                let cmd_name = first.split('/').next_back().unwrap_or(first);
+                let allowed = self
+                    .shell_policy
+                    .allowlist
+                    .iter()
+                    .any(|a| a == cmd_name || a == first);
+                if !allowed {
+                    return Err(format!("command '{cmd_name}' is not in the allowlist"));
+                }
             }
         }
 
@@ -528,6 +534,51 @@ impl PermissionMatrix {
     }
 }
 
+/// Scan for disallowed shell metacharacters OUTSIDE quotes.
+///
+/// Inside single or double quotes everything is literal — `echo "a & b"` and
+/// `curl "http://a?x=1&y=2"` are fine. Outside quotes, `;`, `|`, backtick,
+/// `$`, and a single `&` (background execution) are rejected; `&&`
+/// (conditional chaining) is allowed, and each segment is separately
+/// allowlist-verified by `verify_command`.
+fn disallowed_metachar(cmd: &str) -> Option<char> {
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut escaped = false;
+    let mut chars = cmd.chars().peekable();
+    while let Some(c) = chars.next() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match c {
+            // Backslash escapes only outside single quotes (there it is literal).
+            '\\' if !in_single => escaped = true,
+            '\'' if !in_double => in_single = !in_single,
+            '"' if !in_single => in_double = !in_double,
+            ';' | '|' | '$' | '`' if !in_single && !in_double => return Some(c),
+            '&' if !in_single && !in_double => {
+                if chars.peek() == Some(&'&') {
+                    chars.next(); // consume the second '&' — `&&` is allowed
+                } else {
+                    return Some(c);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Error message for a rejected metacharacter — tells the caller (usually an
+/// LLM agent) what is allowed instead, so it adapts in one round instead of
+/// mis-diagnosing ("sandbox cached the rejection").
+fn metachar_error(c: char) -> String {
+    format!(
+        "command contains disallowed metacharacter '{c}'. Command separators (;, |, $, `) and background execution (&) are not allowed; use && to chain commands or run them separately"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -608,6 +659,37 @@ mod tests {
         m.shell_policy.allowlist = vec!["ls".into(), "echo".into()];
         assert!(m.verify_command("ls -la").is_ok());
         assert!(m.verify_command("cat /etc/hosts").is_err());
+    }
+
+    /// 元字符规则(2026-07-25 修订):`&&` 放行(逐段校验),单 `&`/`;`/`|`/`$`/反引号
+    /// 仍拒;引号内一切字面量放行。
+    #[test]
+    fn test_verify_command_metachars() {
+        let m = make_matrix();
+        // `&&` 允许
+        assert!(m.verify_command("cd /tmp && ls -la").is_ok());
+        // 单 `&`(后台执行)拒绝,且报错文案含引导
+        let err = m.verify_command("ls &").unwrap_err();
+        assert!(err.contains("use && to chain"), "error should guide: {err}");
+        // ; | $ ` 仍拒绝
+        assert!(m.verify_command("ls; echo x").is_err());
+        assert!(m.verify_command("ls | grep x").is_err());
+        assert!(m.verify_command("echo $HOME").is_err());
+        assert!(m.verify_command("echo `id`").is_err());
+        // 引号内元字符放行
+        assert!(m.verify_command("echo \"a & b\"").is_ok());
+        assert!(m.verify_command("echo 'a ; b'").is_ok());
+        assert!(m.verify_command("curl \"http://a?x=1&y=2\"").is_ok());
+    }
+
+    #[test]
+    fn test_verify_command_allowlist_checks_each_and_segment() {
+        let mut m = make_matrix();
+        m.shell_policy.allowlist = vec!["ls".into(), "echo".into(), "cd".into()];
+        // 链内全部在白名单 → 放行
+        assert!(m.verify_command("cd /tmp && ls -la").is_ok());
+        // 第二段不在白名单 → 拒绝(防 `cd /tmp && rm …` 绕过)
+        assert!(m.verify_command("cd /tmp && mv a b").is_err());
     }
 
     #[test]

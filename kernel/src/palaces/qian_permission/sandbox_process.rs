@@ -231,16 +231,17 @@ fn apply_child_rlimits(mem_limit: u64, fsize_limit: u64, nproc_limit: u64) {
 
 #[cfg(target_os = "macos")]
 fn apply_child_rlimits(mem_limit: u64, fsize_limit: u64, nproc_limit: u64) {
-    // SAFETY: Same as above. macOS uses RLIMIT_DATA instead of RLIMIT_AS
-    // for memory limits (RLIMIT_AS is not enforced on macOS).
+    // SAFETY: Same as above. macOS 对 RLIMIT_DATA 在现代版本上拒绝设置
+    // (setrlimit 返回 EPERM/EINVAL——实机告警证实),改用 RLIMIT_AS:
+    // macOS 接受该调用(虽然老版本不强制),至少保持设置语义不报错。
     if mem_limit > 0 {
         let lim = ::libc::rlimit {
             rlim_cur: mem_limit,
             rlim_max: mem_limit,
         };
-        let ret = unsafe { ::libc::setrlimit(libc::RLIMIT_DATA, &lim) };
+        let ret = unsafe { ::libc::setrlimit(libc::RLIMIT_AS, &lim) };
         if ret != 0 {
-            child_warn("jia-sandbox: setrlimit(RLIMIT_DATA) failed; memory limit not enforced\n");
+            child_warn("jia-sandbox: setrlimit(RLIMIT_AS) failed; memory limit not enforced\n");
         }
     }
     if fsize_limit > 0 {
