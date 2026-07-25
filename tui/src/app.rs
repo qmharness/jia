@@ -172,9 +172,7 @@ pub async fn run_app(
                         style: StatusIcon::Disconnected.style(),
                     });
                     false
-                }
-                None => false, // already disconnected; waiting on tick to reconnect
-            },
+                }            },
 
             _ = tick.tick() => {
                 if app.status == StatusIcon::Working {
@@ -386,7 +384,7 @@ pub(crate) fn render_frame_with_cursor(
             render::render_info_bar(
                 f,
                 areas.info_bar,
-                mode_label,
+                input_label,
                 &format!("{} · {}", app.llm.model_id, app.llm.provider),
                 app.session_id.as_deref(),
                 &app.workspace_name,
