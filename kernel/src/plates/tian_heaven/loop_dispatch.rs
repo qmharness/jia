@@ -113,7 +113,7 @@ pub async fn dispatch_one_tool(
             "【谋划态】当前为只读计划模式，变更类工具 '{}' 被拒。完成方案后用 exit_plan_mode 退出谋划态再执行。",
             tc.name
         );
-        tracing::info!(tool = %tc.name, "dispatch_one_tool: blocked by planning mode");
+        tracing::debug!(tool = %tc.name, "dispatch_one_tool: blocked in plan mode");
         let _ = tx.send(AgentEvent::ToolCall {
             tool: tc.name.clone(),
             input: tc.parameters.clone(),

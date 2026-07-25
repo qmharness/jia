@@ -824,7 +824,7 @@ impl super::Agent {
                     "enter_plan_mode" => {
                         self.interaction_mode = InteractionMode::Plan;
                         ctx.human_plate.sync_jingjue_with_mode(true); // Planning → suppress alerts
-                        tracing::info!(session = %self.id, "entered planning mode");
+                        tracing::debug!(session = %self.id, "entered plan mode");
                         let _ = ctx
                             .tx
                             .send(AgentEvent::InteractionModeChanged {
@@ -834,7 +834,7 @@ impl super::Agent {
                     "exit_plan_mode" => {
                         self.interaction_mode = InteractionMode::Auto;
                         ctx.human_plate.sync_jingjue_with_mode(false); // Normal → resume alerts
-                        tracing::info!(session = %self.id, "exited planning mode");
+                        tracing::debug!(session = %self.id, "exited plan mode");
                         let _ = ctx
                             .tx
                             .send(AgentEvent::InteractionModeChanged {

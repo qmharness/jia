@@ -374,12 +374,12 @@ pub(crate) fn render_frame_with_cursor(
                 app.spinner_idx,
             );
             cursor = render::render_input(f, areas.input, &app.composer);
-            // info_bar 不显示 InputMode(界面态不言自明:Confirm/Question 有专门
-            // 渲染,plan mode 有 Shift+Tab 反馈行);mode_label 恒为空串。
+            // info_bar 显示 InteractionMode(plan mode / auto mode)——这是
+            // agent 行为模式,与 InputMode(界面态)不同,用户需要看见。
             render::render_info_bar(
                 f,
                 areas.info_bar,
-                "",
+                if app.planning { "plan mode" } else { "auto mode" },
                 &format!("{} · {}", app.llm.model_id, app.llm.provider),
                 app.session_id.as_deref(),
                 &app.workspace_name,
