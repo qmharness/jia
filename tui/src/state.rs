@@ -210,6 +210,20 @@ impl App {
                     self.request_sessions();
                     return;
                 }
+                // Esc during agent run = cancel the current task (rin cancel →
+                // session token → loop/provider/ask_user 取消链)。daemon 取消路径
+                // 不发 Done(P0-4 语义),本地立即复位 UI。
+                if key.code == KeyCode::Esc && self.status == StatusIcon::Working {
+                    self.send_cancel();
+                    self.status = StatusIcon::Done;
+                    self.sending_allowed = true;
+                    self.stream_anchor = None;
+                    self.lines.push(ChatLine {
+                        text: "⊘ Cancelled by user (Esc)".to_string(),
+                        style: StatusIcon::Error.style(),
+                    });
+                    return;
+                }
                 // History lives in the terminal scrollback now — scroll with the
                 // terminal's native wheel/scrollbar. ↑/↓ fall through to composer
                 // (input history recall); PageUp/PageDown are no-ops here.
@@ -827,6 +841,21 @@ impl App {
         }
     }
 
+    /// Send a cancel request for the current session's running task (Esc during
+    /// Working). daemon 侧 session_tokens.cancel → 取消链(LLM 流/ask_user/子代理)。
+    fn send_cancel(&self) {
+        if let Some(conn) = &self.connection {
+            let sid = self.session_id.clone().unwrap_or_default();
+            if sid.is_empty() {
+                return;
+            }
+            let conn = conn.clone();
+            tokio::spawn(async move {
+                let _ = conn.send(&ClientMsg::Cancel { session_id: sid }).await;
+            });
+        }
+    }
+
     fn send_confirm(&self, id: &str, token: &str, approved: bool) {
         if let Some(conn) = &self.connection {
             let msg = ClientMsg::Confirm {
@@ -1172,5 +1201,67 @@ mod s2_retry_tests {
         app.handle_stream_event(StreamEvent::Retrying { attempt: 1 });
         assert_eq!(app.lines.len(), 1);
         assert_eq!(app.lines[0].text, "prior");
+    }
+}
+
+#[cfg(test)]
+mod cancel_tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    fn working_app() -> App {
+        let mut app = App {
+            mode: Mode::Normal,
+            lines: Vec::new(),
+            history: Vec::new(),
+            needs_finalize: false,
+            inserted_rows: 0,
+            resize_pending: None,
+            resize_deadline: None,
+            composer: Composer::new(),
+            session_id: Some("sess-1".into()),
+            status: StatusIcon::Working,
+            planning: false,
+            start_time: Instant::now(),
+            last_elapsed: 0,
+            connection: None,
+            reconnect_attempts: 0,
+            sending_allowed: false,
+            llm: LlmInfo {
+                model_id: "test".into(),
+                provider: "test".into(),
+            },
+            spinner_idx: 0,
+            agent_phase: AgentPhase::Reasoning,
+            quit: false,
+            confirm_selected: 0,
+            workspace_name: String::new(),
+            workspace_id: String::new(),
+            stream_anchor: None,
+        };
+        app
+    }
+
+    /// Esc during Working: 本地复位(状态/门控/锚点)+ 不退出。
+    #[test]
+    fn esc_during_working_cancels_task() {
+        let mut app = working_app();
+        app.dispatch_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)));
+        assert_eq!(app.status, StatusIcon::Done);
+        assert!(app.sending_allowed);
+        assert!(!app.quit);
+        assert!(app.lines.iter().any(|l| l.text.contains("Cancelled")));
+    }
+
+    /// Esc 空闲时无副作用(不改变状态)。
+    #[test]
+    fn esc_when_idle_is_noop() {
+        let mut app = working_app();
+        app.status = StatusIcon::Done;
+        let lines_before = app.lines.len();
+        app.dispatch_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)));
+        assert_eq!(app.status, StatusIcon::Done);
+        assert_eq!(app.lines.len(), lines_before);
+        assert!(!app.quit);
     }
 }
