@@ -241,14 +241,16 @@ pub fn render_info_bar(
     working: bool,
 ) {
     let white = Style::default().fg(Color::White);
+    // session_id 未生成时整段省略——占位 "·" 会与前面的分隔符连成悬挂双点。
     let sid = session_id
         .map(|s| if s.len() > 8 { &s[..8] } else { s })
-        .unwrap_or("·");
+        .map(|s| format!(" · {s}"))
+        .unwrap_or_default();
 
     let left_text = if mode_label.is_empty() {
-        format!("⏵⏵ {} · {}", model, sid)
+        format!("⏵⏵ {model}{sid}")
     } else {
-        format!("⏵⏵ {} · {} · {}", mode_label, model, sid)
+        format!("⏵⏵ {mode_label} · {model}{sid}")
     };
 
     let mid = area.width.saturating_sub(30).max(area.width / 2);
