@@ -191,7 +191,7 @@ pub fn render_status_bar(
     f: &mut Frame,
     area: Rect,
     status: StatusIcon,
-    geju: &str,
+    phase: &str,
     elapsed_secs: u64,
     reconnect_attempts: u32,
     spinner_idx: usize,
@@ -211,10 +211,11 @@ pub fn render_status_bar(
     };
 
     // mid 不再自带尾分隔——tail 已有前导 ` · `,两个分隔符紧邻会显示成 "· ·"。
-    let mid = if geju.is_empty() {
+    // (形参 phase = 九星相位名,非 GeJu 格局名。)
+    let mid = if phase.is_empty() {
         String::new()
     } else {
-        format!(" {geju}")
+        format!(" {phase}")
     };
 
     f.render_widget(
