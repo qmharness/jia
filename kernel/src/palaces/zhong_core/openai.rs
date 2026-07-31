@@ -98,8 +98,11 @@ impl LlmProvider for OpenAIProvider {
 
                 let status = resp.status().as_u16();
                 if !resp.status().is_success() {
+                    // Grab headers before `text()` consumes the response —
+                    // Retry-After rides on 429/5xx responses (#1).
+                    let headers = resp.headers().clone();
                     let body = resp.text().await.unwrap_or_default();
-                    let err = classify_http_error(status, &body);
+                    let err = classify_http_error(status, &body, &headers);
                     let _ = tx.send(Err(err));
                     return;
                 }

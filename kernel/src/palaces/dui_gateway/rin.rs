@@ -510,12 +510,12 @@ async fn handle_rin_connection(
                 // Channel and cancellation setup
                 let (tx, rx) = mpsc::unbounded_channel::<AgentEvent>();
 
+                let title = messages
+                    .iter()
+                    .find(|m| m.role == Role::User)
+                    .map(|m| crate::utils::truncate_title(&m.content))
+                    .unwrap_or_default();
                 if is_new {
-                    let title = messages
-                        .iter()
-                        .find(|m| m.role == Role::User)
-                        .map(|m| crate::utils::truncate_title(&m.content))
-                        .unwrap_or_default();
                     let init_cwd = if msg_cwd.is_empty() || msg_cwd == "." {
                         ""
                     } else {
@@ -560,6 +560,7 @@ async fn handle_rin_connection(
                 let session_json = serde_json::json!({
                     "type": "session",
                     "session_id": session_id,
+                    "title": title,
                 })
                 .to_string();
                 {
@@ -621,6 +622,13 @@ async fn handle_rin_connection(
                                 timeout_secs,
                                 token,
                                 options,
+                            },
+                            AgentEvent::Session {
+                                session_id,
+                                title,
+                            } => StreamEvent::Session {
+                                session_id,
+                                title: Some(title),
                             },
                             AgentEvent::ToolBatchStart => StreamEvent::ToolBatchStart,
                             AgentEvent::StreamEnd => StreamEvent::StreamEnd,
@@ -958,11 +966,13 @@ mod tests {
     fn stream_event_session_serializes() {
         let json = serde_json::to_string(&StreamEvent::Session {
             session_id: "s1".into(),
+            title: Some("Hello".into()),
         })
         .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["type"], "session");
         assert_eq!(parsed["session_id"], "s1");
+        assert_eq!(parsed["title"], "Hello");
     }
 
     #[test]

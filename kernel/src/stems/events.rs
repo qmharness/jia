@@ -37,6 +37,8 @@ pub enum AgentEvent {
     },
     Session {
         session_id: String,
+        /// Human-readable title (first user message, truncated to 60 chars).
+        title: String,
     },
     UserQuestion {
         id: String,
@@ -61,6 +63,27 @@ pub enum AgentEvent {
     /// `attempt` 是即将开始的第几次重试(1-based)。
     Retrying {
         attempt: u32,
+    },
+    /// 后台任务已启动。
+    TaskStarted {
+        task_id: String,
+        description: String,
+        task_type: String,
+        tool_use_id: Option<String>,
+    },
+    /// 后台任务已完成（成功/失败/被终止）。
+    TaskCompleted {
+        task_id: String,
+        status: String,
+        summary: String,
+        output_file: String,
+        tool_use_id: Option<String>,
+    },
+    /// 后台任务疑似卡在交互式提示上。
+    TaskStalled {
+        task_id: String,
+        description: String,
+        tail_output: String,
     },
 }
 

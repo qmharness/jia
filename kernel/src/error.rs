@@ -29,11 +29,22 @@ pub enum JiaError {
 #[derive(Debug, thiserror::Error)]
 pub enum ProviderError {
     #[error("rate limited: {body}")]
-    RateLimited { body: String },
+    RateLimited {
+        body: String,
+        /// Server-provided Retry-After hint (#1), parsed from the response
+        /// header by `classify_http_error`. Preferred over local backoff.
+        retry_after: Option<std::time::Duration>,
+    },
     #[error("authentication failed (HTTP {status}). Check API key.")]
     AuthFailed { status: u16 },
     #[error("server error (HTTP {status}): {body}")]
-    ServerError { status: u16, body: String },
+    ServerError {
+        status: u16,
+        body: String,
+        /// Server-provided Retry-After hint (#1) — 5xx (esp. 529 overload)
+        /// may carry one just like 429.
+        retry_after: Option<std::time::Duration>,
+    },
     #[error("client error (HTTP {status}): {body}")]
     ClientError { status: u16, body: String },
     #[error("network error: {0}")]
@@ -63,6 +74,17 @@ impl ProviderError {
                 | ProviderError::StreamStalled
                 | ProviderError::AuthFailed { .. }
         )
+    }
+
+    /// Server-provided Retry-After hint (#1), if the failing response carried
+    /// one. The retry path prefers this over the local exponential backoff —
+    /// the provider knows its own recovery window better than we can guess.
+    pub fn retry_after(&self) -> Option<std::time::Duration> {
+        match self {
+            ProviderError::RateLimited { retry_after, .. }
+            | ProviderError::ServerError { retry_after, .. } => *retry_after,
+            _ => None,
+        }
     }
 }
 

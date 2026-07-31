@@ -4,6 +4,8 @@ use std::sync::Arc;
 pub mod certainty;
 pub mod r#loop;
 pub mod spawn;
+pub mod tool_scheduler;
+pub mod subagent_batch;
 
 mod loop_dispatch;
 mod loop_post;
@@ -102,6 +104,8 @@ impl Agent {
             permissions: earth.permissions.clone(),
             session_id: id.clone(),
             cancel_token: tokio_util::sync::CancellationToken::new(),
+            read_state: ExecContext::default_read_state(),
+            cwd: ExecContext::default_cwd(&earth.permissions),
         };
         let principles = earth
             .store
@@ -110,13 +114,17 @@ impl Agent {
             .iter()
             .filter_map(|j| serde_json::from_str::<SystemPrinciple>(j).ok())
             .collect();
+        let max_turns = std::env::var("JIA_MAX_TURNS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(earth.config.app_config.agent.max_turns);
         let mut s = Self {
             id,
             earth: earth.clone(),
             exec_ctx,
             principles,
             turn_count: 0,
-            max_turns: 25,
+            max_turns,
             retry_count: 0,
             history: Vec::new(),
             working_memory: WorkingMemory::new(20),
@@ -160,6 +168,8 @@ impl Agent {
             permissions: earth.permissions.clone(),
             session_id: id.clone(),
             cancel_token: tokio_util::sync::CancellationToken::new(),
+            read_state: ExecContext::default_read_state(),
+            cwd: ExecContext::default_cwd(&earth.permissions),
         };
         let principles = earth
             .store
@@ -168,13 +178,17 @@ impl Agent {
             .iter()
             .filter_map(|j| serde_json::from_str::<SystemPrinciple>(j).ok())
             .collect();
+        let max_turns = std::env::var("JIA_MAX_TURNS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(earth.config.app_config.agent.max_turns);
         let mut s = Self {
             id,
             exec_ctx,
             principles,
             earth,
             turn_count: 0,
-            max_turns: 25,
+            max_turns,
             retry_count: 0,
             history,
             working_memory: WorkingMemory::new(20),
@@ -277,7 +291,24 @@ impl Agent {
   a cultivated way of being. Plant the seed here.\n\
 -->\n\
 You are Jia (\u{7532}), Just Intelligence Agent (正是智能体).\n\
-Be attentive, truthful, and serve with sincerity.";
+Be attentive, truthful, and serve with sincerity.\n\
+\n\
+## \u{4fe1} (Trustworthiness) \u{2014} Four Covenants\n\
+\n\
+1. **\u{672a}\u{8bfb}\u{4e0d}\u{6539}** \u{2014} Never edit or patch a file you have not read in this session.\n\
+   If you plan to modify a file, read it first.\n\
+\n\
+2. **\u{5b8c}\u{6210}\u{524d}\u{9a8c}\u{8bc1}** \u{2014} Before claiming a task is complete, verify it works.\n\
+   Run the tests, execute the script, or check the output.\n\
+   Never say \"all tests passed\" unless you have actually run them and seen the output.\n\
+\n\
+3. **\u{5982}\u{5b9e}\u{62a5}\u{544a}\u{5931}\u{8d25}** \u{2014} Report failures truthfully.\n\
+   If a command fails, show the error. If tests don't pass, say so.\n\
+   Never claim success when the output shows failure.\n\
+\n\
+4. **\u{4e0d}\u{505a}\u{5206}\u{5916}\u{4e8b}** \u{2014} Do only what is asked.\n\
+   If you notice unrelated issues, mention them but don't fix them without asking.\n\
+   Stay focused on the task at hand.";
 
     /// Load ren_soul.md from the data directory.
     /// Auto-seeds the default template if the file doesn't exist.
@@ -510,6 +541,7 @@ mod tests {
             bots: Default::default(),
             hooks: vec![],
             cognition: CognitionSection::default(),
+            agent: Default::default(),
         };
         let config_loader = Arc::new(crate::palaces::kun_config::ConfigLoader::from_app_config(
             config,
@@ -548,6 +580,8 @@ mod tests {
                 tmp.to_path_buf().join("cron"),
             ),
             task_store: crate::palaces::zhen_tool::builtin::exec::task::TaskStore::new(),
+            background_tasks: crate::palaces::zhen_tool::builtin::exec::background_task::BackgroundTaskStore::new(),
+            subagent_batch: std::sync::Arc::new(crate::plates::tian_heaven::subagent_batch::SubagentBatch::new()),
             store_async: crate::palaces::gen_store::async_store::StoreAsync::new(store.clone()),
             store,
             spirit: Arc::new(SpiritPlate::new()),

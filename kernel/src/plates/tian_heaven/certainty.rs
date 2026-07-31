@@ -212,7 +212,7 @@ mod tests {
     #[test]
     fn escalate_when_tools_fail() {
         let mut snapshots: Vec<TurnSnapshot> = (0..8)
-            .map(|i| make_snapshot("shell", Some("command not found"), ""))
+            .map(|_i| make_snapshot("shell", Some("command not found"), ""))
             .collect();
         // Add a few no-tool turns at the end to trigger the no_tool_run signal
         snapshots.push(make_snapshot("", None, ""));

@@ -2246,6 +2246,7 @@ dependencies = [
  "image",
  "imageproc",
  "libc",
+ "lru",
  "notify",
  "objc2-app-kit",
  "objc2-application-services",

@@ -63,6 +63,10 @@ After receiving tool results, continue reasoning to help the user.";
     ///
     /// Returns an empty string when there are no active tasks (so nothing is
     /// injected). Read from the shared `EarthPlate::task_store`.
+    ///
+    /// U3-c: 这是"TODO 不抄进交接笔记"的另一半 —— todo 块属于动态段,
+    /// 每轮从 live task store 重建;压缩(巽四宫 handoff)重写历史后,
+    /// 本块自动重挂,无需也不应被摘要器转录。
     pub(super) fn build_todo_block(&self) -> String {
         let todos = match self.earth.task_store.list() {
             Ok(t) => t,
@@ -89,5 +93,40 @@ After receiving tool results, continue reasoning to help the user.";
                 .to_string(),
         );
         lines.join("\n")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// U3-c: todo 块每轮从 live task store 重建 —— 压缩重写历史与本块无关,
+    /// 状态流转即时反映(重挂语义的构造性锁定)。
+    #[test]
+    fn todo_block_reads_live_task_store() {
+        use crate::palaces::zhen_tool::builtin::exec::task::TaskStatus;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = super::super::tests::temp_earth(tmp.path());
+        let agent = super::super::Agent::new("u3-todo".into(), earth.clone());
+        assert!(
+            agent.build_todo_block().is_empty(),
+            "no active tasks → no block"
+        );
+
+        let task = earth
+            .task_store
+            .create("wire up compaction", "desc")
+            .unwrap();
+        let block = agent.build_todo_block();
+        assert!(block.contains("wire up compaction"), "block: {block}");
+        assert!(block.contains("[ ]"), "pending mark: {block}");
+
+        earth
+            .task_store
+            .update_status(&task.id, TaskStatus::Completed)
+            .unwrap();
+        assert!(
+            agent.build_todo_block().is_empty(),
+            "completed task drops out on the next rebuild"
+        );
     }
 }

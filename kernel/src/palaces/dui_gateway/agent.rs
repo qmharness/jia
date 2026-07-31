@@ -154,22 +154,25 @@ pub async fn handle_agent(
             let req_cwd = req.cwd.clone().unwrap_or_default();
             let req_pid = req.workspace_id.clone().unwrap_or_default();
 
+            // Derive session title from first user message
+            let title = req
+                .messages
+                .iter()
+                .find(|m| m.role == Role::User)
+                .map(|m| truncate_title(&m.content))
+                .unwrap_or_default();
+
             // Store in session row for new sessions
             if is_new {
-                let title = req
-                    .messages
-                    .iter()
-                    .find(|m| m.role == Role::User)
-                    .map(|m| truncate_title(&m.content))
-                    .unwrap_or_default();
                 let _ = earth
                     .store
                     .create_session(&session_id, &title, &req_cwd, &req_pid);
             }
 
-            // Send session ID immediately so client can persist it
+            // Send session ID + title immediately so client can persist it
             let _ = tx.send(AgentEvent::Session {
                 session_id: session_id.clone(),
+                title: title.clone(),
             });
 
             // Core creation (pre-spawn — no session state needed).
@@ -319,7 +322,13 @@ pub async fn handle_agent(
                     geju,
                     execution_mode,
                 },
-                AgentEvent::Session { session_id } => StreamEvent::Session { session_id },
+                AgentEvent::Session {
+                    session_id,
+                    title,
+                } => StreamEvent::Session {
+                    session_id,
+                    title: Some(title),
+                },
                 AgentEvent::ConfirmRequest {
                     id,
                     tool,
@@ -356,6 +365,39 @@ pub async fn handle_agent(
                 }
                 AgentEvent::Compacting => StreamEvent::Compacting,
                 AgentEvent::Retrying { attempt } => StreamEvent::Retrying { attempt },
+                AgentEvent::TaskStarted {
+                    task_id,
+                    description,
+                    task_type,
+                    tool_use_id,
+                } => StreamEvent::TaskStarted {
+                    task_id,
+                    description,
+                    task_type,
+                    tool_use_id,
+                },
+                AgentEvent::TaskCompleted {
+                    task_id,
+                    status,
+                    summary,
+                    output_file,
+                    tool_use_id,
+                } => StreamEvent::TaskCompleted {
+                    task_id,
+                    status,
+                    summary,
+                    output_file,
+                    tool_use_id,
+                },
+                AgentEvent::TaskStalled {
+                    task_id,
+                    description,
+                    tail_output,
+                } => StreamEvent::TaskStalled {
+                    task_id,
+                    description,
+                    tail_output,
+                },
             };
             let json = serde_json::to_string(&stream_event).unwrap_or_default();
             Ok(Event::default().data(json))
@@ -388,9 +430,7 @@ mod tests {
     use crate::plates::di_earth::EarthPlate;
     use crate::plates::shen_spirit::SpiritPlate;
     use crate::plates::shen_spirit::completion_check::CompletionChecklist;
-    use crate::stems::action::ExecContext;
     use std::collections::HashMap;
-    use std::sync::Mutex;
 
     fn make_test_state() -> Arc<AppState> {
         let (io, _rx) = ChannelManager::new();
@@ -418,6 +458,7 @@ mod tests {
                 bots: BotsSection::default(),
                 hooks: vec![],
                 cognition: CognitionSection::default(),
+                agent: Default::default(),
             })),
             tools: Arc::new(ToolRegistry::new()),
             main_core: mock_core,
@@ -426,6 +467,8 @@ mod tests {
             skills: registry.clone(),
             cron: CronStore::new(dirs.path().join("cron")),
             task_store: TaskStore::new(),
+            background_tasks: crate::palaces::zhen_tool::builtin::exec::background_task::BackgroundTaskStore::new(),
+            subagent_batch: std::sync::Arc::new(crate::plates::tian_heaven::subagent_batch::SubagentBatch::new()),
             store_async: crate::palaces::gen_store::async_store::StoreAsync::new(store.clone()),
             store: store.clone(),
             spirit: Arc::new(SpiritPlate::new()),

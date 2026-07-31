@@ -315,7 +315,6 @@ mod tests {
     use crate::palaces::zhen_tool::registry::ToolRegistry;
     use crate::plates::shen_spirit::SpiritPlate;
     use crate::plates::shen_spirit::completion_check::CompletionChecklist;
-    use crate::stems::action::ExecContext;
     use axum::Json;
     use axum::extract::State;
     use std::path::PathBuf;
@@ -394,6 +393,7 @@ mod tests {
             bots: BotsSection::default(),
             hooks: vec![],
             cognition: CognitionSection::default(),
+            agent: Default::default(),
         };
         let profile = ProviderProfile {
             kind: "openai".into(),
@@ -418,6 +418,8 @@ mod tests {
             skills: registry,
             cron: CronStore::new(dirs.cron_path.clone()),
             task_store: TaskStore::new(),
+            background_tasks: crate::palaces::zhen_tool::builtin::exec::background_task::BackgroundTaskStore::new(),
+            subagent_batch: std::sync::Arc::new(crate::plates::tian_heaven::subagent_batch::SubagentBatch::new()),
             store_async: crate::palaces::gen_store::async_store::StoreAsync::new(store.clone()),
             store,
             spirit: Arc::new(SpiritPlate::new()),

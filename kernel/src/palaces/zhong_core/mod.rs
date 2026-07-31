@@ -195,15 +195,29 @@ async fn run_or_cancel(
 }
 
 /// Categorize an HTTP status into a typed ProviderError.
-pub(crate) fn classify_http_error(status: u16, body: &str) -> crate::error::ProviderError {
+///
+/// #1: on 429/5xx the response's Retry-After header is parsed and carried on
+/// the error — the retry path prefers it over the local exponential backoff,
+/// since the provider knows its own recovery window.
+pub(crate) fn classify_http_error(
+    status: u16,
+    body: &str,
+    headers: &reqwest::header::HeaderMap,
+) -> crate::error::ProviderError {
+    let retry_after = headers
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(backoff::RetryBackoff::parse_retry_after);
     match status {
         429 => crate::error::ProviderError::RateLimited {
             body: body.to_string(),
+            retry_after,
         },
         401 | 403 => crate::error::ProviderError::AuthFailed { status },
         500..=599 => crate::error::ProviderError::ServerError {
             status,
             body: body.to_string(),
+            retry_after,
         },
         400..=499 => crate::error::ProviderError::ClientError {
             status,
@@ -214,6 +228,7 @@ pub(crate) fn classify_http_error(status: u16, body: &str) -> crate::error::Prov
 }
 
 // ── Router + Circuit Breaker ──────────────────────────────────
+pub(crate) mod backoff;
 pub(crate) mod breaker;
 pub(crate) mod router;
 // 门面 re-export:crate 内一律走 zhong_core::ProviderRouter,不直达 router 子模块
@@ -660,5 +675,54 @@ mod tests {
             }
         }
         assert_eq!(text, "abc");
+    }
+
+    // ── #1: Retry-After wiring ─────────────────────────────────
+
+    fn headers_with_retry_after(value: &str) -> reqwest::header::HeaderMap {
+        let mut h = reqwest::header::HeaderMap::new();
+        h.insert(
+            reqwest::header::RETRY_AFTER,
+            reqwest::header::HeaderValue::from_str(value).unwrap(),
+        );
+        h
+    }
+
+    #[test]
+    fn classify_429_carries_retry_after_hint() {
+        let h = headers_with_retry_after("7");
+        let err = classify_http_error(429, "slow down", &h);
+        assert_eq!(err.retry_after(), Some(std::time::Duration::from_secs(7)));
+        assert!(err.is_retryable());
+    }
+
+    #[test]
+    fn classify_5xx_carries_retry_after_hint() {
+        // 529 (provider overload) is the common 5xx-with-Retry-After case.
+        let h = headers_with_retry_after("30");
+        let err = classify_http_error(529, "overloaded", &h);
+        assert_eq!(err.retry_after(), Some(std::time::Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn classify_without_retry_after_header_yields_no_hint() {
+        let h = reqwest::header::HeaderMap::new();
+        let err = classify_http_error(429, "slow down", &h);
+        assert_eq!(err.retry_after(), None);
+        // Garbage header values are ignored (fall back to local backoff).
+        let h = headers_with_retry_after("soon");
+        let err = classify_http_error(429, "slow down", &h);
+        assert_eq!(err.retry_after(), None);
+    }
+
+    #[test]
+    fn retry_after_absent_on_non_http_errors() {
+        let err = crate::error::ProviderError::Network("boom".into());
+        assert_eq!(err.retry_after(), None);
+        let err = crate::error::ProviderError::ClientError {
+            status: 400,
+            body: "bad".into(),
+        };
+        assert_eq!(err.retry_after(), None);
     }
 }

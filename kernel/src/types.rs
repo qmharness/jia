@@ -111,7 +111,11 @@ pub enum StreamEvent {
         execution_mode: Option<String>,
     },
     #[serde(rename = "session")]
-    Session { session_id: String },
+    Session {
+        session_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+    },
     #[serde(rename = "confirm_request")]
     ConfirmationRequest {
         id: String,
@@ -144,6 +148,30 @@ pub enum StreamEvent {
     /// roll back the partial assistant bubble streamed by the failed attempt.
     #[serde(rename = "retrying")]
     Retrying { attempt: u32 },
+    /// Background task started.
+    #[serde(rename = "task_started")]
+    TaskStarted {
+        task_id: String,
+        description: String,
+        task_type: String,
+        tool_use_id: Option<String>,
+    },
+    /// Background task completed (success, failure, or killed).
+    #[serde(rename = "task_completed")]
+    TaskCompleted {
+        task_id: String,
+        status: String,
+        summary: String,
+        output_file: String,
+        tool_use_id: Option<String>,
+    },
+    /// Background task appears stalled on an interactive prompt.
+    #[serde(rename = "task_stalled")]
+    TaskStalled {
+        task_id: String,
+        description: String,
+        tail_output: String,
+    },
 }
 
 impl Role {
@@ -319,5 +347,45 @@ mod tests {
         let msg = entry.to_llm_message().unwrap();
         assert_eq!(msg.role, Role::Assistant);
         assert_eq!(msg.content, "response");
+    }
+
+    /// U2 regression: a turn interrupted mid-batch (cancel between tool
+    /// dispatches) leaves `assistant + executed ToolCall cards` in history.
+    /// Serialization must stay provider-safe: assistant messages are plain
+    /// text and every tool outcome is a SELF-CONTAINED User message — jia
+    /// never emits native tool_use/tool_result blocks from history, so there
+    /// is no pairing invariant an interruption could violate (a 400 from an
+    /// unpaired tool_result is structurally impossible).
+    #[test]
+    fn interrupted_turn_history_serializes_without_dangling_tool_calls() {
+        let history = vec![
+            HistoryEntry::user("do thing"),
+            HistoryEntry::assistant("calling two tools now"),
+            HistoryEntry::ToolCall {
+                id: "1".into(),
+                tool: "read_file".into(),
+                input: serde_json::json!({"path": "/tmp/a"}),
+                status: ToolStatus::Success,
+                output: "contents".into(),
+                error: None,
+                geju: None,
+                execution_mode: None,
+            },
+            // The second parsed call never executed (cancel hit before its
+            // dispatch) — per the loop's cancel path it leaves NO entry at
+            // all, so nothing dangles here by construction.
+        ];
+        let msgs = to_llm_messages(&history);
+        let roles: Vec<Role> = msgs.iter().map(|m| m.role).collect();
+        assert_eq!(roles, vec![Role::User, Role::Assistant, Role::User]);
+        // The tool card is a complete outcome message, not a reference to a
+        // pending call: it carries the result text inline.
+        assert_eq!(msgs[2].content, "Tool read_file result: contents");
+        // Message has no channel for native tool-call structure — only
+        // role/content/images — so no assistant message can reference an
+        // unexecuted call towards the provider.
+        for m in &msgs {
+            assert!(m.images.is_empty() || m.role == Role::User);
+        }
     }
 }

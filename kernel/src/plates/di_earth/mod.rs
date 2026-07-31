@@ -25,13 +25,16 @@ use crate::palaces::zhen_tool::builtin::computer::computer_use::ComputerUseTool;
 #[cfg(feature = "agent-tool")]
 use crate::palaces::zhen_tool::builtin::delegate::SendMessageTool;
 use crate::palaces::zhen_tool::builtin::exec::lsp::LspTool;
+use crate::palaces::zhen_tool::builtin::exec::retrieve_tool_result::RetrieveToolResultTool;
 use crate::palaces::zhen_tool::builtin::exec::shell::ShellTool;
 use crate::palaces::zhen_tool::builtin::exec::task::{TaskStore, TaskTool};
 use crate::palaces::zhen_tool::builtin::exec::worktree::{EnterWorktreeTool, ExitWorktreeTool};
+use crate::palaces::zhen_tool::builtin::exec::background_task::BackgroundTaskStore;
 use crate::palaces::zhen_tool::builtin::fs::glob::GlobTool;
 use crate::palaces::zhen_tool::builtin::fs::grep::GrepTool;
 use crate::palaces::zhen_tool::builtin::fs::patch_file::EditTool;
 use crate::palaces::zhen_tool::builtin::fs::read_file::ReadFileTool;
+use crate::palaces::zhen_tool::builtin::fs::revert_file::RevertFileTool;
 use crate::palaces::zhen_tool::builtin::fs::scratchpad::{ScratchpadReadTool, ScratchpadWriteTool};
 use crate::palaces::zhen_tool::builtin::fs::write_file::WriteFileTool;
 use crate::palaces::zhen_tool::builtin::plan_mode::{EnterPlanModeTool, ExitPlanModeTool};
@@ -82,6 +85,8 @@ pub struct EarthPlate {
     pub skills: Arc<std::sync::RwLock<SkillRegistry>>, // 离九
     pub cron: Arc<CronStore>,           // (cron runner)
     pub task_store: Arc<TaskStore>,     // 任务管理
+    pub background_tasks: Arc<BackgroundTaskStore>, // 后台任务管理
+    pub subagent_batch: Arc<crate::plates::tian_heaven::subagent_batch::SubagentBatch>, // 子Agent批处理
     pub store: Arc<Store>,              // 艮八
     pub store_async: StoreAsync,        // 艮八 · async facade
     pub spirit: Arc<SpiritPlate>,       // 神盘
@@ -213,11 +218,15 @@ impl EarthPlate {
         let mut tool_registry = ToolRegistry::new();
         tool_registry.register(Arc::new(ReadFileTool::new()));
         tool_registry.register(Arc::new(WriteFileTool::new()));
-        tool_registry.register(Arc::new(ShellTool::new()));
+        // ShellTool registered below with background_tasks
         tool_registry.register(Arc::new(GrepTool::new()));
         tool_registry.register(Arc::new(GlobTool::new()));
         tool_registry.register(Arc::new(EditTool::new()));
+        // N5 · 艮八宫(癸·藏)——回滚是"藏之取",撤销 write_file/patch_file 的编辑
+        tool_registry.register(Arc::new(RevertFileTool::new()));
         tool_registry.register(Arc::new(LspTool::new()));
+        // #10 · 震三宫(戊仪只读)——取回超阈值落盘的完整工具结果(按 tool_call_id 分段)
+        tool_registry.register(Arc::new(RetrieveToolResultTool::new()));
         // P3 · plan-mode control tools (read-only, non-destructive — D1)
         tool_registry.register(Arc::new(EnterPlanModeTool));
         tool_registry.register(Arc::new(ExitPlanModeTool));
@@ -238,12 +247,17 @@ impl EarthPlate {
         tool_registry.register(Arc::new(ComputerUseTool::new()));
         #[cfg(feature = "web-search")]
         tool_registry.register(Arc::new(WebSearchTool::new()));
+        // Sub-agent batch controller — burst-then-throttle concurrency for DelegateTool
+        let subagent_batch =
+            Arc::new(crate::plates::tian_heaven::subagent_batch::SubagentBatch::new());
+
         // P8 · send_message (continue a sub-agent) + cross-worker scratchpad
         #[cfg(feature = "agent-tool")]
         tool_registry.register(Arc::new(SendMessageTool::new(
             main_core.clone(),
             _subtools.clone(),
             session_bus.subagent_sessions.clone(),
+            subagent_batch.clone(),
         )));
         tool_registry.register(Arc::new(ScratchpadWriteTool::new()));
         tool_registry.register(Arc::new(ScratchpadReadTool::new()));
@@ -258,6 +272,12 @@ impl EarthPlate {
         // Task store — CRUD task tracking, shared for potential REST API access
         let task_store = TaskStore::new();
         tool_registry.register(Arc::new(TaskTool::new(task_store.clone())));
+
+        // Background task store — for fire-and-forget shell/agent/workflow tasks
+        let background_tasks = BackgroundTaskStore::new();
+        tool_registry.register(Arc::new(ShellTool::with_background_tasks(
+            background_tasks.clone(),
+        )));
 
         // Pending questions — shared between AskUserQuestionTool and REST /answer endpoint
         tool_registry.register(Arc::new(AskUserQuestionTool::new(
@@ -352,6 +372,7 @@ impl EarthPlate {
             _subtools.clone(),
             store.clone(),
             session_bus.subagent_sessions.clone(),
+            subagent_batch.clone(),
         )));
 
         // Load WASM plugins from plugins/ directory
@@ -434,6 +455,8 @@ impl EarthPlate {
             skills,
             cron: cron_store.clone(),
             task_store: task_store.clone(),
+            background_tasks: background_tasks.clone(),
+            subagent_batch: subagent_batch.clone(),
             store_async,
             store,
             spirit: Arc::new(spirit),
@@ -462,6 +485,33 @@ impl EarthPlate {
         );
         crate::plates::tian_heaven::spawn::spawn_io_consumer(earth.clone(), io_rx);
 
+        // ── P8 · 崩溃恢复：标记丢失的后台任务 ──
+        // On daemon startup after a crash, any Running tasks from the
+        // previous run are orphaned. Hydrate the persisted snapshot and
+        // mark them as Lost so the agent loop can notify on next turn.
+        {
+            let lost_count = earth.background_tasks.hydrate_and_mark_lost();
+            if lost_count > 0 {
+                let task_ids: Vec<String> = earth
+                    .background_tasks
+                    .list(Some(crate::palaces::zhen_tool::builtin::exec::background_task::TaskStatus::Lost))
+                    .iter()
+                    .map(|t| t.id.clone())
+                    .collect();
+                tracing::warn!(
+                    count = lost_count,
+                    ids = ?task_ids,
+                    "Background tasks from previous run marked as Lost (daemon crash recovery)"
+                );
+                earth.spirit.event_bus.emit(
+                    crate::plates::shen_spirit::RuntimeEvent::BackgroundTasksLost {
+                        count: lost_count,
+                        task_ids,
+                    },
+                );
+            }
+        }
+
         earth
     }
 
@@ -486,10 +536,16 @@ impl EarthPlate {
         let matrix = Arc::new(
             PermissionMatrix::from_config(&sec, root, backup_dir).with_sandbox(&sec.sandbox),
         );
+        // #6/B4: the swap rebuilds the ExecContext wholesale, so the session
+        // cwd is RESET to the new root (not a mapped relative path) — the
+        // simplest, cleanest semantics for enter/exit_worktree.
+        let cwd = ExecContext::default_cwd(&matrix);
         ExecContext {
             permissions: matrix,
             session_id: session_id.to_string(),
             cancel_token,
+            read_state: ExecContext::default_read_state(),
+            cwd,
         }
     }
 }

@@ -1,6 +1,68 @@
 use crate::error::ToolError;
 use crate::stems::action::ExecContext;
 use async_trait::async_trait;
+use std::path::PathBuf;
+
+/// 工具资源访问声明 (U1) — per-call resource declaration derived from the
+/// tool's input. The Heaven Plate conflict matrix
+/// (`tian_heaven::tool_scheduler`) uses this as the SOLE parallelism
+/// criterion (audit A2: ceremony-derived resource domains are deprecated —
+/// 并发判据与六仪正交).
+///
+/// `Default` is `all: true` — the most conservative declaration (公理 4:
+/// 只收紧). A tool that declares nothing is globally exclusive and always
+/// runs as a singleton barrier batch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolAccesses {
+    /// Paths read by this call (as given in the input; not canonicalized).
+    pub reads: Vec<PathBuf>,
+    /// Paths written by this call.
+    pub writes: Vec<PathBuf>,
+    /// true → every declared path is a directory accessed recursively, so
+    /// conflict detection treats it as a prefix (conservative).
+    pub recursive: bool,
+    /// true → unknown/unbounded access: globally exclusive barrier.
+    pub all: bool,
+}
+
+impl Default for ToolAccesses {
+    /// Conservative default: unknown access, globally exclusive.
+    fn default() -> Self {
+        Self::all()
+    }
+}
+
+impl ToolAccesses {
+    /// Unknown/unbounded access — conflicts with everything (barrier).
+    pub fn all() -> Self {
+        Self {
+            reads: Vec::new(),
+            writes: Vec::new(),
+            recursive: false,
+            all: true,
+        }
+    }
+
+    /// Read-only declaration for the given paths.
+    pub fn read_only(reads: Vec<PathBuf>, recursive: bool) -> Self {
+        Self {
+            reads,
+            writes: Vec::new(),
+            recursive,
+            all: false,
+        }
+    }
+
+    /// Write declaration for the given paths (no reads declared).
+    pub fn write_only(writes: Vec<PathBuf>) -> Self {
+        Self {
+            reads: Vec::new(),
+            writes,
+            recursive: false,
+            all: false,
+        }
+    }
+}
 
 /// 震三宫 — BaseTool trait
 ///
@@ -39,6 +101,18 @@ pub trait BaseTool: Send + Sync {
     /// Whether this tool can execute concurrently with other tools.
     /// Every tool MUST explicitly declare this — no default.
     fn is_concurrency_safe(&self) -> bool;
+
+    /// Resource access declaration for this call (U1).
+    ///
+    /// The scheduler's conflict matrix uses ONLY this declaration to decide
+    /// parallelism (A2): read-read never conflicts; write-write conflicts
+    /// only on intersecting paths; read-write conflicts on intersection;
+    /// `all: true` (the default) is a global barrier. Tools that hold
+    /// session-level mutable state (e.g. the LSP manager) MUST keep the
+    /// `All` default — 任何声明可并行的工具不得持有会话级可变状态.
+    fn accesses(&self, _input: &serde_json::Value) -> ToolAccesses {
+        ToolAccesses::all()
+    }
 
     /// Execute the tool with the given JSON input and execution context.
     /// Permissions are injected via `ctx` rather than held by the tool struct.
