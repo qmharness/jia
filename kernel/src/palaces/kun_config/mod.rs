@@ -157,6 +157,9 @@ pub struct JiaToml {
     /// Cognitive architecture feature flags
     #[serde(default)]
     pub cognition: CognitionSection,
+    /// Agent execution parameters
+    #[serde(default)]
+    pub agent: AgentSection,
 }
 
 #[derive(Debug, Deserialize)]
@@ -288,6 +291,11 @@ pub struct SecuritySection {
     /// Shell command patterns that are always blocked.
     #[serde(default = "default_blocked_commands")]
     pub command_blocklist: Vec<String>,
+    /// N1 · 绝对 deny 规则 — 策略链最高优先级,命中即拒,无任何豁免
+    /// (会话批准记忆/八门升级均不可豁免)。glob 匹配,形如
+    /// `Bash(rm *)`、`Read(/etc/**)`、`Write(/home/**)`。
+    #[serde(default)]
+    pub deny_rules: Vec<String>,
     /// Timeout in seconds for user confirmation prompts. Default: 30.
     #[serde(default = "default_confirmation_timeout")]
     pub confirmation_timeout_secs: u64,
@@ -442,6 +450,9 @@ fn default_blocked_commands() -> Vec<String> {
 fn default_confirmation_timeout() -> u64 {
     30
 }
+fn default_mcp_timeout_secs() -> u64 {
+    60
+}
 fn default_max_context_tokens() -> usize {
     8192
 }
@@ -463,6 +474,7 @@ fn default_rate_limit() -> u32 {
 /// args = ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
 /// sandbox_params = ["path", "directory"]
 /// read_only_tools = ["read_file", "list_dir"]
+/// timeout_secs = 60
 /// ```
 #[derive(Debug, Clone, Deserialize)]
 pub struct McpServerConfig {
@@ -483,6 +495,11 @@ pub struct McpServerConfig {
     /// Default false — opt-in for backward compatibility.
     #[serde(default)]
     pub isolated: bool,
+    /// Per-request timeout in seconds — applies to the initialize handshake,
+    /// tools/list, and every tools/call. A timed-out request returns a tool
+    /// error instead of hanging the agent. Default: 60.
+    #[serde(default = "default_mcp_timeout_secs")]
+    pub timeout_secs: u64,
 }
 
 impl Default for SecuritySection {
@@ -493,6 +510,7 @@ impl Default for SecuritySection {
             blocked_path_prefixes: default_blocked_prefixes(),
             command_allowlist: Vec::new(),
             command_blocklist: default_blocked_commands(),
+            deny_rules: Vec::new(),
             confirmation_timeout_secs: default_confirmation_timeout(),
             sandbox_mode: crate::palaces::kun_config::SandboxMode::Required,
             max_context_tokens: default_max_context_tokens(),
@@ -590,6 +608,21 @@ impl Default for CognitionSection {
     }
 }
 
+/// [agent] section in config.toml — agent execution parameters.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct AgentSection {
+    /// Maximum turns per session (default: 50).
+    /// Can be overridden with JIA_MAX_TURNS env var.
+    pub max_turns: u32,
+}
+
+impl Default for AgentSection {
+    fn default() -> Self {
+        Self { max_turns: 50 }
+    }
+}
+
 // ── AppConfig (resolved) ─────────────────────────────────────
 
 pub struct AppConfig {
@@ -609,6 +642,8 @@ pub struct AppConfig {
     pub hooks: Vec<HookConfig>,
     /// Cognitive architecture features (certainty, coactivation, observation, etc.)
     pub cognition: CognitionSection,
+    /// Agent execution parameters
+    pub agent: AgentSection,
 }
 
 impl AppConfig {
@@ -708,6 +743,7 @@ impl AppConfig {
             bots: toml.bots,
             hooks: toml.hooks,
             cognition: toml.cognition,
+            agent: toml.agent,
         })
     }
 

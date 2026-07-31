@@ -119,6 +119,9 @@ fn run_seatbelt(
         .arg("sh")
         .arg("-c")
         .arg(cmd)
+        // N3: never inherit stdin — a `cat`/`read` in the command would
+        // otherwise block until the timeout kills it.
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .current_dir(cwd)

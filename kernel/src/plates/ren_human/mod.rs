@@ -1,12 +1,14 @@
 //! ren_human — Human Plate / Permission Boundary (人盘)
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU8, Ordering};
 
 use crate::geju::{ApprovalGate, ExecutionMode, GeJuResult};
 use crate::palaces::qian_permission::PermissionMatrix;
+use crate::palaces::qian_permission::policy::{ChainVerdict, approval_key};
 use crate::palaces::zhen_tool::base::BaseTool;
 use crate::plates::shen_spirit::{EventBus, RuntimeEvent};
 use crate::stems::AgentEvent;
@@ -38,6 +40,9 @@ pub struct HumanPlate {
     pub closed_by_principle: AtomicU8,
     pub permissions: Arc<PermissionMatrix>,
     pub pending_confirmations: Arc<Mutex<HashMap<String, PendingConfirmation>>>,
+    /// N1 · 会话级批准记忆(共享自 SessionBus):session_id → 批准键集。
+    /// 只豁免"询问",绝不豁免任何拒绝类策略;GeJu 结果不受其影响。
+    pub session_approvals: Arc<Mutex<HashMap<String, HashSet<String>>>>,
     /// Test-only: when set, `request_confirmation` returns this value immediately.
     #[doc(hidden)]
     pub confirmation_override: Option<bool>,
@@ -50,12 +55,47 @@ impl Clone for HumanPlate {
             closed_by_principle: AtomicU8::new(self.closed_by_principle.load(Ordering::Relaxed)),
             permissions: self.permissions.clone(),
             pending_confirmations: self.pending_confirmations.clone(),
+            session_approvals: self.session_approvals.clone(),
             confirmation_override: self.confirmation_override,
         }
     }
 }
 
 pub use crate::error::DispatchError;
+
+/// A tool call that has passed ALL HumanPlate gates (policy chain, 八门,
+/// approval chain, user confirmations, sandbox transform) and is cleared for
+/// execution (U1).
+///
+/// Produced SERIALLY by [`HumanPlate::prepare`] — one per call, before the
+/// call's batch is dispatched. Only [`PreparedCall::execute`] may run
+/// concurrently with other prepared calls; it carries no `&HumanPlate` and
+/// touches no gate state (公理 3: 门禁逐调用、派发前完成).
+pub struct PreparedCall {
+    tool: Arc<dyn BaseTool>,
+    input: serde_json::Value,
+}
+
+impl PreparedCall {
+    /// Execute the cleared call. This is the ONLY step the Heaven Plate may
+    /// run in parallel across a non-conflicting batch.
+    pub async fn execute(
+        self,
+        tx: &tokio::sync::mpsc::UnboundedSender<AgentEvent>,
+        exec_ctx: &ExecContext,
+    ) -> Result<ToolResult, DispatchError> {
+        let output = self
+            .tool
+            .execute_with_tx(self.input, tx, exec_ctx)
+            .await
+            .map_err(|e| DispatchError::ToolError(e.to_string()))?;
+        Ok(ToolResult {
+            call_id: String::new(),
+            output,
+            error: None,
+        })
+    }
+}
 
 impl HumanPlate {
     /// 以共享会话总线构造 — 确认表取自 bus,与人盘内聚(P2-1:
@@ -66,6 +106,7 @@ impl HumanPlate {
             closed_by_principle: AtomicU8::new(0),
             permissions,
             pending_confirmations: session_bus.pending_confirmations.clone(),
+            session_approvals: session_bus.session_approvals.clone(),
             confirmation_override: None,
         }
     }
@@ -111,6 +152,15 @@ impl HumanPlate {
     /// - Guarded: check approval chain, enforce permissions + confirmations
     /// - Sandbox: execute with sandboxed input (requires DuMen open)
     /// - Denied: reject with reason (may escalate via ShangMen)
+    ///
+    /// N1 · 策略链(见 qian_permission::policy 模块头顺序表):deny 规则在
+    /// 八门分发之前绝对优先;敏感文件强制 ask 为单向收紧(Direct/Sandbox →
+    /// Guarded+确认),GeJu 评估本身不受影响。
+    ///
+    /// U1: this is `prepare` (mode determination + confirmations) followed by
+    /// `PreparedCall::execute`. The agent loop calls the phases separately:
+    /// `prepare` runs SERIALLY per call before a batch is dispatched; only
+    /// `execute` runs concurrently (公理 3).
     pub async fn dispatch(
         &self,
         geju: &GeJuResult,
@@ -120,6 +170,67 @@ impl HumanPlate {
         tx: &tokio::sync::mpsc::UnboundedSender<AgentEvent>,
         exec_ctx: &ExecContext,
     ) -> Result<ToolResult, DispatchError> {
+        let prepared = self
+            .prepare(geju, tool, input, event_bus, tx, exec_ctx)
+            .await?;
+        prepared.execute(tx, exec_ctx).await
+    }
+
+    /// 分发模式判定 (U1) — everything EXCEPT tool execution: policy chain,
+    /// gate checks, mode downgrades/escalations, sandbox input transform and
+    /// user confirmations. Per-call and side-effect-free w.r.t. batch state.
+    /// Returns a [`PreparedCall`] cleared for execution, or a denial.
+    pub async fn prepare(
+        &self,
+        geju: &GeJuResult,
+        tool: &Arc<dyn BaseTool>,
+        input: serde_json::Value,
+        event_bus: &EventBus,
+        tx: &tokio::sync::mpsc::UnboundedSender<AgentEvent>,
+        exec_ctx: &ExecContext,
+    ) -> Result<PreparedCall, DispatchError> {
+        // N1 · 策略链位次 1/5:deny 规则绝对优先(无任何豁免,含 ShangMen
+        // 升级路径);敏感文件强制 ask(收紧,Denied 不再加码)。
+        match self.permissions.chain_check(tool.name(), &input) {
+            ChainVerdict::Deny { policy, reason } => {
+                tracing::warn!(tool = tool.name(), policy, reason = %reason, "HumanPlate: denied by policy chain");
+                event_bus.emit(RuntimeEvent::PermissionDecision {
+                    tool: tool.name().into(),
+                    decision: "deny".into(),
+                    policy: policy.into(),
+                    reason: reason.clone(),
+                });
+                return Err(DispatchError::Denied(reason));
+            }
+            ChainVerdict::Ask { policy, reason }
+                if geju.execution_mode != ExecutionMode::Denied =>
+            {
+                tracing::info!(tool = tool.name(), policy, reason = %reason, "HumanPlate: policy chain forces confirmation");
+                event_bus.emit(RuntimeEvent::PermissionDecision {
+                    tool: tool.name().into(),
+                    decision: "ask".into(),
+                    policy: policy.into(),
+                    reason: reason.clone(),
+                });
+                let mut approval_chain = geju.approval_chain.clone();
+                if !approval_chain
+                    .iter()
+                    .any(|g| matches!(g, ApprovalGate::UserConfirmation(_)))
+                {
+                    approval_chain.push(ApprovalGate::UserConfirmation(reason));
+                }
+                let guarded = GeJuResult {
+                    execution_mode: ExecutionMode::Guarded,
+                    approval_chain,
+                    ..geju.clone()
+                };
+                return self
+                    .prepare_guarded(&guarded, tool, input, event_bus, tx, exec_ctx)
+                    .await;
+            }
+            _ => {}
+        }
+
         match geju.execution_mode {
             ExecutionMode::Direct => {
                 if !self.gate_is_open(HumanGate::JingXiangMen) {
@@ -130,25 +241,20 @@ impl HumanPlate {
                         ..geju.clone()
                     };
                     return self
-                        .dispatch_guarded(&guarded, tool, input, event_bus, tx, exec_ctx)
+                        .prepare_guarded(&guarded, tool, input, event_bus, tx, exec_ctx)
                         .await;
                 }
-                let output = tool
-                    .execute_with_tx(input.clone(), tx, exec_ctx)
-                    .await
-                    .map_err(|e| DispatchError::ToolError(e.to_string()))?;
-                Ok(ToolResult {
-                    call_id: String::new(),
-                    output,
-                    error: None,
+                Ok(PreparedCall {
+                    tool: tool.clone(),
+                    input,
                 })
             }
             ExecutionMode::Guarded => {
-                self.dispatch_guarded(geju, tool, input, event_bus, tx, exec_ctx)
+                self.prepare_guarded(geju, tool, input, event_bus, tx, exec_ctx)
                     .await
             }
             ExecutionMode::Sandbox => {
-                self.dispatch_sandbox(geju, tool, input, event_bus, tx, exec_ctx)
+                self.prepare_sandbox(geju, tool, input, event_bus, tx, exec_ctx)
                     .await
             }
             ExecutionMode::Denied => {
@@ -168,7 +274,7 @@ impl HumanPlate {
                         ..geju.clone()
                     };
                     return self
-                        .dispatch_guarded(&guarded, tool, input, event_bus, tx, exec_ctx)
+                        .prepare_guarded(&guarded, tool, input, event_bus, tx, exec_ctx)
                         .await;
                 }
                 event_bus.emit(RuntimeEvent::Error {
@@ -180,8 +286,8 @@ impl HumanPlate {
         }
     }
 
-    /// Handle Guarded execution with active approval chain enforcement.
-    async fn dispatch_guarded(
+    /// Handle Guarded mode determination with approval chain enforcement.
+    async fn prepare_guarded(
         &self,
         geju: &GeJuResult,
         tool: &Arc<dyn BaseTool>,
@@ -189,7 +295,7 @@ impl HumanPlate {
         event_bus: &EventBus,
         tx: &tokio::sync::mpsc::UnboundedSender<AgentEvent>,
         exec_ctx: &ExecContext,
-    ) -> Result<ToolResult, DispatchError> {
+    ) -> Result<PreparedCall, DispatchError> {
         // Check ShangMen for destructive actions
         if !self.gate_is_open(HumanGate::ShangMen) && tool.is_destructive() {
             tracing::warn!(
@@ -239,6 +345,32 @@ impl HumanPlate {
                     }
                 }
                 ApprovalGate::UserConfirmation(reason) => {
+                    // N1 · 策略链位次 3:会话级批准记忆。同会话同"工具+入参"
+                    // 此前已获用户批准 → 豁免本次询问。红线:这只是"用户主动
+                    // 批准的记忆化"——首次仍须询问,绝不自动放行;记忆只跳过
+                    // 询问动作,不改变 GeJu 结果,也不豁免任何拒绝类策略。
+                    let key = approval_key(tool.name(), &input);
+                    let already_approved = {
+                        let map = self
+                            .session_approvals
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
+                        map.get(&exec_ctx.session_id)
+                            .is_some_and(|keys| keys.contains(&key))
+                    };
+                    if already_approved {
+                        tracing::info!(
+                            "HumanPlate: session approval memory hit for {} ({key})",
+                            tool.name()
+                        );
+                        event_bus.emit(RuntimeEvent::PermissionDecision {
+                            tool: tool.name().into(),
+                            decision: "allow".into(),
+                            policy: "session_approval".into(),
+                            reason: "approved earlier in this session".into(),
+                        });
+                        continue;
+                    }
                     tracing::info!(
                         "HumanPlate: requesting user confirmation for {}",
                         tool.name()
@@ -247,6 +379,12 @@ impl HumanPlate {
                         .request_confirmation(tool.name(), reason, tx, exec_ctx)
                         .await;
                     if !approved {
+                        event_bus.emit(RuntimeEvent::PermissionDecision {
+                            tool: tool.name().into(),
+                            decision: "deny".into(),
+                            policy: "user_confirmation".into(),
+                            reason: reason.clone(),
+                        });
                         event_bus.emit(RuntimeEvent::Error {
                             source: "human_plate".into(),
                             message: format!("User denied: {} (reason: {})", tool.name(), reason,),
@@ -256,6 +394,22 @@ impl HumanPlate {
                             tool.name(),
                         )));
                     }
+                    // 用户批准出口:记录批准记忆(仅本会话、仅该"工具+入参")。
+                    {
+                        let mut map = self
+                            .session_approvals
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
+                        map.entry(exec_ctx.session_id.clone())
+                            .or_default()
+                            .insert(key);
+                    }
+                    event_bus.emit(RuntimeEvent::PermissionDecision {
+                        tool: tool.name().into(),
+                        decision: "allow".into(),
+                        policy: "user_confirmation".into(),
+                        reason: reason.clone(),
+                    });
                 }
                 ApprovalGate::SandboxIsolation => {
                     // Escalate to Sandbox mode
@@ -264,7 +418,7 @@ impl HumanPlate {
                         execution_mode: ExecutionMode::Sandbox,
                         ..geju.clone()
                     };
-                    return Box::pin(self.dispatch_sandbox(
+                    return Box::pin(self.prepare_sandbox(
                         &sandbox_geju,
                         tool,
                         input,
@@ -284,20 +438,15 @@ impl HumanPlate {
             }
         }
 
-        // All gates passed — execute
-        let output = tool
-            .execute_with_tx(input.clone(), tx, exec_ctx)
-            .await
-            .map_err(|e| DispatchError::ToolError(e.to_string()))?;
-        Ok(ToolResult {
-            call_id: String::new(),
-            output,
-            error: None,
+        // All gates passed — cleared for execution
+        Ok(PreparedCall {
+            tool: tool.clone(),
+            input,
         })
     }
 
-    /// Handle Sandbox execution with path confinement.
-    async fn dispatch_sandbox(
+    /// Handle Sandbox mode determination with path confinement.
+    async fn prepare_sandbox(
         &self,
         geju: &GeJuResult,
         tool: &Arc<dyn BaseTool>,
@@ -305,7 +454,7 @@ impl HumanPlate {
         event_bus: &EventBus,
         tx: &tokio::sync::mpsc::UnboundedSender<AgentEvent>,
         exec_ctx: &ExecContext,
-    ) -> Result<ToolResult, DispatchError> {
+    ) -> Result<PreparedCall, DispatchError> {
         // Check DuMen gate
         if !self.gate_is_open(HumanGate::DuMen)
             || matches!(
@@ -325,15 +474,29 @@ impl HumanPlate {
                 ))],
                 ..geju.clone()
             };
-            return Box::pin(self.dispatch_guarded(&guarded, tool, input, event_bus, tx, exec_ctx))
+            return Box::pin(self.prepare_guarded(&guarded, tool, input, event_bus, tx, exec_ctx))
                 .await;
         }
 
         // Apply sandbox transformations
-        let sandboxed = self
-            .permissions
-            .sandbox_input(tool.name(), &input)
-            .map_err(|e| DispatchError::Denied(format!("Sandbox rejected: {e}")))?;
+        let sandboxed = match self.permissions.sandbox_input(tool.name(), &input) {
+            Ok(v) => v,
+            Err(e) => {
+                // N1 · 策略链位次 2/4:路径沙箱 / 命令策略拒绝 —— 决策可观测。
+                event_bus.emit(RuntimeEvent::PermissionDecision {
+                    tool: tool.name().into(),
+                    decision: "deny".into(),
+                    policy: if tool.name() == "shell" {
+                        "command_policy"
+                    } else {
+                        "path_sandbox"
+                    }
+                    .into(),
+                    reason: e.clone(),
+                });
+                return Err(DispatchError::Denied(format!("Sandbox rejected: {e}")));
+            }
+        };
 
         tracing::info!(
             "HumanPlate: sandbox execution for {} (geju: {})",
@@ -341,14 +504,9 @@ impl HumanPlate {
             geju.name,
         );
 
-        let output = tool
-            .execute_with_tx(sandboxed, tx, exec_ctx)
-            .await
-            .map_err(|e| DispatchError::ToolError(e.to_string()))?;
-        Ok(ToolResult {
-            call_id: String::new(),
-            output,
-            error: None,
+        Ok(PreparedCall {
+            tool: tool.clone(),
+            input: sandboxed,
         })
     }
 
@@ -879,5 +1037,336 @@ mod tests {
             &plate.pending_confirmations,
             &bus.pending_confirmations
         ));
+    }
+
+    // ── N1 · 权限策略链 / 会话批准记忆 ─────────────────────
+
+    /// N1 结构断言:HumanPlate 与 SessionBus 共享同一份 session_approvals Arc。
+    #[test]
+    fn with_state_shares_session_approvals_arc() {
+        let bus = std::sync::Arc::new(crate::plates::ren_human::SessionBus::new());
+        let plate = HumanPlate::with_state(
+            std::sync::Arc::new(PermissionMatrix::default()),
+            bus.clone(),
+        );
+        assert!(std::sync::Arc::ptr_eq(
+            &plate.session_approvals,
+            &bus.session_approvals
+        ));
+    }
+
+    fn make_plate_with_rx() -> (
+        HumanPlate,
+        EventBus,
+        tokio::sync::mpsc::UnboundedSender<AgentEvent>,
+        tokio::sync::mpsc::UnboundedReceiver<AgentEvent>,
+    ) {
+        let plate = HumanPlate::default();
+        let eb = EventBus::new();
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        (plate, eb, tx, rx)
+    }
+
+    fn count_confirm_requests(rx: &mut tokio::sync::mpsc::UnboundedReceiver<AgentEvent>) -> usize {
+        let mut n = 0;
+        while let Ok(ev) = rx.try_recv() {
+            if matches!(ev, AgentEvent::ConfirmRequest { .. }) {
+                n += 1;
+            }
+        }
+        n
+    }
+
+    /// 收集自订阅以来发出的 PermissionDecision 事件:(decision, policy)。
+    fn drain_decision_events(
+        rx: &mut tokio::sync::broadcast::Receiver<RuntimeEvent>,
+    ) -> Vec<(String, String)> {
+        let mut out = vec![];
+        while let Ok(ev) = rx.try_recv() {
+            if let RuntimeEvent::PermissionDecision {
+                decision, policy, ..
+            } = ev
+            {
+                out.push((decision, policy));
+            }
+        }
+        out
+    }
+
+    /// 批准记忆命中:同会话同"工具+入参"第二次不再询问;首次仍须询问。
+    /// (confirmation_override 短路时不发 ConfirmRequest,故以 PermissionDecision
+    /// 事件为观测面:user_confirmation = 真问了;session_approval = 记忆豁免。)
+    #[tokio::test]
+    async fn session_approval_memory_skips_repeat_confirmation() {
+        let (mut plate, eb, tx, _rx) = make_plate_with_rx();
+        let mut events = eb.subscribe();
+        plate.confirmation_override = Some(true);
+        let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
+        let mut geju = make_geju(ExecutionMode::Guarded);
+        geju.approval_chain = vec![ApprovalGate::UserConfirmation("sure?".into())];
+        let mut ctx = make_ctx();
+        ctx.session_id = "s1".into();
+        let input = serde_json::json!({"msg": "hi"});
+
+        // 首次:必须询问(红线:绝不自动放行)
+        let r1 = plate
+            .dispatch(&geju, &tool, input.clone(), &eb, &tx, &ctx)
+            .await;
+        assert!(r1.is_ok(), "first dispatch: {:?}", r1.err());
+        assert_eq!(
+            drain_decision_events(&mut events),
+            vec![("allow".to_string(), "user_confirmation".to_string())],
+            "first call must go through a real confirmation"
+        );
+
+        // 第二次(同会话同入参):批准记忆命中,不再询问
+        let r2 = plate.dispatch(&geju, &tool, input, &eb, &tx, &ctx).await;
+        assert!(r2.is_ok(), "second dispatch: {:?}", r2.err());
+        assert_eq!(
+            drain_decision_events(&mut events),
+            vec![("allow".to_string(), "session_approval".to_string())],
+            "repeat call must skip confirmation via session approval memory"
+        );
+    }
+
+    /// 批准记忆不命中:入参不同 → 仍须询问;会话不同 → 仍须询问。
+    #[tokio::test]
+    async fn session_approval_memory_miss_on_different_input_or_session() {
+        let (mut plate, eb, tx, _rx) = make_plate_with_rx();
+        let mut events = eb.subscribe();
+        plate.confirmation_override = Some(true);
+        let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
+        let mut geju = make_geju(ExecutionMode::Guarded);
+        geju.approval_chain = vec![ApprovalGate::UserConfirmation("sure?".into())];
+        let mut ctx = make_ctx();
+        ctx.session_id = "s1".into();
+
+        let _ = plate
+            .dispatch(&geju, &tool, serde_json::json!({"msg": "a"}), &eb, &tx, &ctx)
+            .await;
+        // 入参不同 → 询问
+        let _ = plate
+            .dispatch(&geju, &tool, serde_json::json!({"msg": "b"}), &eb, &tx, &ctx)
+            .await;
+        // 会话不同(同入参)→ 询问
+        ctx.session_id = "s2".into();
+        let _ = plate
+            .dispatch(&geju, &tool, serde_json::json!({"msg": "a"}), &eb, &tx, &ctx)
+            .await;
+        let decisions = drain_decision_events(&mut events);
+        assert_eq!(
+            decisions
+                .iter()
+                .filter(|(d, p)| d == "allow" && p == "user_confirmation")
+                .count(),
+            3,
+            "different input and different session must each ask again: {decisions:?}"
+        );
+        assert!(
+            !decisions.iter().any(|(_, p)| p == "session_approval"),
+            "no memory hit expected: {decisions:?}"
+        );
+    }
+
+    /// 公理 4 红线:批准记忆不改变 GeJu 结果 —— 批准前后同一操作的
+    /// ExecutionMode 完全一致(记忆只豁免询问,不可能放松评估)。
+    #[tokio::test]
+    async fn approval_memory_does_not_change_geju_execution_mode() {
+        let (mut plate, eb, tx, _rx) = make_plate_with_rx();
+        plate.confirmation_override = Some(true);
+        let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
+        let mut ctx = make_ctx();
+        ctx.session_id = "s1".into();
+        let mut g = make_geju(ExecutionMode::Guarded);
+        g.approval_chain = vec![ApprovalGate::UserConfirmation("sure?".into())];
+        let input = serde_json::json!({"msg": "hi"});
+
+        // 批准前的 GeJu 评估
+        let eval_before = crate::geju::GeJu::new(crate::stems::Stem::Geng, crate::stems::Stem::Geng)
+            .evaluate()
+            .execution_mode;
+
+        // 用户批准 → 记忆写入
+        let _ = plate
+            .dispatch(&g, &tool, input.clone(), &eb, &tx, &ctx)
+            .await;
+        let key = approval_key(tool.name(), &input);
+        {
+            let map = plate
+                .session_approvals
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            assert!(map.get("s1").is_some_and(|keys| keys.contains(&key)));
+        }
+
+        // 批准后的 GeJu 评估:ExecutionMode 必须一致
+        let eval_after = crate::geju::GeJu::new(crate::stems::Stem::Geng, crate::stems::Stem::Geng)
+            .evaluate()
+            .execution_mode;
+        assert_eq!(
+            eval_before, eval_after,
+            "approval memory must not alter GeJu evaluation"
+        );
+
+        // 记忆命中只跳过询问:执行仍走 Guarded 路径(模式未被放松为 Direct)
+        assert_eq!(g.execution_mode, ExecutionMode::Guarded);
+    }
+
+    fn matrix_with_deny_rules(rules: Vec<String>) -> PermissionMatrix {
+        let workspace_root = std::env::current_dir().unwrap();
+        PermissionMatrix {
+            sandbox: crate::palaces::qian_permission::SandboxConfig {
+                workspace_root: workspace_root.canonicalize().unwrap(),
+                allowed_paths: vec![],
+                blocked_prefixes: vec![".git".into(), ".env".into()],
+            },
+            shell_policy: crate::palaces::qian_permission::ShellPolicy {
+                allowlist: vec![],
+                blocklist: vec![],
+            },
+            deny_rules: rules,
+            confirmation_timeout: std::time::Duration::from_secs(30),
+            sandbox_mode: crate::palaces::kun_config::SandboxMode::Required,
+            backup_dir: std::path::PathBuf::from(".jia/backups"),
+            execution_sandbox: None,
+        }
+    }
+
+    /// deny 规则绝对优先:Direct 模式直接拒;ShangMen 升级的 Denied→Guarded
+    /// 路径也不可豁免;全程零询问。
+    #[tokio::test]
+    async fn deny_rule_is_absolute_no_exemption() {
+        let plate = HumanPlate::with_state(
+            Arc::new(matrix_with_deny_rules(vec!["Bash(rm *)".into()])),
+            Arc::new(crate::plates::ren_human::SessionBus::new()),
+        );
+        let eb = EventBus::new();
+        let mut events = eb.subscribe();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let tool: Arc<dyn BaseTool> = Arc::new(DestructiveTool); // name = "shell"
+        let input = serde_json::json!({"command": "rm -rf /tmp/x"});
+
+        // Direct 模式也拒
+        let r = plate
+            .dispatch(
+                &make_geju(ExecutionMode::Direct),
+                &tool,
+                input.clone(),
+                &eb,
+                &tx,
+                &make_ctx(),
+            )
+            .await;
+        assert!(matches!(r, Err(DispatchError::Denied(_))));
+
+        // Denied + ShangMen 开(默认开)也不得升级为询问
+        let r2 = plate
+            .dispatch(
+                &make_geju(ExecutionMode::Denied),
+                &tool,
+                input,
+                &eb,
+                &tx,
+                &make_ctx(),
+            )
+            .await;
+        assert!(matches!(r2, Err(DispatchError::Denied(_))));
+        assert_eq!(
+            count_confirm_requests(&mut rx),
+            0,
+            "deny rule must never be exempted by a confirmation path"
+        );
+
+        // 决策事件已发出(deny + deny_rule)
+        let mut saw = false;
+        while let Ok(ev) = events.try_recv() {
+            if let RuntimeEvent::PermissionDecision {
+                decision, policy, ..
+            } = ev
+                && decision == "deny"
+                && policy == "deny_rule"
+            {
+                saw = true;
+            }
+        }
+        assert!(saw, "PermissionDecision(deny/deny_rule) event must be emitted");
+    }
+
+    /// 敏感文件强制 ask:Direct 模式被单向收紧为 Guarded+确认;
+    /// 用户批准后执行,且批准记忆生效(第二次不再询问)。
+    #[tokio::test]
+    async fn sensitive_file_forces_confirmation_then_memory_applies() {
+        let (mut plate, eb, tx, _rx) = make_plate_with_rx();
+        let mut events = eb.subscribe();
+        plate.confirmation_override = Some(true);
+        let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
+        let geju = make_geju(ExecutionMode::Direct);
+        let mut ctx = make_ctx();
+        ctx.session_id = "s1".into();
+        let input = serde_json::json!({"path": "/work/.env"});
+
+        let r1 = plate
+            .dispatch(&geju, &tool, input.clone(), &eb, &tx, &ctx)
+            .await;
+        assert!(r1.is_ok(), "approved sensitive read: {:?}", r1.err());
+        assert_eq!(
+            drain_decision_events(&mut events),
+            vec![
+                ("ask".to_string(), "sensitive_file".to_string()),
+                ("allow".to_string(), "user_confirmation".to_string()),
+            ],
+            "sensitive file must force ask even in Direct mode"
+        );
+
+        let r2 = plate.dispatch(&geju, &tool, input, &eb, &tx, &ctx).await;
+        assert!(r2.is_ok());
+        assert_eq!(
+            drain_decision_events(&mut events),
+            vec![
+                ("ask".to_string(), "sensitive_file".to_string()),
+                ("allow".to_string(), "session_approval".to_string()),
+            ],
+            "session approval memory covers the sensitive-file ask too"
+        );
+    }
+
+    /// 决策可观测:Guarded 确认批准/拒绝均发出 PermissionDecision 事件。
+    #[tokio::test]
+    async fn user_confirmation_decision_events_emitted() {
+        let (mut plate, eb, tx, _rx) = make_plate_with_rx();
+        let mut events = eb.subscribe();
+        plate.confirmation_override = Some(true);
+        let tool: Arc<dyn BaseTool> = Arc::new(EchoTool);
+        let mut geju = make_geju(ExecutionMode::Guarded);
+        geju.approval_chain = vec![ApprovalGate::UserConfirmation("sure?".into())];
+        let mut ctx = make_ctx();
+        ctx.session_id = "s1".into();
+
+        let _ = plate
+            .dispatch(&geju, &tool, serde_json::json!({"m": 1}), &eb, &tx, &ctx)
+            .await;
+
+        plate.confirmation_override = Some(false);
+        let _ = plate
+            .dispatch(&geju, &tool, serde_json::json!({"m": 2}), &eb, &tx, &ctx)
+            .await;
+
+        let mut allow = false;
+        let mut deny = false;
+        while let Ok(ev) = events.try_recv() {
+            if let RuntimeEvent::PermissionDecision {
+                decision, policy, ..
+            } = ev
+                && policy == "user_confirmation"
+            {
+                if decision == "allow" {
+                    allow = true;
+                }
+                if decision == "deny" {
+                    deny = true;
+                }
+            }
+        }
+        assert!(allow && deny, "both allow and deny decisions must be observed");
     }
 }

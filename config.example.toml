@@ -38,6 +38,11 @@ base_url = "https://open.bigmodel.cn/api/anthropic"
 # blocked_path_prefixes = [".git", ".env"]  # 始终阻止的路径前缀
 # command_allowlist = []                # 如果非空，仅允许这些 shell 命令
 # command_blocklist = ["rm -rf /", "mkfs.", "dd if=", "sudo rm"]  # 阻止的 shell 命令模式
+# deny_rules = [                    # 绝对 deny 规则(策略链最高优先级,命中即拒,无任何豁免)
+#   "Bash(rm *)",                   # 种类: Bash(命令) / Read(路径) / Write(路径) / <工具名>
+#   "Read(/etc/**)",                # glob 匹配;.env* 与 SSH 私钥另有内置强制确认(豁免
+#   "Write(/home/**)",              # .env.example/.sample/.template 与 *.pub)
+# ]
 # confirmation_timeout_secs = 30        # 用户确认超时（秒）
 # sandbox_disabled = false              # true = 沙箱降至 Guarded 模式
 # max_context_tokens = 8192             # 上下文窗口 token 预算
@@ -96,6 +101,12 @@ observation_enabled = true
 checklist_enabled = true
 # 上下文重置（长会话续命）
 reset_enabled = true
+
+# ── Agent ──────────────────────────────────────────────────
+[agent]
+# Maximum turns per session (default: 50).
+# Can be overridden with JIA_MAX_TURNS env var.
+# max_turns = 50
 
 # ── Web Dashboard ──────────────────────────────────────────
 # Path to frontend/dist/ for jia web.

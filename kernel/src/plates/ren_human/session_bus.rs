@@ -50,11 +50,22 @@ pub struct SessionBus {
     pub(crate) session_locks: Arc<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
     /// P8 · persisted sub-agent sessions for continuation via send_message.
     pub(crate) subagent_sessions: Arc<Mutex<HashMap<String, SubagentSession>>>,
+    /// N1 · 会话级批准记忆:session_id → 已获用户批准的"工具+入参"键集。
+    /// 仅记忆用户的主动批准(首次仍须询问,绝不自动放行);内存态,不持久化。
+    pub(crate) session_approvals: Arc<Mutex<HashMap<String, std::collections::HashSet<String>>>>,
 }
 
 impl SessionBus {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// 清扫某会话的批准记忆(会话结束/断连清扫时调用)。
+    pub fn clear_session_approvals(&self, session_id: &str) {
+        self.session_approvals
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(session_id);
     }
 }
 
@@ -66,6 +77,7 @@ impl Default for SessionBus {
             session_modes: Arc::new(Mutex::new(HashMap::new())),
             session_locks: Arc::new(Mutex::new(HashMap::new())),
             subagent_sessions: Arc::new(Mutex::new(HashMap::new())),
+            session_approvals: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }

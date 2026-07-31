@@ -51,9 +51,16 @@ impl ExecutionSandbox for DockerSandbox {
         &self,
         cmd: &str,
         _cwd: &Path,
-        _env: &HashMap<String, String>,
+        env: &HashMap<String, String>,
     ) -> Result<SandboxOutput, String> {
         let mut args: Vec<String> = vec!["run".into(), "--rm".into()];
+
+        // N3: forward the caller's env (hardening vars like NO_COLOR,
+        // TERM=dumb, GIT_TERMINAL_PROMPT=0) into the container.
+        for (k, v) in env {
+            args.push("-e".into());
+            args.push(format!("{k}={v}"));
+        }
 
         // Resource limits
         args.push(format!("--memory={}m", self.memory_limit_mb));
@@ -93,6 +100,9 @@ impl ExecutionSandbox for DockerSandbox {
             self.timeout,
             tokio::process::Command::new("docker")
                 .args(&args)
+                // N3: never inherit stdin — docker run without -i does not
+                // forward it anyway, but the client itself must not block.
+                .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped())
                 .output(),

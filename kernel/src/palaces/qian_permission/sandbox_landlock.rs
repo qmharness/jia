@@ -278,6 +278,9 @@ fn run_landlock(
     cmd_builder
         .arg("-c")
         .arg(cmd)
+        // N3: never inherit stdin — a `cat`/`read` in the command would
+        // otherwise block until the timeout kills it.
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .process_group(0)

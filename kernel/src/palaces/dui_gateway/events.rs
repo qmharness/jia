@@ -115,6 +115,8 @@ pub async fn handle_events(
                             RuntimeEvent::StrategyInsight { .. } => "strategy_insight",
                             RuntimeEvent::CertaintyTrace { .. } => "certainty_trace",
                             RuntimeEvent::StabilityTransition { .. } => "stability_transition",
+                            RuntimeEvent::BackgroundTasksLost { .. } => "background_tasks_lost",
+                            RuntimeEvent::PermissionDecision { .. } => "permission_decision",
                         };
                         let data = serde_json::json!({"type": event_type}).to_string();
                         if tx.send(Ok(Event::default().data(data))).is_err() {

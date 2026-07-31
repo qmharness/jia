@@ -93,6 +93,16 @@ pub enum RuntimeEvent {
         pattern: String,
         mode: String,
     },
+    /// N1 · 权限策略链决策观测(乾六 → 神盘;异步广播,只观测不阻塞)。
+    PermissionDecision {
+        tool: String,
+        /// "allow" | "deny" | "ask"
+        decision: String,
+        /// 命中策略名:deny_rule / path_sandbox / session_approval /
+        /// command_policy / sensitive_file / user_confirmation
+        policy: String,
+        reason: String,
+    },
     Error {
         source: String,
         message: String,
@@ -158,5 +168,11 @@ pub enum RuntimeEvent {
         stable: bool,
         atma_graha: f32,
         epochs: u64,
+    },
+    /// P8 · crash recovery: background tasks from a previous daemon run
+    /// were found as orphaned Running tasks and marked Lost.
+    BackgroundTasksLost {
+        count: usize,
+        task_ids: Vec<String>,
     },
 }

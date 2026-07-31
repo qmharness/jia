@@ -7,6 +7,7 @@ use tracing;
 
 use crate::palaces::kun_config::SecuritySection;
 
+pub mod policy;
 pub mod sandbox;
 #[cfg(feature = "sandbox-docker")]
 pub mod sandbox_docker;
@@ -134,9 +135,14 @@ pub struct ShellPolicy {
 /// 1. Path sandboxing (confine reads/writes to workspace_root + allowed_paths)
 /// 2. Shell command filtering (allowlist/blocklist)
 /// 3. User confirmation timeout configuration
+///
+/// N1 · 显式策略链见 [`policy`] 模块头:deny 规则(绝对优先)→ 路径沙箱 →
+/// 会话批准记忆 → 命令策略 → 敏感文件强制 ask → 兜底(交还 GeJu/八门)。
 pub struct PermissionMatrix {
     pub sandbox: SandboxConfig,
     pub shell_policy: ShellPolicy,
+    /// N1 · 绝对 deny 规则(策略链位次 1),来自 `[security] deny_rules`。
+    pub deny_rules: Vec<String>,
     pub confirmation_timeout: std::time::Duration,
     pub sandbox_mode: crate::palaces::kun_config::SandboxMode,
     /// Directory for file backups (write_file / edit tools).
@@ -204,6 +210,7 @@ impl PermissionMatrix {
                 allowlist: security.command_allowlist.clone(),
                 blocklist: security.command_blocklist.clone(),
             },
+            deny_rules: security.deny_rules.clone(),
             confirmation_timeout: std::time::Duration::from_secs(
                 security.confirmation_timeout_secs,
             ),
@@ -436,40 +443,118 @@ impl PermissionMatrix {
     /// Execute a shell command through the configured sandbox.
     ///
     /// If no sandbox is configured, falls back to direct process execution.
+    /// Always runs from `workspace_root`; the session-cwd variant is
+    /// [`Self::execute_sandboxed_in`].
     pub async fn execute_sandboxed(&self, cmd: &str) -> Result<String, String> {
         self.verify_command(cmd)?;
-
         let cwd = self.sandbox.workspace_root.clone();
+        let raw = self.run_in_dir(cmd, &cwd).await?;
+        Ok(self.format_output(raw))
+    }
 
-        if let Some(ref sandbox) = self.execution_sandbox {
-            let output = sandbox
-                .execute(cmd, &cwd, &std::collections::HashMap::new())
-                .await?;
-            let mut result = if output.stderr.is_empty() {
-                output.stdout
-            } else {
-                format!("stdout:\n{}\nstderr:\n{}", output.stdout, output.stderr)
-            };
-            if output.exit_code != 0 {
-                result.push_str(&format!("\n[exit code: {}]", output.exit_code));
+    /// Marker prefix smuggling the process's final `$PWD` out through stdout
+    /// (#6 · 会话级 cwd,末次 cd 继承). Kept obscure so real command output
+    /// is unlikely to collide; parsing takes the LAST occurrence.
+    const CWD_MARKER: &'static str = "__JIA_CWD__";
+
+    /// #6 · Session-cwd execution: run `cmd` from `cwd` and capture the
+    /// process's final working directory.
+    ///
+    /// `verify_command` runs on the user command only — the trailing capture
+    /// wrapper is appended afterwards, so its metacharacters (`$?`, `$PWD`)
+    /// never reach the verifier. The wrapper preserves the original exit
+    /// code via `exit $__jia_ec`. If the command itself ends in `exit` the
+    /// wrapper never runs and no cwd is captured (returns `None`).
+    ///
+    /// `cwd` must already be boundary-validated by the caller.
+    /// Returns `(visible_output, final_cwd)`.
+    pub async fn execute_sandboxed_in(
+        &self,
+        cmd: &str,
+        cwd: &std::path::Path,
+    ) -> Result<(String, Option<PathBuf>), String> {
+        self.verify_command(cmd)?;
+        let wrapped = format!(
+            "{cmd}\n__jia_ec=$?\nprintf '\\n{}%s' \"$PWD\"\nexit $__jia_ec",
+            Self::CWD_MARKER
+        );
+        let raw = self.run_in_dir(&wrapped, cwd).await?;
+        // Split the capture marker off stdout BEFORE normal formatting so the
+        // "stdout:/stderr:" interleave never sees it.
+        let (stdout, final_cwd) = match raw.stdout.rfind(Self::CWD_MARKER) {
+            Some(idx) => {
+                let path = raw.stdout[idx + Self::CWD_MARKER.len()..].trim();
+                let mut visible = raw.stdout[..idx].to_string();
+                // Drop exactly the '\n' the printf prepended.
+                if visible.ends_with('\n') {
+                    visible.pop();
+                }
+                let dir = if path.is_empty() {
+                    None
+                } else {
+                    Some(PathBuf::from(path))
+                };
+                (visible, dir)
             }
-            Ok(result)
+            None => (raw.stdout, None),
+        };
+        let output = self.format_output(sandbox::SandboxOutput {
+            stdout,
+            stderr: raw.stderr,
+            exit_code: raw.exit_code,
+        });
+        Ok((output, final_cwd))
+    }
+
+    /// Shared executor: run `cmd` from `cwd` through the configured backend.
+    /// Callers must have already run `verify_command`.
+    async fn run_in_dir(
+        &self,
+        cmd: &str,
+        cwd: &std::path::Path,
+    ) -> Result<sandbox::SandboxOutput, String> {
+        if let Some(ref sandbox) = self.execution_sandbox {
+            // N3: hardening env (NO_COLOR / TERM=dumb / GIT_TERMINAL_PROMPT=0)
+            // is injected at this single choke point so every backend gets it.
+            sandbox.execute(cmd, cwd, &sandbox::hardened_env()).await
         } else {
-            // Fallback: direct process execution
-            let output = tokio::process::Command::new("sh")
+            // Fallback: direct process execution. Same hardening as the
+            // sandboxed path: closed stdin (no `cat`/`read` hangs) + N3 env.
+            // Runs from `cwd` (previously inherited the process cwd — now
+            // pinned to workspace_root / session cwd like every backend).
+            let mut command = tokio::process::Command::new("sh");
+            command
                 .arg("-c")
                 .arg(cmd)
+                .current_dir(cwd)
+                .stdin(std::process::Stdio::null());
+            for (k, v) in sandbox::hardened_env() {
+                command.env(k, v);
+            }
+            let output = command
                 .output()
                 .await
                 .map_err(|e| format!("shell error: {e}"))?;
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            Ok(if stderr.is_empty() {
-                stdout.to_string()
-            } else {
-                format!("stdout:\n{stdout}\nstderr:\n{stderr}")
+            Ok(sandbox::SandboxOutput {
+                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                exit_code: output.status.code().unwrap_or(-1),
             })
         }
+    }
+
+    /// Format raw output for tool display. The `[exit code: N]` note is only
+    /// appended on the sandboxed path, matching the historical behavior.
+    fn format_output(&self, raw: sandbox::SandboxOutput) -> String {
+        let mut result = if raw.stderr.is_empty() {
+            raw.stdout
+        } else {
+            format!("stdout:\n{}\nstderr:\n{}", raw.stdout, raw.stderr)
+        };
+        if self.execution_sandbox.is_some() && raw.exit_code != 0 {
+            result.push_str(&format!("\n[exit code: {}]", raw.exit_code));
+        }
+        result
     }
 
     /// Apply sandbox transformations to tool input.
@@ -480,7 +565,9 @@ impl PermissionMatrix {
     ) -> Result<serde_json::Value, String> {
         match tool_name {
             "read_file" => self.sandbox_path(input, "path", PathOp::Read),
-            "write_file" | "patch_file" => self.sandbox_path(input, "path", PathOp::Write),
+            "write_file" | "patch_file" | "revert_file" => {
+                self.sandbox_path(input, "path", PathOp::Write)
+            }
             "shell" => {
                 let cmd = input["command"]
                     .as_str()
@@ -595,6 +682,7 @@ mod tests {
                 allowlist: vec![],
                 blocklist: vec!["rm -rf".into(), "mkfs.".into()],
             },
+            deny_rules: vec![],
             confirmation_timeout: std::time::Duration::from_secs(30),
             sandbox_mode: crate::palaces::kun_config::SandboxMode::Required,
             backup_dir: PathBuf::from(".jia/backups"),

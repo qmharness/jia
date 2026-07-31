@@ -82,6 +82,9 @@ fn run_sandboxed(
     cmd_builder
         .arg("-c")
         .arg(cmd)
+        // N3: never inherit stdin — a `cat`/`read` in the command would
+        // otherwise block until the timeout kills it.
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .process_group(0)
@@ -133,11 +136,38 @@ fn run_sandboxed(
             break;
         }
         if std::time::Instant::now() >= deadline {
-            // Kill the entire process group and reap all children
+            // Two-phase termination: SIGTERM first for graceful shutdown,
+            // then SIGKILL if the process hasn't exited within the grace period.
+            // Grace period is capped at min(5s, remaining timeout budget) so the
+            // total execution time never exceeds 2× the configured timeout.
             let pgid = -(pid as i32);
-            // SAFETY: SIGKILL to the child process group kills all
-            // subprocesses (shell pipelines, background jobs, etc.)
-            unsafe { ::libc::kill(pgid, libc::SIGKILL) };
+            let grace = std::time::Duration::from_secs(5).min(timeout / 2);
+
+            // Phase 1: graceful SIGTERM
+            // SAFETY: SIGTERM to the process group — processes can handle
+            // this to clean up temp files, flush buffers, etc.
+            let grace_start = std::time::Instant::now();
+            unsafe { ::libc::kill(pgid, libc::SIGTERM) };
+
+            // Wait up to the grace period for graceful exit
+            let grace_deadline = grace_start + grace;
+            let mut graceful = false;
+            loop {
+                if done.load(Ordering::SeqCst) {
+                    graceful = true;
+                    break;
+                }
+                if std::time::Instant::now() >= grace_deadline {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+
+            if !graceful {
+                // Phase 2: force SIGKILL to the entire process group
+                // SAFETY: SIGKILL cannot be caught — guaranteed termination
+                unsafe { ::libc::kill(pgid, libc::SIGKILL) };
+            }
             let _ = handle.join();
             // Reap any remaining zombies in the process group
             loop {
@@ -147,6 +177,12 @@ fn run_sandboxed(
                 if wpid <= 0 {
                     break;
                 }
+            }
+            if graceful {
+                return Err(format!(
+                    "Command terminated after {}s (SIGTERM accepted, exit via signal)",
+                    timeout.as_secs()
+                ));
             }
             return Err(format!("Command timed out after {}s", timeout.as_secs()));
         }
@@ -300,5 +336,60 @@ mod tests {
     fn zero_limits_are_noop() {
         // 0 disables each limit — must not call setrlimit nor panic.
         apply_child_rlimits(0, 0, 0);
+    }
+
+    /// N3: the hardening env handed in by `execute_sandboxed` reaches the
+    /// child (this also exercises the shared `hardened_env` contract).
+    #[tokio::test]
+    async fn hardened_env_reaches_child() {
+        let sandbox = ProcessSandbox::default();
+        let cwd = std::env::current_dir().unwrap();
+        let out = sandbox
+            .execute(
+                "echo \"NC=$NO_COLOR|T=$TERM|G=$GIT_TERMINAL_PROMPT\"",
+                &cwd,
+                &crate::palaces::qian_permission::sandbox::hardened_env(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(out.exit_code, 0);
+        assert!(
+            out.stdout.contains("NC=1|T=dumb|G=0"),
+            "hardening env must be visible to the child: {}",
+            out.stdout
+        );
+    }
+
+    /// N3: stdin is /dev/null — a `read` must hit EOF and return
+    /// immediately instead of hanging until the sandbox timeout.
+    #[tokio::test]
+    async fn stdin_is_closed_read_returns_immediately() {
+        // Limits disabled (0 = noop): this test is about stdin, not rlimits,
+        // and under full-suite parallel load any RLIMIT_NPROC cap can make
+        // the child fail to fork entirely. `read`/`echo` are shell builtins,
+        // so no fork is needed at all.
+        let sandbox = ProcessSandbox {
+            timeout: Duration::from_secs(30),
+            memory_limit_bytes: 0,
+            file_size_limit_bytes: 0,
+            max_processes: 0,
+        };
+        let cwd = std::env::current_dir().unwrap();
+        let start = std::time::Instant::now();
+        let out = sandbox
+            .execute("read x; echo done", &cwd, &HashMap::new())
+            .await
+            .unwrap();
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "read must not block on inherited stdin"
+        );
+        assert!(
+            out.stdout.contains("done"),
+            "stdout should contain done: stdout={:?} stderr={:?} exit={}",
+            out.stdout,
+            out.stderr,
+            out.exit_code
+        );
     }
 }
