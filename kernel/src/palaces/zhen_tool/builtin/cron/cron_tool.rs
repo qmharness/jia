@@ -152,7 +152,6 @@ impl BaseTool for CronTool {
 #[cfg(test)]
 mod tests {
     use super::super::*;
-    use super::*;
 
     #[test]
     fn validate_name_rejects_empty() {

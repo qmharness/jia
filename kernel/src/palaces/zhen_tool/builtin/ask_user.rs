@@ -187,10 +187,13 @@ mod tests {
     use crate::palaces::qian_permission::PermissionMatrix;
 
     fn ctx_with_token(cancel_token: tokio_util::sync::CancellationToken) -> ExecContext {
+        let permissions = Arc::new(PermissionMatrix::default());
         ExecContext {
-            permissions: Arc::new(PermissionMatrix::default()),
+            cwd: ExecContext::default_cwd(&permissions),
+            permissions,
             session_id: "sess-1".into(),
             cancel_token,
+            read_state: ExecContext::default_read_state(),
         }
     }
 
@@ -254,10 +257,13 @@ mod tests {
         let (tx, _rx) = mpsc::unbounded_channel();
         let mut permissions = PermissionMatrix::default();
         permissions.confirmation_timeout = std::time::Duration::from_millis(50);
+        let permissions = Arc::new(permissions);
         let ctx = ExecContext {
-            permissions: Arc::new(permissions),
+            cwd: ExecContext::default_cwd(&permissions),
+            permissions,
             session_id: "sess-1".into(),
             cancel_token: tokio_util::sync::CancellationToken::new(),
+            read_state: ExecContext::default_read_state(),
         };
 
         let res = tokio::time::timeout(std::time::Duration::from_secs(5), async {

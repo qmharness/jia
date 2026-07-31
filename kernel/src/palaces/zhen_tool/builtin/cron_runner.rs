@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use super::cron::CronStore;
+use super::cron::jitter;
 
 /// Get current local time components: (minute, hour, day, month, weekday)
 fn now_local_components() -> (u32, u32, u32, u32, u32) {
@@ -65,8 +66,12 @@ fn cron_matches(expr: &str) -> bool {
 /// Check whether a one-shot ISO datetime has been reached.
 ///
 /// `schedule` is a local datetime like `2026-05-31T21:14:00`.
-/// Returns true when current local time >= target time.
-fn once_matches(schedule: &str) -> bool {
+/// `job_name` is used to apply deterministic backward jitter — if the target
+/// lands on a round minute (:00 or :30), the job fires slightly early to
+/// avoid all one-shot tasks hitting inference at the exact same instant.
+///
+/// Returns true when current local time >= (target_time - jitter).
+fn once_matches(schedule: &str, job_name: &str) -> bool {
     let format =
         match time::format_description::parse("[year]-[month]-[day]T[hour]:[minute]:[second]") {
             Ok(f) => f,
@@ -80,9 +85,14 @@ fn once_matches(schedule: &str) -> bool {
         Ok(n) => n,
         Err(_) => return false,
     };
-    // Compare as PrimitiveDateTime (local time, no offset)
     let now_local = time::PrimitiveDateTime::new(now.date(), now.time());
-    now_local >= target
+
+    // Backward jitter: if target lands on a round minute, fire up to 90s early.
+    let target_minute = target.minute() as u32;
+    let jitter_back = jitter::oneshot_jitter(job_name, target_minute);
+    let jittered_target = target - jitter_back;
+
+    now_local >= jittered_target
 }
 
 fn field_matches(field: &str, current: u32) -> bool {
@@ -97,10 +107,106 @@ fn field_matches(field: &str, current: u32) -> bool {
         return current.is_multiple_of(step);
     }
     // Exact value
-    field.parse::<u32>().map(|v| v == current).unwrap_or(false)
+    if let Ok(v) = field.parse::<u32>() {
+        return v == current;
+    }
+    // Unsupported pattern (range, list, name, etc.) — silently never matches.
+    // The CronTool layer validates these at add-time, but a manually-placed
+    // file could contain one. Log once so the user knows why it never fires.
+    tracing::warn!(
+        field = %field,
+        "Unsupported cron field pattern (only *, */N, and exact values are supported)"
+    );
+    false
 }
 
-/// Spawn a background task that checks cron jobs every 30 seconds
+/// Estimate the interval between cron matches in seconds.
+/// Used to scale jitter proportionally (hourly → wider spread than per-minute).
+fn estimate_cron_interval_secs(expr: &str) -> u64 {
+    let fields: Vec<&str> = expr.split_whitespace().collect();
+    if fields.len() != 5 {
+        return 60; // default: per-minute
+    }
+    // If minute field is a step (*/N), interval = N minutes
+    if let Some(rest) = fields[0].strip_prefix("*/") {
+        if let Ok(n) = rest.parse::<u64>() {
+            return n * 60;
+        }
+    }
+    // If hour field is a step, interval ≥ 1 hour
+    if let Some(rest) = fields[1].strip_prefix("*/") {
+        if let Ok(n) = rest.parse::<u64>() {
+            return n * 3600;
+        }
+    }
+    // If minute is wildcard, it's per-minute
+    // If hour is wildcard, it's per-minute matching
+    if fields[0] == "*" && fields[1] == "*" {
+        return 60;
+    }
+    // If minute is exact and hour is wildcard → every hour at that minute
+    if fields[1] == "*" && !fields[0].contains('*') {
+        return 3600; // hourly
+    }
+    // If both minute and hour are exact → daily
+    if !fields[1].contains('*') && !fields[0].contains('*') {
+        if fields[2] == "*" {
+            return 86400; // daily
+        }
+    }
+    // Default: hourly (most common for non-trivial crons)
+    3600
+}
+
+/// On startup, detect one-shot cron jobs that were scheduled to fire while
+/// jia was not running. These jobs are removed from the store and logged.
+/// A notification should be surfaced to the user on their next interaction.
+fn detect_and_notify_missed(store: &CronStore) {
+    let jobs = store.enabled_jobs();
+    let now_secs = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let missed: Vec<_> = jobs
+        .iter()
+        .filter(|j| matches!(j.trigger, crate::palaces::zhen_tool::builtin::cron::TriggerMode::Once))
+        .filter(|j| {
+            // Parse the ISO datetime and check if it's in the past.
+            // The schedule is a LOCAL datetime — use the local offset, not UTC.
+            if let Ok(format) =
+                time::format_description::parse("[year]-[month]-[day]T[hour]:[minute]:[second]")
+            {
+                if let Ok(target) = time::PrimitiveDateTime::parse(&j.schedule, &format) {
+                    let local_offset = time::UtcOffset::current_local_offset()
+                        .unwrap_or(time::UtcOffset::UTC);
+                    let target_dt = target.assume_offset(local_offset);
+                    return target_dt.unix_timestamp() as u64 + 120 < now_secs;
+                    // +120s grace: don't flag jobs whose target was <2min ago (clock skew)
+                }
+            }
+            false
+        })
+        .collect();
+
+    if !missed.is_empty() {
+        for job in &missed {
+            tracing::info!(
+                job = %job.name,
+                schedule = %job.schedule,
+                "Missed one-shot cron job — auto-disabling"
+            );
+            let _ = store.set_enabled(&job.name, false);
+        }
+        tracing::warn!(
+            count = missed.len(),
+            jobs = ?missed.iter().map(|j| &j.name).collect::<Vec<_>>(),
+            "Detected missed one-shot cron jobs on startup"
+        );
+    }
+}
+
+/// Spawn a background task that checks cron jobs every 15 seconds
 /// and fires the injected `spawn` callback for matching jobs.
 ///
 /// P2-2 · C13 解:会话编排(构造 Agent/RunContext)已上天盘
@@ -111,7 +217,10 @@ pub fn spawn_cron_runner(
     spawn: Arc<dyn Fn(String, String) + Send + Sync>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        // Run an initial missed-task check on startup before entering the loop.
+        detect_and_notify_missed(&store);
+
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(15));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {
@@ -145,7 +254,7 @@ pub fn spawn_cron_runner(
                     crate::palaces::zhen_tool::builtin::cron::TriggerMode::Once
                 );
                 let matches_now = if is_once {
-                    once_matches(&job.schedule)
+                    once_matches(&job.schedule, &job.name)
                 } else {
                     cron_matches(&job.schedule)
                 };
@@ -153,10 +262,10 @@ pub fn spawn_cron_runner(
                     continue;
                 }
 
-                // Tick-resolution dedup: 30s tick can land twice within the same
-                // cron-matched minute. Skip if already fired less than 60s ago.
+                // Tick-resolution dedup: 15s tick can land multiple times within
+                // the same cron-matched minute. Skip if already fired less than 45s ago.
                 if let Some(last) = job.last_fired_at
-                    && now_secs - last < 60
+                    && now_secs - last < 45
                 {
                     continue;
                 }
@@ -170,7 +279,28 @@ pub fn spawn_cron_runner(
                     continue;
                 }
 
+                // ── Jitter: spread fleet-wide fire times ──
+                // For recurring jobs: sleep a deterministic per-job delay
+                // to avoid thundering herd on :00 boundary.
+                //
+                // IMPORTANT: record_fired is called BEFORE the jitter sleep so
+                // last_fired_at reflects the tick time, not the post-jitter time.
+                // This keeps the 45s dedup guard working correctly (otherwise
+                // now_secs - last_fired_at wraps when jitter > 15s).
                 store.record_fired(&job.name);
+
+                if !is_once {
+                    let interval_secs = estimate_cron_interval_secs(&job.schedule);
+                    let jitter_ms = jitter::within_minute_jitter_ms(&job.name, interval_secs);
+                    if jitter_ms > 0 {
+                        tracing::debug!(
+                            job = %job.name,
+                            jitter_ms = jitter_ms,
+                            "Cron jitter delay"
+                        );
+                        tokio::time::sleep(std::time::Duration::from_millis(jitter_ms)).await;
+                    }
+                }
                 tracing::info!(
                     job = %job.name,
                     schedule = %job.schedule,

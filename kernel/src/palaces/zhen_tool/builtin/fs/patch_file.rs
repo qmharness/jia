@@ -29,8 +29,15 @@ impl BaseTool for EditTool {
 
     fn description(&self) -> String {
         "Perform exact string replacements in an existing file. \
-         The old_string must match exactly one location in the file. \
-         If the string is not unique, the edit is rejected."
+         The old_string must match exactly one location in the file — \
+         if it is absent or occurs multiple times, the edit is rejected; \
+         include more surrounding context to make it unique. \
+         Freshness gate: you MUST read_file this file earlier in the session \
+         before patching it; if the file was modified externally since your \
+         last read (mtime changed), the edit is rejected and you must \
+         read_file it again — your old_string was matched against bytes that \
+         no longer exist. A successful patch refreshes the gate, so \
+         consecutive edits by you do not require a re-read."
             .to_string()
     }
 
@@ -67,6 +74,20 @@ impl BaseTool for EditTool {
         false
     }
 
+    fn accesses(&self, input: &Value) -> crate::palaces::zhen_tool::base::ToolAccesses {
+        // U1: declares exactly the target path; patches to disjoint files may
+        // run in parallel (freshness gate is per-path and read_state is
+        // Arc<Mutex>, so concurrent checks are safe).
+        match input["path"].as_str() {
+            Some(p) if !p.is_empty() => {
+                crate::palaces::zhen_tool::base::ToolAccesses::write_only(vec![
+                    std::path::PathBuf::from(p),
+                ])
+            }
+            _ => crate::palaces::zhen_tool::base::ToolAccesses::all(),
+        }
+    }
+
     async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, ToolError> {
         let path = input["path"].as_str().ok_or("Missing 'path' parameter")?;
         let old_string = input["old_string"]
@@ -77,6 +98,15 @@ impl BaseTool for EditTool {
             .ok_or("Missing 'new_string' parameter")?;
 
         let canonical = ctx.permissions.verify_path(path, PathOp::Write)?;
+
+        // Freshness gate (#4): verify agent has read the file recently
+        let meta = tokio::fs::metadata(&canonical)
+            .await
+            .map_err(|e| format!("Cannot stat file: {e}"))?;
+        if let Ok(mtime) = meta.modified() {
+            ctx.check_freshness(&canonical, mtime)
+                .map_err(|e| ToolError::PermissionDenied(e))?;
+        }
 
         let content = tokio::fs::read_to_string(&canonical)
             .await
@@ -134,6 +164,13 @@ impl BaseTool for EditTool {
             .await
             .map_err(|e| format!("write error: {e}"))?;
 
+        // Update read_state after successful patch (#4 write-then-read rule)
+        if let Ok(meta) = tokio::fs::metadata(&canonical).await {
+            if let Ok(mtime) = meta.modified() {
+                ctx.record_read(canonical.clone(), mtime);
+            }
+        }
+
         Ok(format!(
             "Successfully edited {} (1 replacement)",
             canonical.display()
@@ -143,8 +180,6 @@ impl BaseTool for EditTool {
 
 #[cfg(test)]
 mod tests {
-    use crate::palaces::qian_permission::PermissionMatrix;
-    use std::sync::Arc;
     fn test_ctx() -> crate::stems::action::ExecContext {
         use crate::palaces::qian_permission::PermissionMatrix;
         use std::sync::Arc;
@@ -152,10 +187,6 @@ mod tests {
     }
 
     use super::*;
-
-    fn test_perms() -> Arc<PermissionMatrix> {
-        Arc::new(PermissionMatrix::default())
-    }
 
     fn test_dir() -> tempfile::TempDir {
         tempfile::TempDir::new_in(std::env::current_dir().unwrap()).unwrap()
@@ -173,6 +204,11 @@ mod tests {
         let (_dir, path) = with_temp_file("Hello, world!\nThis is a test.\n");
         let path_str = path.to_string_lossy().to_string();
 
+        // Pre-populate read_state for freshness gate (#4)
+        let ctx = test_ctx();
+        let mtime = std::fs::metadata(&path).unwrap().modified().unwrap();
+        ctx.record_read(path.clone(), mtime);
+
         let tool = EditTool::new();
         let result = tool
             .execute(
@@ -181,7 +217,7 @@ mod tests {
                     "old_string": "world",
                     "new_string": "Jia"
                 }),
-                &test_ctx(),
+                &ctx,
             )
             .await;
         assert!(result.is_ok(), "edit failed: {:?}", result.err());
@@ -195,6 +231,11 @@ mod tests {
         let (_dir, path) = with_temp_file("foo\nbar\nfoo\n");
         let path_str = path.to_string_lossy().to_string();
 
+        // Pre-populate read_state for freshness gate (#4)
+        let ctx = test_ctx();
+        let mtime = std::fs::metadata(&path).unwrap().modified().unwrap();
+        ctx.record_read(path.clone(), mtime);
+
         let tool = EditTool::new();
         let result = tool
             .execute(
@@ -203,7 +244,7 @@ mod tests {
                     "old_string": "foo",
                     "new_string": "baz"
                 }),
-                &test_ctx(),
+                &ctx,
             )
             .await;
         assert!(result.is_err());
@@ -220,6 +261,11 @@ mod tests {
         let (_dir, path) = with_temp_file("hello\n");
         let path_str = path.to_string_lossy().to_string();
 
+        // Pre-populate read_state for freshness gate (#4)
+        let ctx = test_ctx();
+        let mtime = std::fs::metadata(&path).unwrap().modified().unwrap();
+        ctx.record_read(path.clone(), mtime);
+
         let tool = EditTool::new();
         let result = tool
             .execute(
@@ -228,7 +274,7 @@ mod tests {
                     "old_string": "nonexistent",
                     "new_string": "x"
                 }),
-                &test_ctx(),
+                &ctx,
             )
             .await;
         assert!(result.is_err());

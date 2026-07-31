@@ -2,10 +2,11 @@ use std::sync::Arc;
 // ── MCP stdio Connection ──────────────────────────────────────
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::Duration;
 
 use serde_json::Value;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
 use tokio::process::{Child, Command};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
@@ -16,14 +17,22 @@ struct PendingRequest {
     tx: oneshot::Sender<Result<Value, String>>,
 }
 
+/// In-flight JSON-RPC requests awaiting a response, shared with the reader task.
+type PendingMap = Arc<Mutex<HashMap<u64, PendingRequest>>>;
+
 /// A managed stdio connection to one MCP server process.
 pub struct McpConnection {
     name: String,
     next_id: AtomicU64,
-    pending: Arc<Mutex<HashMap<u64, PendingRequest>>>,
+    pending: PendingMap,
     send_tx: mpsc::UnboundedSender<String>,
     child: Mutex<Option<Child>>,
     server_info: ServerInfo,
+    /// Per-request timeout (from `McpServerConfig::timeout_secs`).
+    timeout: Duration,
+    /// Set by the reader task when the server closes the connection; further
+    /// requests fail fast instead of queueing behind a dead pipe.
+    closed: Arc<AtomicBool>,
 }
 
 /// Wrap a command for OS-level sandbox execution (block network).
@@ -83,9 +92,10 @@ impl McpConnection {
         let stdin = child.stdin.take().ok_or("no stdin pipe")?;
         let stdout = child.stdout.take().ok_or("no stdout pipe")?;
 
+        let timeout = Duration::from_secs(config.timeout_secs);
         let (send_tx, mut send_rx) = mpsc::unbounded_channel::<String>();
-        let pending: Arc<Mutex<HashMap<u64, PendingRequest>>> =
-            Arc::new(Mutex::new(HashMap::new()));
+        let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
+        let closed = Arc::new(AtomicBool::new(false));
 
         // ── writer task ──────────────────────────────────
         let mut stdin_writer = tokio::io::BufWriter::new(stdin);
@@ -104,38 +114,14 @@ impl McpConnection {
         });
 
         // ── reader task ──────────────────────────────────
-        let reader_pending = pending.clone();
         let reader = BufReader::new(stdout);
-        let mut lines = reader.lines();
-        tokio::spawn(async move {
-            while let Ok(Some(line)) = lines.next_line().await {
-                let line = line.trim().to_string();
-                if line.is_empty() {
-                    continue;
-                }
-                let resp: JsonRpcResponse = match serde_json::from_str(&line) {
-                    Ok(r) => r,
-                    Err(_) => continue,
-                };
-                match resp {
-                    JsonRpcResponse::Ok { id, result, .. } => {
-                        let mut guard = reader_pending.lock().await;
-                        if let Some(pr) = guard.remove(&id) {
-                            let _ = pr.tx.send(Ok(result));
-                        }
-                    }
-                    JsonRpcResponse::Err { id, error, .. } => {
-                        let mut guard = reader_pending.lock().await;
-                        if let Some(pr) = guard.remove(&id) {
-                            let _ = pr.tx.send(Err(error.message));
-                        }
-                    }
-                    JsonRpcResponse::Notification { .. } => {}
-                }
-            }
-        });
+        tokio::spawn(run_reader(
+            reader.lines(),
+            pending.clone(),
+            closed.clone(),
+        ));
 
-        // ── Initialize handshake ─────────────────────────
+        // ── Initialize handshake (bounded by the same timeout) ──
         let next_id = AtomicU64::new(1);
         let init_params = serde_json::json!({
             "protocolVersion": MCP_PROTOCOL_VERSION,
@@ -145,14 +131,26 @@ impl McpConnection {
                 "version": CLIENT_VERSION,
             }
         });
-        let init_resp = rpc_request(
+        let init_resp = match rpc_request(
             &next_id,
             &pending,
             &send_tx,
             METHOD_INITIALIZE,
             Some(init_params),
+            timeout,
         )
-        .await?;
+        .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                let _ = child.start_kill();
+                fail_all_pending(&pending, "MCP connection closed during initialize").await;
+                return Err(format!(
+                    "MCP server '{}' initialize failed: {e}",
+                    config.name
+                ));
+            }
+        };
 
         let init_result: InitializeResult = serde_json::from_value(init_resp)
             .map_err(|e| format!("Bad initialize response: {e}"))?;
@@ -166,11 +164,24 @@ impl McpConnection {
             send_tx,
             child: Mutex::new(Some(child)),
             server_info: init_result.server_info,
+            timeout,
+            closed,
         })
     }
 
     pub async fn send_request(&self, method: &str, params: Option<Value>) -> Result<Value, String> {
-        rpc_request(&self.next_id, &self.pending, &self.send_tx, method, params).await
+        if self.closed.load(Ordering::SeqCst) {
+            return Err("MCP connection is closed".to_string());
+        }
+        rpc_request(
+            &self.next_id,
+            &self.pending,
+            &self.send_tx,
+            method,
+            params,
+            self.timeout,
+        )
+        .await
     }
 
     pub async fn send_notification(&self, method: &str, params: Option<Value>) {
@@ -190,7 +201,10 @@ impl McpConnection {
             arguments,
         })
         .map_err(|e| format!("Serialize error: {e}"))?;
-        let result = self.send_request(METHOD_TOOLS_CALL, Some(params)).await?;
+        let result = self
+            .send_request(METHOD_TOOLS_CALL, Some(params))
+            .await
+            .map_err(|e| format!("MCP server '{}' tool '{}': {e}", self.name, name))?;
         let call_result: ToolsCallResult =
             serde_json::from_value(result).map_err(|e| format!("Bad tools/call response: {e}"))?;
 
@@ -222,12 +236,58 @@ impl Drop for McpConnection {
 
 // ── Free functions (shared between connect handshake and McpConnection) ──
 
+/// Reader loop: dispatch responses to pending requests. On EOF or read error
+/// the server is gone — mark the connection closed and fail every in-flight
+/// request so no caller hangs forever (TOOL-C3).
+async fn run_reader<R: AsyncBufRead + Unpin>(
+    mut lines: Lines<R>,
+    pending: PendingMap,
+    closed: Arc<AtomicBool>,
+) {
+    while let Ok(Some(line)) = lines.next_line().await {
+        let line = line.trim().to_string();
+        if line.is_empty() {
+            continue;
+        }
+        let resp: JsonRpcResponse = match serde_json::from_str(&line) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        match resp {
+            JsonRpcResponse::Ok { id, result, .. } => {
+                let mut guard = pending.lock().await;
+                if let Some(pr) = guard.remove(&id) {
+                    let _ = pr.tx.send(Ok(result));
+                }
+            }
+            JsonRpcResponse::Err { id, error, .. } => {
+                let mut guard = pending.lock().await;
+                if let Some(pr) = guard.remove(&id) {
+                    let _ = pr.tx.send(Err(error.message));
+                }
+            }
+            JsonRpcResponse::Notification { .. } => {}
+        }
+    }
+    closed.store(true, Ordering::SeqCst);
+    fail_all_pending(&pending, "MCP connection closed by server").await;
+}
+
+/// Complete every outstanding request with `reason` and empty the map.
+async fn fail_all_pending(pending: &PendingMap, reason: &str) {
+    let mut guard = pending.lock().await;
+    for (_, pr) in guard.drain() {
+        let _ = pr.tx.send(Err(reason.to_string()));
+    }
+}
+
 async fn rpc_request(
     next_id: &AtomicU64,
-    pending: &Arc<Mutex<HashMap<u64, PendingRequest>>>,
+    pending: &PendingMap,
     send_tx: &mpsc::UnboundedSender<String>,
     method: &str,
     params: Option<Value>,
+    timeout: Duration,
 ) -> Result<Value, String> {
     let id = next_id.fetch_add(1, Ordering::SeqCst);
     let req = serde_json::to_string(&JsonRpcRequest {
@@ -240,13 +300,23 @@ async fn rpc_request(
 
     let (tx, rx) = oneshot::channel();
     pending.lock().await.insert(id, PendingRequest { tx });
-    send_tx
-        .send(req)
-        .map_err(|e| format!("Connection closed: {e}"))?;
-    tokio::time::timeout(std::time::Duration::from_secs(60), rx)
-        .await
-        .map_err(|_| "MCP request timed out after 60s".to_string())?
-        .map_err(|_| "Request cancelled".to_string())?
+    if let Err(e) = send_tx.send(req) {
+        pending.lock().await.remove(&id);
+        return Err(format!("Connection closed: {e}"));
+    }
+    match tokio::time::timeout(timeout, rx).await {
+        Ok(Ok(res)) => res,
+        Ok(Err(_)) => Err("MCP request cancelled: connection dropped".to_string()),
+        Err(_) => {
+            // Timed out — drop the pending entry so a late response is ignored
+            // and the map cannot grow unboundedly (TOOL-C2).
+            pending.lock().await.remove(&id);
+            Err(format!(
+                "MCP request '{method}' timed out after {}s",
+                timeout.as_secs()
+            ))
+        }
+    }
 }
 
 async fn rpc_notification(
@@ -261,5 +331,128 @@ async fn rpc_notification(
     });
     if let Ok(s) = serde_json::to_string(&notif) {
         let _ = send_tx.send(s);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn new_pending() -> PendingMap {
+        Arc::new(Mutex::new(HashMap::new()))
+    }
+
+    /// TOOL-C2: a request whose server never answers must return a timeout
+    /// error (bounded wait), and its pending entry must be cleaned up.
+    #[tokio::test]
+    async fn request_timeout_returns_error_and_cleans_pending() {
+        let next_id = AtomicU64::new(1);
+        let pending = new_pending();
+        let (send_tx, mut send_rx) = mpsc::unbounded_channel::<String>();
+        // Drain outbound frames so the writer side stays open but never answers.
+        let drainer = tokio::spawn(async move { while send_rx.recv().await.is_some() {} });
+
+        let err = rpc_request(
+            &next_id,
+            &pending,
+            &send_tx,
+            METHOD_TOOLS_CALL,
+            None,
+            Duration::from_millis(50),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.contains("timed out"), "err: {err}");
+        assert!(err.contains(METHOD_TOOLS_CALL), "err names the method: {err}");
+        assert!(
+            pending.lock().await.is_empty(),
+            "pending entry must be removed on timeout"
+        );
+        drop(send_tx);
+        drainer.await.unwrap();
+    }
+
+    /// TOOL-C3: when the reader task sees EOF (server exited), in-flight
+    /// requests must immediately fail with a connection-closed error.
+    #[tokio::test]
+    async fn reader_exit_fails_pending_with_connection_closed() {
+        let (client, server) = tokio::io::duplex(1024);
+        let pending = new_pending();
+        let closed = Arc::new(AtomicBool::new(false));
+        let reader = tokio::spawn(run_reader(
+            BufReader::new(client).lines(),
+            pending.clone(),
+            closed.clone(),
+        ));
+
+        // A call is in flight, awaiting its response.
+        let (tx, rx) = oneshot::channel();
+        pending.lock().await.insert(1, PendingRequest { tx });
+
+        // Server dies without answering.
+        drop(server);
+
+        reader.await.unwrap();
+        let err = rx.await.unwrap().unwrap_err();
+        assert!(err.contains("connection closed"), "err: {err}");
+        assert!(closed.load(Ordering::SeqCst), "closed flag set");
+        assert!(pending.lock().await.is_empty(), "pending drained");
+    }
+
+    /// Reader dispatches a response line to the matching pending request.
+    #[tokio::test]
+    async fn reader_dispatches_response_to_pending() {
+        let (client, mut server) = tokio::io::duplex(1024);
+        let pending = new_pending();
+        let closed = Arc::new(AtomicBool::new(false));
+        let reader = tokio::spawn(run_reader(
+            BufReader::new(client).lines(),
+            pending.clone(),
+            closed,
+        ));
+
+        let (tx, rx) = oneshot::channel();
+        pending.lock().await.insert(7, PendingRequest { tx });
+        server
+            .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"ok\":true}}\n")
+            .await
+            .unwrap();
+
+        let res = tokio::time::timeout(Duration::from_secs(1), rx)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(res["ok"], Value::Bool(true));
+
+        drop(server);
+        reader.await.unwrap();
+    }
+
+    /// Handshake timeout: the initialize request uses the same bounded
+    /// rpc_request, so a silent server fails connect instead of hanging.
+    #[tokio::test]
+    async fn initialize_handshake_times_out_when_server_silent() {
+        let next_id = AtomicU64::new(1);
+        let pending = new_pending();
+        let (send_tx, mut send_rx) = mpsc::unbounded_channel::<String>();
+        let drainer = tokio::spawn(async move { while send_rx.recv().await.is_some() {} });
+
+        let err = rpc_request(
+            &next_id,
+            &pending,
+            &send_tx,
+            METHOD_INITIALIZE,
+            None,
+            Duration::from_millis(50),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.contains("timed out"), "err: {err}");
+        assert!(err.contains(METHOD_INITIALIZE), "err names the method: {err}");
+        drop(send_tx);
+        drainer.await.unwrap();
     }
 }

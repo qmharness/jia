@@ -67,6 +67,14 @@ impl BaseTool for LspTool {
         false
     }
 
+    fn accesses(&self, _input: &Value) -> crate::palaces::zhen_tool::base::ToolAccesses {
+        // U1 appendix red line: this tool holds session-level mutable state
+        // (LspManager — long-lived language servers, didOpen mutations), so
+        // it must NOT declare parallelizable access. Keep the All barrier
+        // even though operations are read-only (Wu).
+        crate::palaces::zhen_tool::base::ToolAccesses::all()
+    }
+
     fn parameters_schema(&self) -> Value {
         serde_json::json!({
             "type": "object",
@@ -504,8 +512,6 @@ impl Drop for LspServerHandle {
 
 #[cfg(test)]
 mod tests {
-    use crate::palaces::qian_permission::PermissionMatrix;
-    use std::sync::Arc;
     fn test_ctx() -> crate::stems::action::ExecContext {
         use crate::palaces::qian_permission::PermissionMatrix;
         use std::sync::Arc;

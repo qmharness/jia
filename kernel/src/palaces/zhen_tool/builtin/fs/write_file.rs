@@ -60,12 +60,35 @@ impl BaseTool for WriteFileTool {
         false
     }
 
+    fn accesses(&self, input: &Value) -> crate::palaces::zhen_tool::base::ToolAccesses {
+        // U1: declares exactly the target path; the conflict matrix serializes
+        // intersecting reads/writes, so disjoint writes may run in parallel.
+        // (Backups go to a timestamped per-second dir — disjoint targets keep
+        // disjoint backup file names.)
+        match input["path"].as_str() {
+            Some(p) if !p.is_empty() => {
+                crate::palaces::zhen_tool::base::ToolAccesses::write_only(vec![
+                    std::path::PathBuf::from(p),
+                ])
+            }
+            _ => crate::palaces::zhen_tool::base::ToolAccesses::all(),
+        }
+    }
+
     async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, ToolError> {
         let path = input["path"].as_str().ok_or("Missing 'path' parameter")?;
         let content = input["content"]
             .as_str()
             .ok_or("Missing 'content' parameter")?;
         let canonical = ctx.permissions.verify_path(path, PathOp::Write)?;
+
+        // Freshness gate (#4): if file exists, verify agent has read it recently
+        if let Ok(meta) = tokio::fs::metadata(&canonical).await {
+            if let Ok(mtime) = meta.modified() {
+                ctx.check_freshness(&canonical, mtime)
+                    .map_err(|e| ToolError::PermissionDenied(e))?;
+            }
+        }
 
         // Backup existing file before overwriting
         if tokio::fs::try_exists(&canonical).await.unwrap_or(false) {
@@ -84,6 +107,14 @@ impl BaseTool for WriteFileTool {
         tokio::fs::write(&canonical, content)
             .await
             .map_err(|e| format!("write_file error: {e}"))?;
+
+        // Update read_state after successful write (#4 write-then-read rule)
+        if let Ok(meta) = tokio::fs::metadata(&canonical).await {
+            if let Ok(mtime) = meta.modified() {
+                ctx.record_read(canonical.clone(), mtime);
+            }
+        }
+
         Ok(format!(
             "Wrote {} bytes to {}",
             content.len(),
@@ -94,8 +125,6 @@ impl BaseTool for WriteFileTool {
 
 #[cfg(test)]
 mod tests {
-    use crate::palaces::qian_permission::PermissionMatrix;
-    use std::sync::Arc;
     fn test_ctx() -> crate::stems::action::ExecContext {
         use crate::palaces::qian_permission::PermissionMatrix;
         use std::sync::Arc;
@@ -103,10 +132,6 @@ mod tests {
     }
 
     use super::*;
-
-    fn test_perms() -> Arc<PermissionMatrix> {
-        Arc::new(PermissionMatrix::default())
-    }
 
     #[tokio::test]
     async fn write_and_read_file() {

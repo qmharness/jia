@@ -157,8 +157,6 @@ impl BaseTool for WebSearchTool {
 
 #[cfg(test)]
 mod tests {
-    use crate::palaces::qian_permission::PermissionMatrix;
-    use std::sync::Arc;
     fn test_ctx() -> crate::stems::action::ExecContext {
         use crate::palaces::qian_permission::PermissionMatrix;
         use std::sync::Arc;
@@ -166,10 +164,6 @@ mod tests {
     }
 
     use super::*;
-
-    fn test_perms() -> Arc<PermissionMatrix> {
-        Arc::new(PermissionMatrix::default())
-    }
 
     #[tokio::test]
     async fn web_search_missing_query() {

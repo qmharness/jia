@@ -108,6 +108,14 @@ impl BaseTool for EnterWorktreeTool {
         false
     }
 
+    fn accesses(&self, _input: &Value) -> crate::palaces::zhen_tool::base::ToolAccesses {
+        // U1/A2: ceremony says Wu (read-only) but this tool swaps the
+        // ExecContext permission matrix — a write-level state change.
+        // Explicit All: a natural serial barrier (B1: no worktree swap may
+        // happen while a concurrent batch holds ExecContext snapshots).
+        crate::palaces::zhen_tool::base::ToolAccesses::all()
+    }
+
     fn parameters_schema(&self) -> Value {
         serde_json::json!({
             "type": "object",
@@ -189,6 +197,12 @@ impl BaseTool for ExitWorktreeTool {
         false
     }
 
+    fn accesses(&self, _input: &Value) -> crate::palaces::zhen_tool::base::ToolAccesses {
+        // U1/A2: restores the ExecContext permission matrix — write-level
+        // state change. Explicit All barrier (see EnterWorktreeTool).
+        crate::palaces::zhen_tool::base::ToolAccesses::all()
+    }
+
     fn parameters_schema(&self) -> Value {
         serde_json::json!({
             "type": "object",
@@ -220,7 +234,6 @@ pub async fn remove_worktree(main_root: &Path, worktree: &Path, force: bool) -> 
 
 #[cfg(test)]
 mod tests {
-    use crate::palaces::qian_permission::PermissionMatrix;
     use std::sync::Arc;
     fn test_ctx() -> crate::stems::action::ExecContext {
         use crate::palaces::qian_permission::PermissionMatrix;
@@ -273,7 +286,7 @@ mod tests {
         // PermissionMatrix rooted at the temp repo
         let mut sec = crate::palaces::kun_config::SecuritySection::default();
         sec.workspace_root = Some(root.to_string_lossy().to_string());
-        let perms = Arc::new(
+        let _perms = Arc::new(
             crate::palaces::qian_permission::PermissionMatrix::from_config(
                 &sec,
                 &root,

@@ -281,8 +281,6 @@ fn decode_entity(entity: &str) -> Option<char> {
 
 #[cfg(test)]
 mod tests {
-    use crate::palaces::qian_permission::PermissionMatrix;
-    use std::sync::Arc;
     fn test_ctx() -> crate::stems::action::ExecContext {
         use crate::palaces::qian_permission::PermissionMatrix;
         use std::sync::Arc;
@@ -290,10 +288,6 @@ mod tests {
     }
 
     use super::*;
-
-    fn test_perms() -> Arc<PermissionMatrix> {
-        Arc::new(PermissionMatrix::default())
-    }
 
     #[test]
     fn test_html_to_text_basic() {

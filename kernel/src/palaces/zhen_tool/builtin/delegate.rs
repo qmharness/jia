@@ -10,6 +10,7 @@ use crate::palaces::gen_store::Store;
 use crate::palaces::zhen_tool::base::BaseTool;
 
 use crate::palaces::zhen_tool::registry::ToolRegistry;
+use crate::plates::tian_heaven::subagent_batch::{BatchPermit, SubagentBatch};
 use crate::palaces::zhong_core::JiaCore;
 use crate::stems::CeremoniesIntent;
 use crate::stems::action::ExecContext;
@@ -24,6 +25,8 @@ pub struct DelegateTool {
     sessions: Arc<Mutex<HashMap<String, SubagentSession>>>,
     /// P1 · SQLite-backed persistence for crash recovery.
     store: Arc<Store>,
+    /// Burst-then-throttle concurrency control for sub-agents.
+    subagent_batch: Arc<SubagentBatch>,
 }
 
 impl DelegateTool {
@@ -32,12 +35,14 @@ impl DelegateTool {
         subtools: Arc<ToolRegistry>,
         store: Arc<Store>,
         sessions: Arc<Mutex<HashMap<String, SubagentSession>>>,
+        subagent_batch: Arc<SubagentBatch>,
     ) -> Self {
         Self {
             core,
             subtools,
             sessions,
             store,
+            subagent_batch,
         }
     }
 }
@@ -197,8 +202,25 @@ impl BaseTool for DelegateTool {
         // 模板拒绝(LMStudio jinja: "No user query found in messages.")。
         messages.push(Message::text(Role::User, prompt.to_string()));
 
+        // Burst-then-throttle: acquire a permit before spawning the sub-agent.
+        // 5-minute timeout prevents indefinite blocking.
+        let permit_fut = self.subagent_batch.acquire();
+        let result: Result<BatchPermit, _> = tokio::time::timeout(
+            std::time::Duration::from_secs(300),
+            permit_fut,
+        )
+        .await
+        .map_err(|_| {
+            let name: &str = self.name();
+            ToolError::exec(name, "Timed out waiting for sub-agent slot")
+        });
+        let _permit = result?;
+
         let result =
             run_subagent_loop(&self.core, &self.subtools, &mut messages, max_turns, ctx).await?;
+
+        // On successful completion, maybe recover capacity
+        self.subagent_batch.maybe_recover();
 
         // P8 · persist the sub-agent conversation for send_message continuation.
         let subagent_id = uuid::Uuid::new_v4().to_string();
@@ -365,6 +387,7 @@ pub struct SendMessageTool {
     core: Arc<JiaCore>,
     subtools: Arc<ToolRegistry>,
     sessions: Arc<Mutex<HashMap<String, SubagentSession>>>,
+    subagent_batch: Arc<SubagentBatch>,
 }
 
 impl SendMessageTool {
@@ -372,11 +395,13 @@ impl SendMessageTool {
         core: Arc<JiaCore>,
         subtools: Arc<ToolRegistry>,
         sessions: Arc<Mutex<HashMap<String, SubagentSession>>>,
+        subagent_batch: Arc<SubagentBatch>,
     ) -> Self {
         Self {
             core,
             subtools,
             sessions,
+            subagent_batch,
         }
     }
 }
@@ -460,8 +485,25 @@ impl BaseTool for SendMessageTool {
         };
 
         messages.push(Message::text(Role::User, message.to_string()));
+        // Burst-then-throttle: acquire a permit before spawning the sub-agent.
+        // 5-minute timeout prevents indefinite blocking.
+        let permit_fut = self.subagent_batch.acquire();
+        let result: Result<BatchPermit, _> = tokio::time::timeout(
+            std::time::Duration::from_secs(300),
+            permit_fut,
+        )
+        .await
+        .map_err(|_| {
+            let name: &str = self.name();
+            ToolError::exec(name, "Timed out waiting for sub-agent slot")
+        });
+        let _permit = result?;
+
         let result =
             run_subagent_loop(&self.core, &self.subtools, &mut messages, max_turns, ctx).await?;
+
+        // On successful completion, maybe recover capacity
+        self.subagent_batch.maybe_recover();
 
         // Store the updated conversation back
         {
@@ -489,11 +531,6 @@ mod tests {
 
     use super::*;
     use crate::palaces::zhen_tool::builtin;
-    use crate::stems::action::ExecContext;
-
-    fn test_perms() -> Arc<PermissionMatrix> {
-        Arc::new(PermissionMatrix::default())
-    }
 
     fn test_core() -> Arc<JiaCore> {
         use crate::palaces::kun_config::ProviderProfile;
@@ -531,6 +568,10 @@ mod tests {
         Arc::new(Mutex::new(HashMap::new()))
     }
 
+    fn test_batch() -> Arc<SubagentBatch> {
+        Arc::new(SubagentBatch::new())
+    }
+
     #[test]
     fn test_subagent_type_from_str() {
         assert!(matches!(
@@ -546,7 +587,7 @@ mod tests {
 
     #[tokio::test]
     async fn delegate_missing_params() {
-        let tool = DelegateTool::new(test_core(), test_subtools(), test_store(), test_sessions());
+        let tool = DelegateTool::new(test_core(), test_subtools(), test_store(), test_sessions(), test_batch());
         assert!(
             tool.execute(serde_json::json!({}), &test_ctx())
                 .await
@@ -561,7 +602,7 @@ mod tests {
 
     #[tokio::test]
     async fn delegate_unknown_type() {
-        let tool = DelegateTool::new(test_core(), test_subtools(), test_store(), test_sessions());
+        let tool = DelegateTool::new(test_core(), test_subtools(), test_store(), test_sessions(), test_batch());
         let result = tool
             .execute(
                 serde_json::json!({
@@ -588,7 +629,7 @@ mod tests {
             "analysis: found X".to_string(),
         ]));
         let sessions = test_sessions();
-        let tool = DelegateTool::new(core, test_subtools(), test_store(), sessions.clone());
+        let tool = DelegateTool::new(core, test_subtools(), test_store(), sessions.clone(), test_batch());
         let res = tool
             .execute(
                 serde_json::json!({
@@ -618,7 +659,7 @@ mod tests {
             "initial analysis".to_string(),
         ]));
         let sessions = test_sessions();
-        let delegate = DelegateTool::new(core, test_subtools(), test_store(), sessions.clone());
+        let delegate = DelegateTool::new(core, test_subtools(), test_store(), sessions.clone(), test_batch());
         let out = delegate
             .execute(
                 serde_json::json!({
@@ -639,7 +680,7 @@ mod tests {
         let core2 = Arc::new(crate::palaces::zhong_core::JiaCore::with_mock(vec![
             "follow-up answer".to_string(),
         ]));
-        let sm = SendMessageTool::new(core2, test_subtools(), sessions.clone());
+        let sm = SendMessageTool::new(core2, test_subtools(), sessions.clone(), test_batch());
         let res = sm
             .execute(
                 serde_json::json!({
@@ -655,7 +696,7 @@ mod tests {
 
     #[tokio::test]
     async fn send_message_unknown_id() {
-        let sm = SendMessageTool::new(test_core(), test_subtools(), test_sessions());
+        let sm = SendMessageTool::new(test_core(), test_subtools(), test_sessions(), test_batch());
         let res = sm
             .execute(
                 serde_json::json!({
@@ -725,7 +766,7 @@ mod tests {
             8192,
         ));
 
-        let tool = DelegateTool::new(core, test_subtools(), test_store(), test_sessions());
+        let tool = DelegateTool::new(core, test_subtools(), test_store(), test_sessions(), test_batch());
         let mut ctx = test_ctx();
         ctx.cancel_token = token;
 
@@ -791,7 +832,7 @@ mod tests {
             8192,
         ));
 
-        let tool = DelegateTool::new(core, test_subtools(), test_store(), test_sessions());
+        let tool = DelegateTool::new(core, test_subtools(), test_store(), test_sessions(), test_batch());
         let ctx = test_ctx();
 
         let res = tool

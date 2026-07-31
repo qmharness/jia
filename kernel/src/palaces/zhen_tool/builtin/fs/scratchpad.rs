@@ -180,11 +180,6 @@ impl BaseTool for ScratchpadReadTool {
 mod tests {
     use crate::palaces::qian_permission::PermissionMatrix;
     use std::sync::Arc;
-    fn test_ctx() -> crate::stems::action::ExecContext {
-        use crate::palaces::qian_permission::PermissionMatrix;
-        use std::sync::Arc;
-        crate::stems::action::ExecContext::new(Arc::new(PermissionMatrix::default()))
-    }
 
     use super::*;
 
