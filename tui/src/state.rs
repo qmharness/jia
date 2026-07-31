@@ -278,7 +278,8 @@ impl App {
                     // 未发送(断连):保留 composer 文本,notice 已在 send_agent_message 内显示
                 } else if handled && self.status == StatusIcon::Working {
                     // #9 · agent busy — 输入不再静默丢弃:作为 steer 插话发送
-                    // (next 默认,折入下一检查点;/now 前缀走取消,同 Esc)。
+                    // (next 默认,折入下一检查点;/now 前缀走取消,同 Esc;
+                    // /later 前缀留待 turn 末折入)。
                     let text = self.composer.text();
                     if !text.trim().is_empty() && self.send_steer(text.trim()) {
                         self.composer.add_to_history(&text);
@@ -937,13 +938,11 @@ impl App {
 
     /// #9 · agent busy 时发送 steer 插话。next(默认)→ 下一检查点折入;
     /// `/now <text>` 前缀 → now,daemon 侧同时走取消链(与 Esc 相同),
-    /// 本地按 Esc 同款复位(daemon 取消路径不发 Done,P0-4 语义)。
+    /// 本地按 Esc 同款复位(daemon 取消路径不发 Done,P0-4 语义);
+    /// `/later <text>` 前缀 → later,turn 自然结束前折入。
     /// 返回是否真正发出。
     fn send_steer(&mut self, text: &str) -> bool {
-        let (priority, content) = match text.strip_prefix("/now ") {
-            Some(rest) => ("now", rest.trim()),
-            None => ("next", text),
-        };
+        let (priority, content) = parse_steer_input(text);
         if content.is_empty() {
             return false;
         }
@@ -1032,6 +1031,19 @@ impl App {
                 let _ = conn.load_session(&sid).await;
             });
         }
+    }
+}
+
+/// #9 · steer 输入前缀解析:`/now <text>` → now(立即打断,同 Esc),
+/// `/later <text>` → later(turn 自然结束前折入),其余 → next(默认,
+/// 下一检查点折入)。返回 (priority, 去前缀后的内容)。
+fn parse_steer_input(text: &str) -> (&'static str, &str) {
+    if let Some(rest) = text.strip_prefix("/now ") {
+        ("now", rest.trim())
+    } else if let Some(rest) = text.strip_prefix("/later ") {
+        ("later", rest.trim())
+    } else {
+        ("next", text)
     }
 }
 
@@ -1394,5 +1406,81 @@ mod cancel_tests {
         assert_eq!(app.status, StatusIcon::Done);
         assert_eq!(app.lines.len(), lines_before);
         assert!(!app.quit);
+    }
+}
+
+// #9 tests: steer 输入前缀解析(now / later / 默认 next)。
+#[cfg(test)]
+mod steer_tests {
+    use super::*;
+
+    #[test]
+    fn parse_steer_defaults_to_next() {
+        assert_eq!(parse_steer_input("hello"), ("next", "hello"));
+    }
+
+    #[test]
+    fn parse_steer_now_prefix() {
+        assert_eq!(parse_steer_input("/now stop that"), ("now", "stop that"));
+    }
+
+    #[test]
+    fn parse_steer_later_prefix() {
+        assert_eq!(
+            parse_steer_input("/later check the logs"),
+            ("later", "check the logs")
+        );
+        // 前缀后多余空白被 trim。
+        assert_eq!(parse_steer_input("/later   spaced  "), ("later", "spaced"));
+    }
+
+    #[test]
+    fn parse_steer_prefix_without_content_yields_empty() {
+        // 内容为空时 send_steer 直接返回 false(不发送)。
+        assert_eq!(parse_steer_input("/later "), ("later", ""));
+        assert_eq!(parse_steer_input("/now "), ("now", ""));
+    }
+
+    /// `/later` 回显与 next/now 同款 dim 行:断连时 send_steer 返回 false
+    /// 且回显 "Not connected" 提示(解析在连接检查之前,空内容先被拦)。
+    #[test]
+    fn send_steer_disconnected_shows_notice() {
+        let mut app = App {
+            input_mode: InputMode::Normal,
+            lines: Vec::new(),
+            history: Vec::new(),
+            needs_finalize: false,
+            inserted_rows: 0,
+            resize_pending: None,
+            resize_deadline: None,
+            composer: Composer::new(),
+            session_id: Some("sess-1".into()),
+            status: StatusIcon::Working,
+            planning: false,
+            start_time: Instant::now(),
+            last_elapsed: 0,
+            connection: None,
+            reconnect_attempts: 0,
+            sending_allowed: false,
+            llm: LlmInfo {
+                model_id: "test".into(),
+                provider: "test".into(),
+            },
+            spinner_idx: 0,
+            agent_phase: AgentPhase::Reasoning,
+            quit: false,
+            confirm_selected: 0,
+            workspace_name: String::new(),
+            workspace_id: String::new(),
+            stream_anchor: None,
+            running_background_tasks: 0,
+            last_task_notification: None,
+        };
+        assert!(!app.send_steer("/later check the logs"));
+        assert!(app.lines.iter().any(|l| l.text.contains("Not connected")));
+        // 空内容(/later 后无文本)不发送也不回显。
+        let lines_before = app.lines.len();
+        assert!(!app.send_steer("/later "));
+        assert_eq!(app.lines.len(), lines_before);
     }
 }
