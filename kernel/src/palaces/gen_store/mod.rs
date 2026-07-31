@@ -227,7 +227,6 @@ impl Store {
 mod tests {
     use super::*;
     use crate::palaces::Palace;
-    use crate::palaces::qian_permission::PermissionMatrix;
     use crate::stems::Stem;
     use crate::vijnana::alaya::{Seed, SeedContent, SeedNature, SeedSource, SeedTier};
     use std::sync::Arc;

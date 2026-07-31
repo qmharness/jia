@@ -1,4 +1,3 @@
-use std::sync::Arc;
 #[cfg(test)]
 mod integration_tests {
     use super::super::truncate;

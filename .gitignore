@@ -10,3 +10,5 @@ architecture.md
 store.db
 store.db-shm
 store.db-wal
+.jia/
+/graphify-out/
