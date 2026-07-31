@@ -152,6 +152,7 @@ pub fn build_router(state: Arc<AppState>, web_dir: String) -> Router {
         .route("/skills/toggle", post(handle_skills_toggle))
         .route("/skills/evolve-toggle", post(handle_skills_evolve_toggle))
         .route("/agent/cancel", post(handle_cancel))
+        .route("/agent/steer", post(handle_steer))
         .route("/sessions", get(handle_list_sessions))
         .route("/sessions/bulk-delete", post(handle_bulk_delete_sessions))
         .route("/sessions/{id}", get(handle_get_session))
@@ -412,6 +413,8 @@ mod tests {
             io: Arc::new(io),
             config: Arc::new(ConfigLoader::from_app_config(config)),
             tools: Arc::new(ToolRegistry::new()),
+            subagent_readonly_tools: Arc::new(ToolRegistry::new()),
+            subagent_coder_tools: Arc::new(ToolRegistry::new()),
             main_core: core,
             aux_core: None,
             permissions: Arc::new(PermissionMatrix::default()),

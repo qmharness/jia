@@ -125,6 +125,10 @@ pub enum StreamEvent {
         description: String,
         tail_output: String,
     },
+    /// #9 · a steered user message was folded into history mid-turn.
+    SteerFolded {
+        content: String,
+    },
 }
 
 impl StreamEvent {
@@ -204,6 +208,9 @@ impl StreamEvent {
                 description: value["description"].as_str().unwrap_or("?").to_string(),
                 tail_output: value["tail_output"].as_str().unwrap_or("").to_string(),
             }),
+            "steer_folded" => Some(StreamEvent::SteerFolded {
+                content: value["content"].as_str().unwrap_or("").to_string(),
+            }),
             _ => None,
         }
     }
@@ -229,6 +236,13 @@ pub enum ClientMsg {
     },
     #[serde(rename = "cancel")]
     Cancel { session_id: String },
+    /// #9 · turn 内 steer 插话(agent busy 时发送;priority: now/next/later)。
+    #[serde(rename = "steer")]
+    Steer {
+        session_id: String,
+        content: String,
+        priority: String,
+    },
     #[serde(rename = "confirm")]
     Confirm {
         id: String,

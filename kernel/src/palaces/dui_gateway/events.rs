@@ -153,6 +153,46 @@ pub async fn handle_cancel(
     StatusCode::OK
 }
 
+/// #9 · steer 请求体 — turn 内用户插话。
+#[derive(Debug, Deserialize)]
+pub struct SteerBody {
+    session_id: String,
+    content: String,
+    /// now | next | later(缺省 next)。
+    priority: Option<String>,
+}
+
+/// #9 · POST /agent/steer — 会话有活跃 run 时由 loop 检查点折入;无活跃
+/// run 时留在队列,type-ahead 到下一次 run 的首个检查点。Now 额外走与
+/// /agent/cancel 相同的取消路径。
+pub async fn handle_steer(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<SteerBody>,
+) -> StatusCode {
+    if body.session_id.is_empty() || body.content.trim().is_empty() {
+        return StatusCode::BAD_REQUEST;
+    }
+    let Some(earth) = &state.earth else {
+        return StatusCode::SERVICE_UNAVAILABLE;
+    };
+    let priority = match body.priority.as_deref() {
+        Some("now") => crate::plates::ren_human::SteerPriority::Now,
+        Some("later") => crate::plates::ren_human::SteerPriority::Later,
+        _ => crate::plates::ren_human::SteerPriority::Next,
+    };
+    earth.session_bus.push_steer(
+        &body.session_id,
+        crate::plates::ren_human::SteerMessage {
+            content: body.content,
+            priority,
+        },
+    );
+    if priority == crate::plates::ren_human::SteerPriority::Now {
+        state.session_tokens.cancel(&body.session_id);
+    }
+    StatusCode::OK
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

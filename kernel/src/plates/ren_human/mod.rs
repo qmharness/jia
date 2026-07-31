@@ -17,7 +17,7 @@ use crate::stems::action::ToolResult;
 
 pub mod session_bus;
 
-pub use session_bus::{PendingQuestion, SessionBus};
+pub use session_bus::{PendingQuestion, SessionBus, SteerMessage, SteerPriority};
 
 /// A pending user confirmation, stored until resolved or timed out.
 pub struct PendingConfirmation {

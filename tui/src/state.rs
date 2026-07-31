@@ -276,8 +276,15 @@ impl App {
                         self.composer.clear();
                     }
                     // 未发送(断连):保留 composer 文本,notice 已在 send_agent_message 内显示
+                } else if handled && self.status == StatusIcon::Working {
+                    // #9 · agent busy — 输入不再静默丢弃:作为 steer 插话发送
+                    // (next 默认,折入下一检查点;/now 前缀走取消,同 Esc)。
+                    let text = self.composer.text();
+                    if !text.trim().is_empty() && self.send_steer(text.trim()) {
+                        self.composer.add_to_history(&text);
+                        self.composer.clear();
+                    }
                 }
-                // Agent working — Enter is silently ignored
             }
 
             InputMode::Confirm { id, token, .. } => match key.code {
@@ -822,6 +829,14 @@ impl App {
                     Instant::now(),
                 ));
             }
+            StreamEvent::SteerFolded { .. } => {
+                // #9 · steer 已折入 history —— 发送时已本地回显 "↪ steer …",
+                // 此处只补一条 dim 确认,不重复内容。
+                self.lines.push(ChatLine {
+                    text: "  └ steer folded into conversation".to_string(),
+                    style: Style::default().fg(Color::DarkGray),
+                });
+            }
             StreamEvent::ToolCall { .. } => {
                 self.agent_phase = AgentPhase::ToolCalling;
                 // Add blank separator
@@ -918,6 +933,50 @@ impl App {
                 let _ = conn.send(&ClientMsg::Cancel { session_id: sid }).await;
             });
         }
+    }
+
+    /// #9 · agent busy 时发送 steer 插话。next(默认)→ 下一检查点折入;
+    /// `/now <text>` 前缀 → now,daemon 侧同时走取消链(与 Esc 相同),
+    /// 本地按 Esc 同款复位(daemon 取消路径不发 Done,P0-4 语义)。
+    /// 返回是否真正发出。
+    fn send_steer(&mut self, text: &str) -> bool {
+        let (priority, content) = match text.strip_prefix("/now ") {
+            Some(rest) => ("now", rest.trim()),
+            None => ("next", text),
+        };
+        if content.is_empty() {
+            return false;
+        }
+        let Some(conn) = &self.connection else {
+            self.lines.push(ChatLine {
+                text: "✗ Not connected to daemon — steer not sent (reconnecting…)".to_string(),
+                style: StatusIcon::Disconnected.style(),
+            });
+            return false;
+        };
+        let Some(sid) = self.session_id.clone().filter(|s| !s.is_empty()) else {
+            return false;
+        };
+        let msg = ClientMsg::Steer {
+            session_id: sid,
+            content: content.to_string(),
+            priority: priority.to_string(),
+        };
+        let conn = conn.clone();
+        tokio::spawn(async move {
+            let _ = conn.send(&msg).await;
+        });
+        self.lines.push(ChatLine {
+            text: format!("↪ steer ({priority}): {content}"),
+            style: Style::default().fg(Color::DarkGray),
+        });
+        if priority == "now" {
+            // 同 Esc:本地立即复位 UI(取消链由 daemon 完成)。
+            self.status = StatusIcon::Done;
+            self.sending_allowed = true;
+            self.stream_anchor = None;
+        }
+        true
     }
 
     fn send_confirm(&self, id: &str, token: &str, approved: bool) {

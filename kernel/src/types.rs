@@ -172,6 +172,9 @@ pub enum StreamEvent {
         description: String,
         tail_output: String,
     },
+    /// #9 · a steered user message was folded into history mid-turn.
+    #[serde(rename = "steer_folded")]
+    SteerFolded { content: String },
 }
 
 impl Role {

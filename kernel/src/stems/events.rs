@@ -85,6 +85,11 @@ pub enum AgentEvent {
         description: String,
         tail_output: String,
     },
+    /// #9 · steer 插话已折入 history(检查点/turn 末/取消兜底)。
+    /// 前端据此把用户插话回显为会话的一部分(而非本地草稿)。
+    SteerFolded {
+        content: String,
+    },
 }
 
 /// P3 · Interaction mode — Plan (plan mode) vs Auto (auto mode).

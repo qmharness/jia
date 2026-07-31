@@ -647,6 +647,9 @@ async fn handle_rin_connection(
                                 }
                                 StreamEvent::InteractionModeChanged { mode }
                             }
+                            AgentEvent::SteerFolded { content } => {
+                                StreamEvent::SteerFolded { content }
+                            }
                             _ => continue,
                         };
 
@@ -766,6 +769,32 @@ async fn handle_rin_connection(
             "cancel" => {
                 if let Some(sid) = msg["session_id"].as_str() {
                     session_tokens.cancel(sid);
+                }
+            }
+
+            // #9 · steer — turn 内用户插话。推入会话 steer 队列,由进行中
+            // 的 run 在批屏障检查点折入;会话无活跃 run 时留在队列,type-
+            // ahead 到下一次 run 的首个检查点。Now 额外走与 "cancel" 相同
+            // 的取消路径(与 Esc 一致)。
+            "steer" => {
+                let sid = msg["session_id"].as_str().unwrap_or("");
+                let content = msg["content"].as_str().unwrap_or("");
+                if !sid.is_empty() && !content.trim().is_empty() {
+                    let priority = match msg["priority"].as_str() {
+                        Some("now") => crate::plates::ren_human::SteerPriority::Now,
+                        Some("later") => crate::plates::ren_human::SteerPriority::Later,
+                        _ => crate::plates::ren_human::SteerPriority::Next,
+                    };
+                    earth.session_bus.push_steer(
+                        sid,
+                        crate::plates::ren_human::SteerMessage {
+                            content: content.to_string(),
+                            priority,
+                        },
+                    );
+                    if priority == crate::plates::ren_human::SteerPriority::Now {
+                        session_tokens.cancel(sid);
+                    }
                 }
             }
 

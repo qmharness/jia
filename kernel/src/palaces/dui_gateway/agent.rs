@@ -398,6 +398,7 @@ pub async fn handle_agent(
                     description,
                     tail_output,
                 },
+                AgentEvent::SteerFolded { content } => StreamEvent::SteerFolded { content },
             };
             let json = serde_json::to_string(&stream_event).unwrap_or_default();
             Ok(Event::default().data(json))
@@ -461,6 +462,8 @@ mod tests {
                 agent: Default::default(),
             })),
             tools: Arc::new(ToolRegistry::new()),
+            subagent_readonly_tools: Arc::new(ToolRegistry::new()),
+            subagent_coder_tools: Arc::new(ToolRegistry::new()),
             main_core: mock_core,
             aux_core: None,
             permissions: Arc::new(PermissionMatrix::default()),
