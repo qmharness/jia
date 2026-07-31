@@ -19,12 +19,67 @@
 //   read  vs write, intersecting   — conflict
 //   either side `all: true`        — global barrier (singleton batch)
 // Path intersection honors the `recursive` flag (directory = prefix).
+//
+// 路径规范化(U1 收尾):工具声明的路径按原样字符串比较会漏判拼写不同
+// 的同路径(`src/a.rs` vs `/repo/src/a.rs` vs `./src/a.rs`)。冲突检测前
+// 对 reads/writes 统一做纯词法规范化(见 normalize_path_lexical)。
 
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 use crate::palaces::zhen_tool::base::ToolAccesses;
 use crate::palaces::zhen_tool::registry::ToolRegistry;
 use crate::stems::action::ToolCall;
+
+// ── 词法路径规范化 ───────────────────────────────────────────────
+
+/// 纯词法规范化(不做任何 fs IO):相对路径按 `base` 绝对化,再消除
+/// `.`、`..`(弹出到根目录即止)与重复分隔符。
+///
+/// 限制(有意为之):
+///   - 不解析 symlink —— 词法级判断在 symlink 场景可能把不同拼写判为
+///     相交(虚报冲突 = 更保守的串行,符合"只收紧不放松");exec 层
+///     verify_path 的 canonicalize 仍是最终边界。
+///   - Windows 路径语义(盘符 / 反斜杠)暂不考虑 —— 目标平台为 Unix。
+/// 基准目录与 exec 层一致:PermissionMatrix::verify_path 以
+/// sandbox.workspace_root 解析相对路径,调用方应传同一基准。
+pub fn normalize_path_lexical(base: &Path, p: &Path) -> PathBuf {
+    let joined = if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        base.join(p)
+    };
+    let mut out = PathBuf::new();
+    for c in joined.components() {
+        match c {
+            Component::CurDir => {}
+            // 弹出到根目录后 ParentDir 为 no-op(PathBuf::pop 返回 false)。
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+/// 对访问声明的所有路径做词法规范化。只用于调度冲突判定,不回写工具
+/// 参数(工具执行仍按原始参数 + exec 层 verify_path 解析)。
+pub fn normalize_accesses(base: &Path, a: &ToolAccesses) -> ToolAccesses {
+    ToolAccesses {
+        reads: a
+            .reads
+            .iter()
+            .map(|p| normalize_path_lexical(base, p))
+            .collect(),
+        writes: a
+            .writes
+            .iter()
+            .map(|p| normalize_path_lexical(base, p))
+            .collect(),
+        recursive: a.recursive,
+        all: a.all,
+    }
+}
 
 // ── Conflict matrix ─────────────────────────────────────────────
 
@@ -87,7 +142,11 @@ pub fn accesses_conflict(a: &ToolAccesses, b: &ToolAccesses) -> bool {
 /// call conflicts with any pending member; a non-eligible call (`all` —
 /// e.g. shell, enter_worktree, unknown tools) is a barrier: the pending
 /// batch is flushed and the barrier becomes a singleton batch.
-pub fn plan_batches(calls: &[ToolCall], tools: &ToolRegistry) -> Vec<Vec<ToolCall>> {
+///
+/// `base` — 相对路径的解析基准(与 exec 层 verify_path 一致:
+/// sandbox.workspace_root;worktree swap 后为 worktree 根)。声明的
+/// reads/writes 在冲突判定前统一词法规范化,不回写工具参数。
+pub fn plan_batches(calls: &[ToolCall], tools: &ToolRegistry, base: &Path) -> Vec<Vec<ToolCall>> {
     let mut batches: Vec<Vec<ToolCall>> = Vec::new();
     let mut pending: Vec<ToolCall> = Vec::new();
     let mut pending_accesses: Vec<ToolAccesses> = Vec::new();
@@ -96,7 +155,7 @@ pub fn plan_batches(calls: &[ToolCall], tools: &ToolRegistry) -> Vec<Vec<ToolCal
         let accesses = tools
             .get(&call.name)
             // Unknown tool → conservative barrier (公理 4).
-            .map(|t| t.accesses(&call.parameters))
+            .map(|t| normalize_accesses(base, &t.accesses(&call.parameters)))
             .unwrap_or_else(ToolAccesses::all);
 
         if accesses.all {
@@ -236,13 +295,13 @@ mod tests {
     #[test]
     fn empty_calls() {
         let reg = make_registry();
-        assert!(plan_batches(&[], &reg).is_empty());
+        assert!(plan_batches(&[], &reg, Path::new("/repo")).is_empty());
     }
 
     #[test]
     fn single_tool_one_batch() {
         let reg = make_registry();
-        let batches = plan_batches(&[tc("read_file", "a.rs")], &reg);
+        let batches = plan_batches(&[tc("read_file", "a.rs")], &reg, Path::new("/repo"));
         assert_eq!(batches.len(), 1);
         assert_eq!(batches[0].len(), 1);
     }
@@ -255,7 +314,7 @@ mod tests {
             tc("grep", "src"),
             tc("glob", "src"),
         ];
-        let batches = plan_batches(&calls, &reg);
+        let batches = plan_batches(&calls, &reg, Path::new("/repo"));
         // grep/glob read "src" recursively — read-read never conflicts.
         assert_eq!(batches.len(), 1, "all reads should be parallel");
         assert_eq!(batches[0].len(), 3);
@@ -265,7 +324,7 @@ mod tests {
     fn disjoint_writes_parallel() {
         let reg = make_registry();
         let calls = [tc("write_file", "a.rs"), tc("patch_file", "b.rs")];
-        let batches = plan_batches(&calls, &reg);
+        let batches = plan_batches(&calls, &reg, Path::new("/repo"));
         assert_eq!(batches.len(), 1, "disjoint writes should be parallel");
         assert_eq!(batches[0].len(), 2);
     }
@@ -274,7 +333,7 @@ mod tests {
     fn same_path_writes_serial() {
         let reg = make_registry();
         let calls = [tc("write_file", "a.rs"), tc("patch_file", "a.rs")];
-        let batches = plan_batches(&calls, &reg);
+        let batches = plan_batches(&calls, &reg, Path::new("/repo"));
         assert_eq!(batches.len(), 2, "same-path writes must serialize");
         assert_eq!(batches[0][0].name, "write_file");
         assert_eq!(batches[1][0].name, "patch_file");
@@ -284,11 +343,11 @@ mod tests {
     fn read_write_same_path_serial() {
         let reg = make_registry();
         let calls = [tc("read_file", "a.rs"), tc("write_file", "a.rs")];
-        let batches = plan_batches(&calls, &reg);
+        let batches = plan_batches(&calls, &reg, Path::new("/repo"));
         assert_eq!(batches.len(), 2);
         // …and the reverse order serializes too.
         let calls = [tc("write_file", "a.rs"), tc("read_file", "a.rs")];
-        let batches = plan_batches(&calls, &reg);
+        let batches = plan_batches(&calls, &reg, Path::new("/repo"));
         assert_eq!(batches.len(), 2);
     }
 
@@ -297,14 +356,14 @@ mod tests {
         let reg = make_registry();
         // shell declares nothing → All → singleton barrier.
         let calls = [tc("shell", "ls"), tc("read_file", "a.rs"), tc("grep", "src")];
-        let batches = plan_batches(&calls, &reg);
+        let batches = plan_batches(&calls, &reg, Path::new("/repo"));
         assert!(
             batches
                 .iter()
                 .any(|b| b.len() == 1 && b[0].name == "shell")
         );
         // Unknown tool → barrier as well.
-        let batches = plan_batches(&[tc("nonexistent_tool", "x")], &reg);
+        let batches = plan_batches(&[tc("nonexistent_tool", "x")], &reg, Path::new("/repo"));
         assert_eq!(batches.len(), 1);
         assert_eq!(batches[0].len(), 1);
     }
@@ -319,7 +378,7 @@ mod tests {
             tc("enter_worktree", "wt1"),
             tc("read_file", "b.rs"),
         ];
-        let batches = plan_batches(&calls, &reg);
+        let batches = plan_batches(&calls, &reg, Path::new("/repo"));
         assert_eq!(batches.len(), 3);
         assert_eq!(batches[0][0].name, "read_file");
         assert_eq!(batches[1].len(), 1);
@@ -336,7 +395,7 @@ mod tests {
             tc("shell", "x"),
             tc("read_file", "B"),
         ];
-        let batches = plan_batches(&calls, &reg);
+        let batches = plan_batches(&calls, &reg, Path::new("/repo"));
         assert_eq!(batches.len(), 3, "shell is a barrier: 3 batches");
         assert_eq!(batches[0][0].parameters["path"], "A");
         assert_eq!(batches[1][0].name, "shell");
@@ -352,8 +411,78 @@ mod tests {
             name: "read_file".into(),
             parameters: serde_json::json!({}),
         };
-        let batches = plan_batches(&[call, tc("read_file", "a.rs")], &reg);
+        let batches = plan_batches(&[call, tc("read_file", "a.rs")], &reg, Path::new("/repo"));
         assert_eq!(batches.len(), 2);
         assert_eq!(batches[0].len(), 1, "undeclared access = singleton");
+    }
+
+    // ── 词法规范化(U1 收尾)─────────────────────────────────────
+
+    fn norm(base: &str, p: &str) -> PathBuf {
+        normalize_path_lexical(Path::new(base), Path::new(p))
+    }
+
+    #[test]
+    fn lexical_normalize_absolute_passthrough_and_cleanup() {
+        // 绝对路径不动基准,只做 `.`/`..`/重复分隔符清理。
+        assert_eq!(norm("/repo", "/x/a.rs"), PathBuf::from("/x/a.rs"));
+        assert_eq!(norm("/repo", "/x/./a.rs"), PathBuf::from("/x/a.rs"));
+        assert_eq!(norm("/repo", "/x/y/../a.rs"), PathBuf::from("/x/a.rs"));
+        assert_eq!(norm("/repo", "/x//a.rs"), PathBuf::from("/x/a.rs"));
+    }
+
+    #[test]
+    fn lexical_normalize_relative_against_base() {
+        assert_eq!(norm("/repo", "src/a.rs"), PathBuf::from("/repo/src/a.rs"));
+        assert_eq!(norm("/repo", "./src/a.rs"), PathBuf::from("/repo/src/a.rs"));
+        assert_eq!(
+            norm("/repo", "src/../src/a.rs"),
+            PathBuf::from("/repo/src/a.rs")
+        );
+        // `..` 弹出基准之上:词法级照弹(不判越界 —— 边界由 exec 层
+        // verify_path 把守);弹出根目录后为止。
+        assert_eq!(norm("/repo/wt", "../src/a.rs"), PathBuf::from("/repo/src/a.rs"));
+        assert_eq!(norm("/repo", "../../etc/passwd"), PathBuf::from("/etc/passwd"));
+    }
+
+    #[test]
+    fn same_path_different_spellings_serialize() {
+        let reg = make_registry();
+        let base = Path::new("/repo");
+        // 相对 vs 绝对拼写。
+        let calls = [tc("write_file", "src/a.rs"), tc("patch_file", "/repo/src/a.rs")];
+        let batches = plan_batches(&calls, &reg, base);
+        assert_eq!(batches.len(), 2, "relative vs absolute spelling must conflict");
+        // `./` 与重复分隔符拼写。
+        let calls = [tc("write_file", "./src/a.rs"), tc("patch_file", "src/./a.rs")];
+        assert_eq!(plan_batches(&calls, &reg, base).len(), 2);
+        // `..` 拼写 + read/write 方向。
+        let calls = [tc("write_file", "src/sub/../a.rs"), tc("read_file", "src/a.rs")];
+        assert_eq!(plan_batches(&calls, &reg, base).len(), 2);
+    }
+
+    #[test]
+    fn different_paths_after_normalize_stay_parallel() {
+        let reg = make_registry();
+        let base = Path::new("/repo");
+        let calls = [tc("write_file", "src/a.rs"), tc("patch_file", "./src/b.rs")];
+        let batches = plan_batches(&calls, &reg, base);
+        assert_eq!(batches.len(), 1, "distinct files must stay parallel");
+    }
+
+    #[test]
+    fn base_dir_change_rescopes_relative_paths() {
+        // worktree 切换:同一相对拼写在不同基准下指向不同文件 —— 不冲突;
+        // 换到另一基准后与该基准的绝对拼写判相交。
+        let rel = writes(&["src/a.rs"]);
+        let abs_wt = writes(&["/wt/src/a.rs"]);
+        assert!(!accesses_conflict(
+            &normalize_accesses(Path::new("/repo"), &rel),
+            &normalize_accesses(Path::new("/repo"), &abs_wt),
+        ));
+        assert!(accesses_conflict(
+            &normalize_accesses(Path::new("/wt"), &rel),
+            &normalize_accesses(Path::new("/wt"), &abs_wt),
+        ));
     }
 }

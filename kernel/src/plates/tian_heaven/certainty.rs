@@ -256,4 +256,18 @@ mod tests {
         );
         assert_eq!(result.decision, LoopDecision::ConfidentStop);
     }
+
+    #[test]
+    fn tool_turn_resets_no_tool_run() {
+        // 尾部是工具快照 → 连续无工具计数为 0;即使此前有长无工具序列,
+        // no_tool_run = 0 也阻断 ConfidentStop(有工具轮后计数重置)。
+        let mut snapshots: Vec<TurnSnapshot> = vec![];
+        for _ in 0..4 {
+            snapshots.push(make_snapshot("", None, ""));
+        }
+        snapshots.push(make_snapshot("shell", None, "ok"));
+        let result =
+            TurnCertainty::evaluate(&snapshots, 0.15, 6, 25, &CertaintyParams::default());
+        assert_ne!(result.decision, LoopDecision::ConfidentStop);
+    }
 }

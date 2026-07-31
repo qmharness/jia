@@ -302,7 +302,12 @@ impl super::Agent {
                 heaven_stem,
                 target_palace,
             } => {
-                let accesses = tool.accesses(&tc.parameters);
+                // 与 plan_batches 同一基准(exec 层 verify_path 的
+                // workspace_root)做词法规范化,在途冲突判定与流毕批一致。
+                let accesses = crate::plates::tian_heaven::tool_scheduler::normalize_accesses(
+                    &self.exec_ctx.permissions.sandbox.workspace_root,
+                    &tool.accesses(&tc.parameters),
+                );
                 // 先回收已完成任务(释放窗口、传播 sibling abort),再判资格。
                 early.poll();
                 let eligible = early.eligible(
@@ -1535,6 +1540,31 @@ impl super::Agent {
                 "Parsed tool calls from LLM response"
             );
 
+            // ── 无工具轮也录 TurnSnapshot（迭代四修复：ConfidentStop 可达）──
+            // TurnCertainty 的 no_tool_run 信号统计尾部连续无工具快照；此前
+            // 快照只在 absorb_outcome（工具调用入账）时录制，无工具轮不录，
+            // ConfidentStop 在真实收尾点（纯文本收尾）结构性不可达。此处只写
+            // WorkingMemory（供 certainty / L2 固化 / L4 派生），不进
+            // history、不进提示词；geju_name 留空使 L4 derive 的错误率分组
+            // 不被无工具轮稀释。
+            if tool_calls.is_empty() {
+                self.working_memory.record(TurnSnapshot {
+                    turn_number: self.turn_count as u64,
+                    intent_stem: Stem::Jia, // 甲 — LLM 自身，无工具意图
+                    target_palace: Palace::Zhong, // 中五 — LLM 核心
+                    geju_name: String::new(),
+                    execution_mode: String::new(),
+                    tool_name: String::new(),
+                    tool_input: serde_json::Value::Null,
+                    tool_output: String::new(),
+                    tool_error: None,
+                    timestamp: crate::utils::unix_now(),
+                    certainty: self.certainty_history.last().copied(),
+                    active_seed_ids: self.touched_seed_ids.clone(),
+                    tool_count: 0,
+                });
+            }
+
             // ── 确定度评估（在解析工具调用之后、分发之前）──
             let certainty = TurnCertainty::evaluate(
                 &self.working_memory.snapshots,
@@ -1598,11 +1628,13 @@ impl super::Agent {
                 }
                 // ② ConfidentStop + 实质代码变更 → 提示可委派 Verifier 复核
                 //    (建议,不强制自动委派——强制会拉长每轮,提示层先行)。
-                //    注:TurnCertainty 的 ConfidentStop 判定要求 no_tool_run
-                //    信号(连续无工具快照),而无工具轮不录 TurnSnapshot——
-                //    在真实收尾点该判定结构性不可达;故门禁挂在唯一的真实
-                //    完成路径(无工具调用收尾)+ 本 run 有实质变更上,这也
-                //    正是 certainty 语义里"模型宣布完成"的时刻。
+                //    迭代四修复后无工具轮也录 TurnSnapshot(见上方评估前
+                //    的录制点),ConfidentStop 在真实收尾点可达;但
+                //    certainty 仍是 informational 信号、不 gate break,
+                //    故本门禁继续挂在唯一的真实完成路径(无工具调用收尾)
+                //    + 本 run 有实质变更上,这也正是 certainty 语义里
+                //    "模型宣布完成"的时刻。顺序:④ criterion 门禁在上,
+                //    未对照时先拦截,本门禁只在 criterion 全部对照后生效。
                 let max_verifier_nudges = if self.earth.config.app_config.agent.verify_on_stop {
                     2 // verify_on_stop=true:建议后未验证再宣布完成,追加一次较强提醒。
                 } else {
@@ -1721,6 +1753,9 @@ impl super::Agent {
             let batches = crate::plates::tian_heaven::tool_scheduler::plan_batches(
                 &tool_calls,
                 self.tools(),
+                // 相对路径基准与 exec 层 verify_path 一致(workspace_root;
+                // worktree swap 后 exec_ctx 已指向 worktree 根)。
+                &self.exec_ctx.permissions.sandbox.workspace_root,
             );
 
             let max_fail = self.max_consecutive_failures;
@@ -4455,6 +4490,145 @@ Done."#;
         assert!(
             !seen.iter().flatten().any(|c| c.contains("[Verification]")),
             "no verifier hint without code changes: {seen:?}"
+        );
+    }
+
+    /// 迭代四修复:无工具轮也录 TurnSnapshot → ConfidentStop 在真实收尾点
+    /// 可达。mock 序列:1 轮 read_file(只读,不触发 ② Verifier 门禁)+
+    /// 3 轮纯文本收尾。④ criterion 未对照时前两次纯文本收尾被拦截(回归:
+    /// 门禁先于收尾生效),对照后第三轮放行;此时尾部 3 个连续无工具快照
+    /// 使 no_tool_run = 1.0,以同一快照序列重估 TurnCertainty 得
+    /// ConfidentStop(evaluate 是纯函数,重估即复现 loop 内的判定)。
+    #[tokio::test]
+    async fn confident_stop_reachable_after_no_tool_turns_recorded() {
+        use crate::plates::tian_heaven::certainty::LoopDecision;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = temp_earth(tmp.path());
+        let ws = tmp.path().join("workspace");
+        std::fs::create_dir_all(&ws).unwrap();
+        let target = ws.join("r.txt");
+        std::fs::write(&target, "content").unwrap();
+
+        earth
+            .session_bus
+            .set_criteria("iter4-stop", vec!["reviewed".into()]);
+
+        let read_text = format!(
+            "read\n<tool_call>\n{{\"tool\": \"read_file\", \"parameters\": {{\"path\": \"{}\"}}}}\n</tool_call>",
+            target.display()
+        );
+        let read_text: &'static str = Box::leak(read_text.into_boxed_str());
+
+        // 脚本化纯文本序列;第 check_at 次调用时模拟模型对照勾选 criterion。
+        struct StopProvider {
+            steps: std::sync::Mutex<std::collections::VecDeque<&'static str>>,
+            calls: Arc<AtomicUsize>,
+            bus: Arc<crate::plates::ren_human::SessionBus>,
+            session_id: String,
+            check_at: usize,
+            seen_users: Arc<std::sync::Mutex<Vec<Vec<String>>>>,
+        }
+        impl LlmProvider for StopProvider {
+            fn infer_stream(
+                &self,
+                messages: Vec<Message>,
+                _tools: Option<&[crate::stems::action::ToolSchema]>,
+                _cancel_token: Option<CancellationToken>,
+            ) -> std::pin::Pin<
+                Box<dyn futures::Stream<Item = Result<StreamChunk, ProviderError>> + Send>,
+            > {
+                let idx = self.calls.fetch_add(1, Ordering::SeqCst);
+                self.seen_users.lock().unwrap().push(
+                    messages
+                        .iter()
+                        .filter(|m| matches!(m.role, Role::User))
+                        .map(|m| m.content.clone())
+                        .collect(),
+                );
+                if idx == self.check_at {
+                    self.bus
+                        .check_criterion(&self.session_id, "reviewed")
+                        .unwrap();
+                }
+                let text = self
+                    .steps
+                    .lock()
+                    .unwrap()
+                    .pop_front()
+                    .unwrap_or("extra");
+                let (tx, rx) = mpsc::unbounded_channel();
+                tokio::spawn(async move {
+                    for ch in text.chars() {
+                        let _ = tx.send(Ok(StreamChunk::Delta(ch.to_string())));
+                    }
+                });
+                Box::pin(tokio_stream::wrappers::UnboundedReceiverStream::new(rx))
+            }
+        }
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen: Arc<std::sync::Mutex<Vec<Vec<String>>>> = Arc::new(std::sync::Mutex::new(vec![]));
+        let provider: Box<dyn LlmProvider> = Box::new(StopProvider {
+            steps: std::sync::Mutex::new(
+                vec![read_text, "wrapping up", "still wrapping", "done"].into(),
+            ),
+            calls: calls.clone(),
+            bus: earth.session_bus.clone(),
+            session_id: "iter4-stop".into(),
+            check_at: 3,
+            seen_users: seen.clone(),
+        });
+        let core = router_core(vec![provider]);
+
+        let (agent, _events, _cancel) = run_steer_agent(earth, &core, "iter4-stop").await;
+
+        // 回归:④ criterion 未对照 → 第 2、3 轮纯文本收尾被拦截(共 4 次
+        // 调用;第 1 轮是工具轮,提醒首次在第 2 轮收尾被拦后注入)。
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            4,
+            "criterion gate must block the first two stop attempts"
+        );
+        {
+            let seen = seen.lock().unwrap();
+            assert!(
+                seen[2].iter().any(|c| c.contains("[Completion criteria]")),
+                "criterion reminder injected before the third call: {:?}",
+                seen[2]
+            );
+        }
+
+        // ① 快照录制不进 history:用户消息仍只有最初的 "hi"(ephemeral
+        // 提醒不落盘),无空工具名的 ToolCall 条目。
+        assert_eq!(user_texts(&agent), vec!["hi"]);
+
+        // 修复核心:无工具轮也录快照 —— 尾部 3 个连续无工具快照。
+        let snaps = &agent.working_memory.snapshots;
+        assert_eq!(snaps.len(), 4, "1 tool turn + 3 no-tool turns: {snaps:?}");
+        assert_eq!(snaps[0].tool_name, "read_file");
+        assert!(
+            snaps[1..]
+                .iter()
+                .all(|s| s.tool_name.is_empty() && s.tool_count == 0),
+            "trailing no-tool snapshots: {snaps:?}"
+        );
+
+        // 同一快照序列重估:低我執(c_open 高)下 ConfidentStop 现在可达。
+        // (默认 atma_graha=0.80 时 alpha=0.7 的权重结构上使 composite
+        // 封顶 0.76 —— 既有权重语义,不在本修复范围。)
+        let certainty = TurnCertainty::evaluate(
+            &agent.working_memory.snapshots,
+            0.10,
+            agent.turn_count,
+            agent.max_turns,
+            &CertaintyParams::default(),
+        );
+        assert_eq!(
+            certainty.decision,
+            LoopDecision::ConfidentStop,
+            "composite={:.3}",
+            certainty.composite
         );
     }
 }
