@@ -838,6 +838,45 @@ impl App {
                     style: Style::default().fg(Color::DarkGray),
                 });
             }
+            StreamEvent::SubagentLifecycle {
+                id,
+                kind,
+                status,
+                summary,
+            } => {
+                // P2 · 子代理进展:一行 dim 状态(参照 SteerFolded/后台任务
+                // 通知)。progress 事件就地更新上一行(同一子代理且紧邻),
+                // 避免每个工具调用刷一行;其余状态各推一行。
+                let short_id: String = id.chars().take(8).collect();
+                let dim = Style::default().fg(Color::DarkGray);
+                let line = |text: String| ChatLine {
+                    text: format!("  └ sub-agent {kind} ({short_id}): {text}"),
+                    style: dim,
+                };
+                let marker = format!("  └ sub-agent {kind} ({short_id}):");
+                match status.as_str() {
+                    "started" => self.lines.push(line(format!("started — {summary}"))),
+                    "progress" => {
+                        let in_place = self
+                            .lines
+                            .last()
+                            .is_some_and(|l| l.text.starts_with(&marker));
+                        let text = line(summary.clone());
+                        if in_place {
+                            if let Some(l) = self.lines.last_mut() {
+                                *l = text;
+                            }
+                        } else {
+                            self.lines.push(text);
+                        }
+                    }
+                    "completed" => self
+                        .lines
+                        .push(line(format!("✓ completed — {summary}"))),
+                    "failed" => self.lines.push(line(format!("✗ failed — {summary}"))),
+                    _ => self.lines.push(line(summary.clone())),
+                }
+            }
             StreamEvent::ToolCall { .. } => {
                 self.agent_phase = AgentPhase::ToolCalling;
                 // Add blank separator

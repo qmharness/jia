@@ -129,6 +129,14 @@ pub enum StreamEvent {
     SteerFolded {
         content: String,
     },
+    /// P2 · sub-agent lifecycle surfaced from the parent stream
+    /// (started / progress / completed / failed).
+    SubagentLifecycle {
+        id: String,
+        kind: String,
+        status: String,
+        summary: String,
+    },
 }
 
 impl StreamEvent {
@@ -210,6 +218,12 @@ impl StreamEvent {
             }),
             "steer_folded" => Some(StreamEvent::SteerFolded {
                 content: value["content"].as_str().unwrap_or("").to_string(),
+            }),
+            "subagent_lifecycle" => Some(StreamEvent::SubagentLifecycle {
+                id: value["id"].as_str().unwrap_or("?").to_string(),
+                kind: value["kind"].as_str().unwrap_or("?").to_string(),
+                status: value["status"].as_str().unwrap_or("?").to_string(),
+                summary: value["summary"].as_str().unwrap_or("").to_string(),
             }),
             _ => None,
         }

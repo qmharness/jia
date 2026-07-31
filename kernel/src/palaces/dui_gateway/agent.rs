@@ -399,6 +399,17 @@ pub async fn handle_agent(
                     tail_output,
                 },
                 AgentEvent::SteerFolded { content } => StreamEvent::SteerFolded { content },
+                AgentEvent::SubagentLifecycle {
+                    id,
+                    kind,
+                    status,
+                    summary,
+                } => StreamEvent::SubagentLifecycle {
+                    id,
+                    kind,
+                    status,
+                    summary,
+                },
             };
             let json = serde_json::to_string(&stream_event).unwrap_or_default();
             Ok(Event::default().data(json))

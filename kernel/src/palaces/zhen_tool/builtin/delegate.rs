@@ -33,11 +33,12 @@ use crate::palaces::zhen_tool::builtin::exec::background_task::{
 };
 use crate::plates::di_earth::EarthPlate;
 use crate::plates::tian_heaven::spawn::{
-    SubagentReport, SubagentSpec, WorktreeBinding, run_subagent,
+    SubagentReport, SubagentSpec, Verdict, WorktreeBinding, run_subagent,
 };
-use crate::stems::CeremoniesIntent;
+use crate::stems::{AgentEvent, CeremoniesIntent};
 use crate::stems::action::ExecContext;
 use crate::types::{HistoryEntry, Message, Role};
+use tokio::sync::mpsc::UnboundedSender;
 
 /// 子代理类型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -272,6 +273,62 @@ fn parse_tasks(input: &Value) -> Result<Vec<TaskInput>, String> {
     Ok(vec![parse_one_task(input)?])
 }
 
+/// P2 · 子代理生命周期透出(最小可观测,神盘语义:只观测不阻塞——
+/// 发送失败静默丢弃)。承载在途子代理的 started/completed/failed;
+/// 进度(progress)事件由 run_subagent 收集器经 progress_tx 发出。
+fn emit_lifecycle(
+    events: Option<&UnboundedSender<AgentEvent>>,
+    id: &str,
+    kind: SubagentType,
+    status: &str,
+    summary: String,
+) {
+    if let Some(tx) = events {
+        let _ = tx.send(AgentEvent::SubagentLifecycle {
+            id: id.to_string(),
+            kind: kind.as_str().to_string(),
+            status: status.to_string(),
+            summary,
+        });
+    }
+}
+
+/// #15/P2 · Verifier 复核结论在 delegate 输出中的协议行(loop 侧严格
+/// 解析;UNPARSEABLE = 子代理未遵循 verdict 协议,回落启发式)。
+fn verdict_marker(verdict: Option<Verdict>) -> &'static str {
+    match verdict {
+        Some(Verdict::Pass) => "Verifier verdict: PASS",
+        Some(Verdict::Fail) => "Verifier verdict: FAIL",
+        None => "Verifier verdict: UNPARSEABLE",
+    }
+}
+
+/// loop 侧消费:严格解析 delegate 输出中的结构化 verdict 协议行。
+/// None = 无协议行(旧输出)或 UNPARSEABLE —— 调用方回落既有启发式。
+pub(crate) fn delegate_output_verdict(output: &str) -> Option<Verdict> {
+    for line in output.lines() {
+        match line.trim() {
+            "Verifier verdict: PASS" => return Some(Verdict::Pass),
+            "Verifier verdict: FAIL" => return Some(Verdict::Fail),
+            // UNPARSEABLE 是明确的"未遵循协议"信号,不再扫描后续行。
+            "Verifier verdict: UNPARSEABLE" => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
+/// #15/P2 · Verifier 复核失败判定(loop 消费路径,协议化):
+/// 优先读结构化协议行;None(旧输出/UNPARSEABLE)回落"文本含
+/// Verdict: FAIL"启发式 —— 过渡兼容,只收紧不放松。
+pub(crate) fn verifier_failed(output: &str) -> bool {
+    match delegate_output_verdict(output) {
+        Some(Verdict::Fail) => true,
+        Some(Verdict::Pass) => false,
+        None => output.contains("Verdict: FAIL"),
+    }
+}
+
 /// 新鲜派发的统一执行路径(inline / parallel / background 共用):
 /// 运行子代理并把结果打包为可持久化会话(类型/模型/授权/worktree 绑定)。
 async fn run_one(
@@ -279,6 +336,7 @@ async fn run_one(
     session_id: String,
     task: TaskInput,
     parent_ctx: ExecContext,
+    progress_tx: Option<UnboundedSender<AgentEvent>>,
 ) -> Result<(SubagentReport, SubagentSession), String> {
     let spec = SubagentSpec {
         session_id,
@@ -294,6 +352,7 @@ async fn run_one(
             _ => WorktreeBinding::None,
         },
         parent_ctx,
+        progress_tx,
     };
     let report = run_subagent(earth, spec).await?;
     let now = crate::utils::unix_now();
@@ -342,9 +401,13 @@ fn persist_session(earth: &Arc<EarthPlate>, subagent_id: &str, session: Subagent
 }
 
 /// delegate 结果表述:Coder 报告 worktree 位置(完成/失败后保留在盘上,
-/// 供审阅/合并/清理)。
+/// 供审阅/合并/清理);Verifier 附结构化 verdict 协议行(loop 侧严格解析,
+/// 见 delegate_output_verdict)。
 fn format_report(subagent_id: &str, kind: SubagentType, report: &SubagentReport) -> String {
     let mut out = format!("Sub-agent {subagent_id} ({}) completed.", kind.as_str());
+    if kind == SubagentType::Verifier {
+        out.push_str(&format!("\n{}", verdict_marker(report.verdict)));
+    }
     if let Some(path) = &report.worktree_path {
         let branch = report.worktree_branch.as_deref().unwrap_or("(resumed)");
         out.push_str(&format!(
@@ -491,6 +554,27 @@ impl BaseTool for DelegateTool {
     }
 
     async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, ToolError> {
+        self.execute_inner(input, ctx, None).await
+    }
+
+    async fn execute_with_tx(
+        &self,
+        input: Value,
+        tx: &UnboundedSender<AgentEvent>,
+        ctx: &ExecContext,
+    ) -> Result<String, ToolError> {
+        // P2 · 子代理生命周期/进度事件经父级事件通道透出(最小可观测)。
+        self.execute_inner(input, ctx, Some(tx)).await
+    }
+}
+
+impl DelegateTool {
+    async fn execute_inner(
+        &self,
+        input: Value,
+        ctx: &ExecContext,
+        events: Option<&UnboundedSender<AgentEvent>>,
+    ) -> Result<String, ToolError> {
         let earth = self.earth()?;
         let tasks = parse_tasks(&input)?;
         let run_in_background = input["run_in_background"].as_bool().unwrap_or(false);
@@ -498,6 +582,9 @@ impl BaseTool for DelegateTool {
         // ── 后台统一:复用在途 BackgroundTaskStore(类型前缀 a),完成通知由
         // 主循环既有的后台通知机制注入后续 turn。后台子代理独立于父级 turn
         // 的取消令牌(detached,同后台 shell 语义)。
+        // P2 · 事件分工(不重复):后台子代理此处只发 started 生命周期事件;
+        // 完成/失败通知走 BackgroundTaskStore → TaskCompleted(任务体系),
+        // 不再发 completed/failed,进度事件也不发(父级 turn 可能已结束)。
         if run_in_background {
             let mut lines = Vec::new();
             for task in tasks {
@@ -521,6 +608,13 @@ impl BaseTool for DelegateTool {
                     agent_id: Some(subagent_id.clone()),
                     exit_code: None,
                 });
+                emit_lifecycle(
+                    events,
+                    &subagent_id,
+                    task.kind,
+                    "started",
+                    crate::utils::truncate_chars(&task.prompt, 80),
+                );
                 let earth = earth.clone();
                 let mut parent_ctx = ctx.clone();
                 parent_ctx.cancel_token = tokio_util::sync::CancellationToken::new();
@@ -528,7 +622,7 @@ impl BaseTool for DelegateTool {
                 let bg_id = subagent_id.clone();
                 let bg_out_path = out_path.clone();
                 tokio::spawn(async move {
-                    let outcome = run_one(&earth, bg_id.clone(), task, parent_ctx).await;
+                    let outcome = run_one(&earth, bg_id.clone(), task, parent_ctx, None).await;
                     let (text, status) = match outcome {
                         Ok((report, session)) => {
                             let text = format_report(&bg_id, session.subagent_type, &report);
@@ -567,10 +661,37 @@ impl BaseTool for DelegateTool {
                 return Err(ToolError::exec(self.name(), "'tasks' must be a non-empty array"));
             };
             let subagent_id = uuid::Uuid::new_v4().to_string();
-            let (report, session) = run_one(&earth, subagent_id.clone(), task, ctx.clone())
-                .await
-                .map_err(|e| ToolError::exec(self.name(), e))?;
+            emit_lifecycle(
+                events,
+                &subagent_id,
+                task.kind,
+                "started",
+                crate::utils::truncate_chars(&task.prompt, 80),
+            );
+            let kind = task.kind;
+            let outcome = run_one(
+                &earth,
+                subagent_id.clone(),
+                task,
+                ctx.clone(),
+                events.cloned(),
+            )
+            .await;
+            let (report, session) = match outcome {
+                Ok(v) => v,
+                Err(e) => {
+                    emit_lifecycle(events, &subagent_id, kind, "failed", e.clone());
+                    return Err(ToolError::exec(self.name(), e));
+                }
+            };
             let out = format_report(&subagent_id, session.subagent_type, &report);
+            emit_lifecycle(
+                events,
+                &subagent_id,
+                kind,
+                "completed",
+                crate::utils::truncate_chars(report.response.trim(), 120),
+            );
             persist_session(&earth, &subagent_id, session);
             return Ok(out);
         }
@@ -579,23 +700,46 @@ impl BaseTool for DelegateTool {
         // (burst-then-throttle 复用);逐任务独立成败,按声明序聚合返回。
         let n = tasks.len();
         let mut join_set: tokio::task::JoinSet<
-            (usize, String, Result<(SubagentReport, SubagentSession), String>),
+            (usize, String, SubagentType, Result<(SubagentReport, SubagentSession), String>),
         > = tokio::task::JoinSet::new();
         for (i, task) in tasks.into_iter().enumerate() {
             let earth = earth.clone();
             let pctx = ctx.clone();
             let subagent_id = uuid::Uuid::new_v4().to_string();
+            emit_lifecycle(
+                events,
+                &subagent_id,
+                task.kind,
+                "started",
+                crate::utils::truncate_chars(&task.prompt, 80),
+            );
+            let kind = task.kind;
+            let progress = events.cloned();
             join_set.spawn(async move {
-                let report = run_one(&earth, subagent_id.clone(), task, pctx).await;
-                (i, subagent_id, report)
+                let report = run_one(&earth, subagent_id.clone(), task, pctx, progress).await;
+                (i, subagent_id, kind, report)
             });
         }
-        let mut results: Vec<Option<(String, Result<(SubagentReport, SubagentSession), String>)>> =
-            (0..n).map(|_| None).collect();
+        let mut results: Vec<
+            Option<(String, SubagentType, Result<(SubagentReport, SubagentSession), String>)>,
+        > = (0..n).map(|_| None).collect();
         loop {
             tokio::select! {
                 joined = join_set.join_next() => match joined {
-                    Some(Ok((i, id, r))) => results[i] = Some((id, r)),
+                    Some(Ok((i, id, kind, r))) => {
+                        // 完成态即时透出(不等聚合),成败如实。
+                        match &r {
+                            Ok((report, _)) => emit_lifecycle(
+                                events,
+                                &id,
+                                kind,
+                                "completed",
+                                crate::utils::truncate_chars(report.response.trim(), 120),
+                            ),
+                            Err(e) => emit_lifecycle(events, &id, kind, "failed", e.clone()),
+                        }
+                        results[i] = Some((id, kind, r));
+                    }
                     Some(Err(e)) => {
                         // Aborted (parent cancel) or panicked — slot stays None.
                         if e.is_panic() {
@@ -614,13 +758,12 @@ impl BaseTool for DelegateTool {
         let mut sections = Vec::new();
         for (i, slot) in results.into_iter().enumerate() {
             match slot {
-                Some((id, Ok((report, session)))) => {
-                    let kind = session.subagent_type;
+                Some((id, kind, Ok((report, session)))) => {
                     let text = format_report(&id, kind, &report);
                     persist_session(&earth, &id, session);
                     sections.push(format!("## [{}] {text}", i + 1));
                 }
-                Some((id, Err(e))) => {
+                Some((id, _, Err(e))) => {
                     sections.push(format!("## [{}] Sub-agent {id} failed: {e}", i + 1));
                 }
                 None => {
@@ -726,6 +869,27 @@ impl BaseTool for SendMessageTool {
     }
 
     async fn execute(&self, input: Value, ctx: &ExecContext) -> Result<String, ToolError> {
+        self.execute_inner(input, ctx, None).await
+    }
+
+    async fn execute_with_tx(
+        &self,
+        input: Value,
+        tx: &UnboundedSender<AgentEvent>,
+        ctx: &ExecContext,
+    ) -> Result<String, ToolError> {
+        // P2 · 续聊子代理的生命周期/进度事件同样透出父级(同 delegate)。
+        self.execute_inner(input, ctx, Some(tx)).await
+    }
+}
+
+impl SendMessageTool {
+    async fn execute_inner(
+        &self,
+        input: Value,
+        ctx: &ExecContext,
+        events: Option<&UnboundedSender<AgentEvent>>,
+    ) -> Result<String, ToolError> {
         let earth = self.earth()?;
         let subagent_id = input["subagent_id"]
             .as_str()
@@ -773,10 +937,30 @@ impl BaseTool for SendMessageTool {
             user_message: message.to_string(),
             worktree,
             parent_ctx: ctx.clone(),
+            progress_tx: events.cloned(),
         };
-        let report = run_subagent(&earth, spec)
-            .await
-            .map_err(|e| ToolError::exec(self.name(), e))?;
+        emit_lifecycle(
+            events,
+            subagent_id,
+            kind,
+            "started",
+            crate::utils::truncate_chars(message, 80),
+        );
+        let outcome = run_subagent(&earth, spec).await;
+        let report = match outcome {
+            Ok(r) => r,
+            Err(e) => {
+                emit_lifecycle(events, subagent_id, kind, "failed", e.clone());
+                return Err(ToolError::exec(self.name(), e));
+            }
+        };
+        emit_lifecycle(
+            events,
+            subagent_id,
+            kind,
+            "completed",
+            crate::utils::truncate_chars(report.response.trim(), 120),
+        );
 
         // Store the updated conversation back with the SAME bindings.
         let session = SubagentSession {
@@ -795,6 +979,10 @@ impl BaseTool for SendMessageTool {
             out.push_str(&format!("Worktree: {} (resumed)\n\n", path.display()));
         }
         out.push_str(&report.response);
+        // Verifier 续聊同样附结构化 verdict 协议行(与 format_report 同径)。
+        if kind == SubagentType::Verifier {
+            out.push_str(&format!("\n\n{}", verdict_marker(report.verdict)));
+        }
         Ok(out)
     }
 }
@@ -1735,5 +1923,148 @@ mod tests {
         // 会话绑定类型正确(续聊恢复 Verifier 绑定)。
         let sessions = earth.session_bus.subagent_sessions.lock().unwrap();
         assert_eq!(sessions.get(id).unwrap().subagent_type, SubagentType::Verifier);
+    }
+
+    // ── P2 · Verdict 协议化(loop 消费路径)─────────────────────
+
+    /// delegate 输出中的结构化协议行严格解析:PASS/FAIL/UNPARSEABLE/缺失。
+    #[test]
+    fn delegate_output_verdict_strict_marker_parse() {
+        assert_eq!(
+            delegate_output_verdict("Sub-agent x (Verifier) completed.\nVerifier verdict: PASS\n\nbody"),
+            Some(Verdict::Pass)
+        );
+        assert_eq!(
+            delegate_output_verdict("header\nVerifier verdict: FAIL\nbody"),
+            Some(Verdict::Fail)
+        );
+        // 行首空白可容忍(trim),大小写/变形不可。
+        assert_eq!(
+            delegate_output_verdict("  Verifier verdict: FAIL  "),
+            Some(Verdict::Fail)
+        );
+        assert_eq!(delegate_output_verdict("verifier verdict: fail"), None);
+        assert_eq!(delegate_output_verdict("Verifier verdict: FAILED"), None);
+        // UNPARSEABLE 与缺失协议行同为 None(调用方回落启发式)。
+        assert_eq!(delegate_output_verdict("Verifier verdict: UNPARSEABLE\nVerifier verdict: FAIL"), None);
+        assert_eq!(delegate_output_verdict("no marker here"), None);
+        // 子代理原始 verdict 行不是协议行(前缀不同),不被误读。
+        assert_eq!(delegate_output_verdict("Verdict: FAIL"), None);
+    }
+
+    /// loop 消费路径:结构化优先;None(旧输出/UNPARSEABLE)回落启发式。
+    #[test]
+    fn verifier_failed_structured_first_heuristic_fallback() {
+        // 结构化 FAIL → true;PASS → false(即使正文他处出现 Verdict: FAIL,
+        // 中间行出现的旧启发式命中被结构化判定否决 —— 协议化只收紧)。
+        assert!(verifier_failed("Verifier verdict: FAIL\n\nclaims do not hold"));
+        assert!(!verifier_failed(
+            "Verifier verdict: PASS\n\nearlier draft said Verdict: FAIL"
+        ));
+        // UNPARSEABLE → 回落:正文含 "Verdict: FAIL" 仍记异常(保持现启发式)。
+        assert!(verifier_failed(
+            "Verifier verdict: UNPARSEABLE\n\nreport body\nVerdict: FAIL"
+        ));
+        assert!(!verifier_failed(
+            "Verifier verdict: UNPARSEABLE\n\nreport body without verdict"
+        ));
+        // 无协议行(旧输出)→ 完全保持旧启发式。
+        assert!(verifier_failed("some report\nVerdict: FAIL"));
+        assert!(!verifier_failed("some report\nVerdict: PASS"));
+    }
+
+    /// Verifier 遵循协议(最后一行精确 verdict)→ 输出含结构化协议行。
+    #[tokio::test]
+    async fn verifier_report_carries_structured_verdict_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = mock_earth(
+            tmp.path(),
+            vec!["re-ran cargo test: 12 passed\n\nVerdict: PASS".into()],
+            None,
+            vec![],
+        );
+        let tool = bound_delegate(&earth);
+        let out = tool
+            .execute(
+                serde_json::json!({"subagent_type": "Verifier", "prompt": "verify"}),
+                &parent_ctx(&earth),
+            )
+            .await
+            .expect("verifier delegate failed");
+        assert!(out.contains("Verifier verdict: PASS"), "marker: {out}");
+        assert_eq!(delegate_output_verdict(&out), Some(Verdict::Pass));
+        assert!(!verifier_failed(&out));
+    }
+
+    /// Verifier 未遵循协议(verdict 不在最后一行/缺 verdict)→ UNPARSEABLE
+    /// 标注,loop 消费回落启发式。
+    #[tokio::test]
+    async fn verifier_unparseable_verdict_annotated_and_falls_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = mock_earth(
+            tmp.path(),
+            // verdict 出现在中间行,最后一行是普通文字 → 严格解析 None。
+            vec!["Verdict: FAIL\n\nbut see the caveats above".into()],
+            None,
+            vec![],
+        );
+        let tool = bound_delegate(&earth);
+        let out = tool
+            .execute(
+                serde_json::json!({"subagent_type": "Verifier", "prompt": "verify"}),
+                &parent_ctx(&earth),
+            )
+            .await
+            .expect("verifier delegate failed");
+        assert!(out.contains("Verifier verdict: UNPARSEABLE"), "marker: {out}");
+        assert_eq!(delegate_output_verdict(&out), None);
+        // 回落启发式:正文含 "Verdict: FAIL" → 仍记异常(只收紧不放松)。
+        assert!(verifier_failed(&out));
+    }
+
+    // ── P2 · 子代理生命周期事件透出 ──────────────────────────
+
+    /// execute_with_tx:started/completed 生命周期事件 + 工具调用计数进度
+    /// 经父级事件通道透出;execute(无 tx)静默不报错。
+    #[tokio::test]
+    async fn delegate_emits_subagent_lifecycle_events() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = mock_earth(
+            tmp.path(),
+            vec![
+                r#"<tool_call>
+{"name": "read_file", "parameters": {"path": "a.txt"}}
+</tool_call>"#
+                    .into(),
+                "analysis: found X".into(),
+            ],
+            None,
+            vec![],
+        );
+        std::fs::write(tmp.path().join("workspace/a.txt"), "hello").ok();
+        let tool = bound_delegate(&earth);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
+        let out = tool
+            .execute_with_tx(
+                serde_json::json!({"subagent_type": "Explore", "prompt": "find X"}),
+                &tx,
+                &parent_ctx(&earth),
+            )
+            .await
+            .expect("delegate failed");
+        assert!(out.contains("analysis: found X"), "report: {out}");
+        drop(tx);
+        let mut statuses = Vec::new();
+        while let Ok(AgentEvent::SubagentLifecycle { status, kind, .. }) = rx.try_recv() {
+            assert_eq!(kind, "Explore");
+            statuses.push(status);
+        }
+        assert_eq!(statuses.first().map(String::as_str), Some("started"));
+        assert_eq!(statuses.last().map(String::as_str), Some("completed"));
+        // 一次工具调用 → 一条计数进度(不含详情)。
+        assert!(
+            statuses.iter().filter(|s| s.as_str() == "progress").count() >= 1,
+            "progress events: {statuses:?}"
+        );
     }
 }

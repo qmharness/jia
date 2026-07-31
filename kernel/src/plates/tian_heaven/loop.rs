@@ -570,13 +570,21 @@ impl super::Agent {
                     }
                 }
                 "delegate" => {
-                    // ②⑤ Verifier 委派 = 验证行为;复核不通过(Verdict: FAIL)
-                    // 是确定性异常信号,经 checklist 回流 Manas(位识融合)。
+                    // ②⑤ Verifier 委派 = 验证行为;复核不通过是确定性异常
+                    // 信号,经 checklist 回流 Manas(位识融合)。
+                    // P2 · 判定协议化:优先读 delegate 输出中的结构化
+                    // verdict 协议行;None(旧输出/UNPARSEABLE)回落"文本含
+                    // Verdict: FAIL"启发式 —— 过渡兼容,只收紧不放松
+                    // (verifier_failed 内封此两级)。
                     if crate::palaces::zhen_tool::builtin::delegate::requests_verifier(
                         &tc.parameters,
                     ) {
                         verify.note_verification();
-                        if error.is_none() && output.contains("Verdict: FAIL") {
+                        if error.is_none()
+                            && crate::palaces::zhen_tool::builtin::delegate::verifier_failed(
+                                &output,
+                            )
+                        {
                             self.earth
                                 .completion_checklist
                                 .note_verification_anomaly(&self.id);

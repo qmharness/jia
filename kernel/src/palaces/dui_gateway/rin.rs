@@ -670,6 +670,17 @@ async fn handle_rin_connection(
                             AgentEvent::SteerFolded { content } => {
                                 StreamEvent::SteerFolded { content }
                             }
+                            AgentEvent::SubagentLifecycle {
+                                id,
+                                kind,
+                                status,
+                                summary,
+                            } => StreamEvent::SubagentLifecycle {
+                                id,
+                                kind,
+                                status,
+                                summary,
+                            },
                             _ => continue,
                         };
 

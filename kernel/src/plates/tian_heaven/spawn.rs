@@ -464,6 +464,28 @@ pub struct SubagentSpec {
     pub worktree: WorktreeBinding,
     /// 父级执行上下文:权限视角、worktree enter 的 base root、取消令牌来源。
     pub parent_ctx: ExecContext,
+    /// P2 · 父级事件透出(最小可观测):Some 时子代理的工具调用计数进度
+    /// (不含详情,防刷屏)经此通道透到父级 SSE;None(后台子代理 —— 完成
+    /// 通知走 BackgroundTaskStore,或事件无消费者的编排路径)= 静默。
+    pub progress_tx: Option<tokio::sync::mpsc::UnboundedSender<AgentEvent>>,
+}
+
+/// #15/P2 · Verifier 复核结论(仅 Verifier 类型子代理填充,协议化判定)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verdict {
+    Pass,
+    Fail,
+}
+
+/// 严格解析 Verifier 最终输出:最后一非空行 trim 后须精确等于
+/// `Verdict: PASS` / `Verdict: FAIL`。中间行出现、大小写不符、尾附标点
+/// 均视为未遵循协议 → None(消费方回落既有启发式,只收紧不放松)。
+pub fn parse_verdict(response: &str) -> Option<Verdict> {
+    match response.lines().rev().find(|l| !l.trim().is_empty())?.trim() {
+        "Verdict: PASS" => Some(Verdict::Pass),
+        "Verdict: FAIL" => Some(Verdict::Fail),
+        _ => None,
+    }
 }
 
 /// 子代理运行产物(经 delegate 结果返回给父级,不写主 agent 种子)。
@@ -472,6 +494,9 @@ pub struct SubagentReport {
     pub history: Vec<HistoryEntry>,
     pub worktree_path: Option<std::path::PathBuf>,
     pub worktree_branch: Option<String>,
+    /// 结构化复核结论:仅 Verifier 填充;None = 非 Verifier 或最终输出未
+    /// 遵循 verdict 协议(unparseable,消费方回落文本启发式)。
+    pub verdict: Option<Verdict>,
 }
 
 /// 子代理身份提示词(ren 槽位;精简、无 ren_soul/记忆注入 —— 省 token)。
@@ -530,9 +555,10 @@ A hard gate enforces this: only allowlisted verification commands run (cargo \
 test/check/clippy/build, pytest, go test, vitest/jest, npm/pnpm/yarn/bun test, \
 git status/diff/log/show/blame, ls/cat/grep/rg/find/wc/head/tail); everything \
 else, including redirection, is denied. \
-End your report with a verdict line: \"Verdict: PASS\" (the claims hold — cite \
-the commands you ran and their results) or \"Verdict: FAIL\" (list what does \
-not hold, with the relevant command output)."
+The LAST line of your report must be exactly \"Verdict: PASS\" or \"Verdict: FAIL\" \
+— nothing after it, no trailing punctuation: PASS means the claims hold (cite the \
+commands you ran and their results in the report body); FAIL means list what does \
+not hold, with the relevant command output."
             .to_string(),
     }
 }
@@ -677,19 +703,35 @@ pub async fn run_subagent(
         SubagentModel::Primary => &earth.main_core,
     };
 
-    // ── 事件收集(子代理事件不透出父级流;报告经 delegate 结果返回)──
+    // ── 事件收集(报告经 delegate 结果返回;P2 起工具调用计数进度可经
+    //    progress_tx 透出父级流 —— 只发计数不发详情,防刷屏)──
+    let subagent_kind = spec.kind;
+    let progress_id = spec.session_id.clone();
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
+    let progress_tx = spec.progress_tx;
     let collect = tokio::spawn(async move {
         let mut rx = UnboundedReceiverStream::new(rx);
         let mut response = String::new();
         // 重试回滚锚点(同 cron 收集器,审计 W1-1)。
         let mut attempt_start = 0usize;
         let mut error: Option<String> = None;
+        let mut tool_count: u32 = 0;
         while let Some(event) = rx.next().await {
             match event {
                 AgentEvent::Delta(content) => response.push_str(&content),
                 AgentEvent::Retrying { .. } => response.truncate(attempt_start),
                 AgentEvent::StreamEnd => attempt_start = response.len(),
+                AgentEvent::ToolCall { .. } => {
+                    tool_count += 1;
+                    if let Some(ptx) = &progress_tx {
+                        let _ = ptx.send(AgentEvent::SubagentLifecycle {
+                            id: progress_id.clone(),
+                            kind: subagent_kind.as_str().to_string(),
+                            status: "progress".to_string(),
+                            summary: format!("{tool_count} tool calls"),
+                        });
+                    }
+                }
                 AgentEvent::Error(msg) => {
                     // 记录但继续排空(turn 上限/LLM 错误后主循环即返回,
                     // 通道随 RunContext 下落关闭)——已有产出优于全废。
@@ -743,12 +785,64 @@ pub async fn run_subagent(
             if let Some(e) = e {
                 response.push_str(&format!("\n\n[注意: 子代理终止于错误 — {e}]"));
             }
+            // #15/P2 · Verifier 结构化判定:严格解析最后一行 verdict 协议;
+            // 未遵循(unparseable)记 None —— 消费方回落文本启发式(只收紧)。
+            let verdict = if spec.kind == SubagentType::Verifier {
+                parse_verdict(&response)
+            } else {
+                None
+            };
             Ok(SubagentReport {
                 response,
                 history: agent.history,
                 worktree_path,
                 worktree_branch,
+                verdict,
             })
         }
+    }
+}
+
+
+// ── 测试 ─────────────────────────────────────────────────────
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// P2 · Verdict 严格解析:最后一非空行精确匹配协议行。
+    #[test]
+    fn parse_verdict_strict_last_line() {
+        assert_eq!(parse_verdict("Verdict: PASS"), Some(Verdict::Pass));
+        assert_eq!(parse_verdict("Verdict: FAIL"), Some(Verdict::Fail));
+        // 报告正文 + 最后一行协议行。
+        assert_eq!(
+            parse_verdict("checked cargo test: 12 passed\n\nVerdict: PASS"),
+            Some(Verdict::Pass)
+        );
+        // 尾随空白/尾部空行可容忍(trim 后精确匹配)。
+        assert_eq!(
+            parse_verdict("body\nVerdict: FAIL   \n\n"),
+            Some(Verdict::Fail)
+        );
+    }
+
+    /// 不遵循协议的一律 None(消费方回落启发式,只收紧不放松)。
+    #[test]
+    fn parse_verdict_rejects_non_strict_forms() {
+        // 大小写不符。
+        assert_eq!(parse_verdict("verdict: pass"), None);
+        assert_eq!(parse_verdict("Verdict: pass"), None);
+        // 尾附标点/文字。
+        assert_eq!(parse_verdict("Verdict: PASS."), None);
+        assert_eq!(parse_verdict("Verdict: PASS — write denied"), None);
+        // 中间行出现 Verdict 不误判:只看最后一非空行。
+        assert_eq!(
+            parse_verdict("Verdict: FAIL\n\nbut actually everything holds"),
+            None
+        );
+        assert_eq!(parse_verdict("Verdict: FAIL\nVerdict: PASS"), Some(Verdict::Pass));
+        // 空输出 / 无协议行。
+        assert_eq!(parse_verdict(""), None);
+        assert_eq!(parse_verdict("no verdict here"), None);
     }
 }

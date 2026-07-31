@@ -434,9 +434,9 @@ impl CompletionChecklist {
         std::mem::take(&mut v.anomaly_pending)
     }
 
-    /// #15 · 外部观测到的验证异常(如 Verifier 子代理复核不通过,
-    /// "Verdict: FAIL")——与测试失败同一回流通道,记到发起复核的
-    /// 会话桶。
+    /// #15 · 外部观测到的验证异常(如 Verifier 子代理复核不通过——P2 起
+    /// 经结构化 verdict 协议行判定,见 delegate::verifier_failed)——
+    /// 与测试失败同一回流通道,记到发起复核的会话桶。
     pub fn note_verification_anomaly(&self, session_id: &str) {
         self.vectors
             .lock()

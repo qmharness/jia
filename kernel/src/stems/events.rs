@@ -90,6 +90,20 @@ pub enum AgentEvent {
     SteerFolded {
         content: String,
     },
+    /// P2 · 子代理生命周期透出(最小可观测):启动/进度/完成/失败。
+    /// 只承载在途(delegate 同步/并行派发、send_message 续聊)子代理;
+    /// 后台子代理(run_in_background)的完成通知走 BackgroundTaskStore →
+    /// TaskCompleted,不在此重复(此处至多一条 started,注释见 delegate)。
+    SubagentLifecycle {
+        /// 子代理会话 id(= delegate 返回的 subagent_id)。
+        id: String,
+        /// 子代理类型:Explore / Plan / Coder / Verifier。
+        kind: String,
+        /// "started" | "progress" | "completed" | "failed"。
+        status: String,
+        /// 任务摘要(started)/ 计数进度(progress)/ 报告或错误摘要(完成态)。
+        summary: String,
+    },
 }
 
 /// P3 · Interaction mode — Plan (plan mode) vs Auto (auto mode).

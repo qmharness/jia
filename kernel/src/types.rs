@@ -175,6 +175,15 @@ pub enum StreamEvent {
     /// #9 · a steered user message was folded into history mid-turn.
     #[serde(rename = "steer_folded")]
     SteerFolded { content: String },
+    /// P2 · sub-agent lifecycle surfaced to the parent stream (minimal
+    /// observability): started / progress / completed / failed.
+    #[serde(rename = "subagent_lifecycle")]
+    SubagentLifecycle {
+        id: String,
+        kind: String,
+        status: String,
+        summary: String,
+    },
 }
 
 impl Role {
