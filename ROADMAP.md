@@ -231,20 +231,43 @@ Phase 8 (生态扩展: MCP + 多模型 + cron/git + IM 机器人 + 沙箱 + WASM
 
 | 指标 | 数值 |
 |------|------|
-| 源代码文件 | 141 `.rs` 文件 |
-| 总代码行数 | ~40,800 |
-| 测试数量 | 428（421 单元 + 7 Ignored/E2E） |
+| 源代码文件 | 170 `.rs` 文件（kernel/src） |
+| 总代码行数 | ~58,900（kernel/src） |
+| 测试数量 | 690（683 单元 + 7 Ignored/E2E） |
 | 已实现阶段 | Phase 0–8 (全部完成) |
 | 空壳模块 | 0 |
-| 内置工具 | 23（read_file, write_file, shell, grep, glob, edit, lsp, web_fetch, web_search, delegate, cron, git, computer_use, browser, ask_user, namarupa, skill, task, web_execute_js, plan_mode, scratchpad, toolsearch, worktree, retrieve_compacted + MCP 发现工具） |
+| 内置工具 | 37（read_file, write_file, patch_file, revert_file, shell, grep, glob, lsp, retrieve_tool_result, web_fetch, web_search, delegate, send_message, cron, git, task, computer_use, ask_user, namarupa, skill, web_execute_js, toolsearch, plan_mode×2, worktree×2, scratchpad×2, browser_*×9 + MCP 发现工具） |
 | 命名 GeJu 格局 | 14 |
 | Provider 支持 | 3 种 kind + native tools API（openai 兼容 / anthropic / gemini） |
 | 工具调用 | Native tools API（openai/anthropic/gemini）优先，XML 文本 fallback |
 | 持久化后端 | SQLite（WAL 模式） |
 | MCP 协议 | JSON-RPC 2.0 over stdio（tools/list + tools/call） |
-| IM 机器人 | 个人微信（iLink polling）+ Telegram（polling）+ Discord（Webhook） |
+| IM 机器人 | 个人微信（iLink polling）+ Telegram（polling）（Discord 已移除，见 P8.5） |
 | UI | Web（SSE）+ Terminal TUI（ratatui, 5 层布局 + 九星相位 + 多选面板） |
 | 架构模块 | 10 个顶级模块 + 重构分拆（6 巨石文件 → 42 子模块） |
 | 特性门控 (feature gates) | web-search, git, cron, mcp, wasm-plugin, tui, test-utils |
 
-**最后更新**: 2026-06-28
+### 编程能力优化（2026-07-25 ~ 07-30 落地）
+
+- 后台任务系统 — shell 后台运行 + task 工具管理（2026-07-30）
+- freshness gate — 编辑前文件新鲜度校验（2026-07-30）
+- Read 去重 — 重复读取检测与拦截（2026-07-30）
+- rg 化 — grep/glob 底层切换 ripgrep（2026-07-30）
+- `revert_file` 工具 — 文件修改回滚（2026-07-30）
+- `retrieve_tool_result` 工具 — #10 落盘后按需取回完整工具结果（2026-07-30）
+- 权限策略链 — deny 规则 + 会话批准记忆（2026-07-30）
+- 资源访问声明并行调度（U1）（2026-07-30）
+- 流式早派发（#7）（2026-07-30）
+- handoff 三段式压缩（U3）（2026-07-30）
+- RepeatGuard 熔断 — 重复工具调用循环检测（2026-07-30）
+- coder/verifier 子代理（TOOL-C1 已修）（2026-07-30）
+- turn 内 steer — 运行中插入用户指令（2026-07-30）
+- LSP 主动诊断（N6）— 编辑后自动拉取诊断（2026-07-30）
+- 验证闭环（#15）（2026-07-30）
+- CRLF/引号编辑健壮（#11）（2026-07-30）
+- MCP 超时 — 连接与调用超时控制（2026-07-30）
+- cwd 持久 — shell 工作目录跨调用保持（2026-07-30）
+- OpenAI 增量发射 — 流式 delta 增量输出（2026-07-30）
+- ConfidentStop 修复（2026-07-30）
+
+**最后更新**: 2026-07-30
