@@ -5,6 +5,7 @@ use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -192,7 +193,15 @@ struct LspServerHandle {
 
 pub struct LspManager {
     servers: Mutex<HashMap<LanguageKind, LspServerHandle>>,
+    /// N6: upper bound on every diagnostics wait inside `fetch_diagnostics`
+    /// (initialize handshake, pull response, publishDiagnostics loop). The
+    /// blocking call self-terminates at this deadline, so no `spawn_blocking`
+    /// thread outlives it holding the manager lock.
+    diag_wait: Duration,
 }
+
+/// N6 · diagnostics wait budget (matches the caller-side wall-clock timeout).
+const DIAGNOSTICS_WAIT_TIMEOUT: Duration = Duration::from_secs(3);
 
 impl Default for LspManager {
     fn default() -> Self {
@@ -204,6 +213,7 @@ impl LspManager {
     pub fn new() -> Self {
         Self {
             servers: Mutex::new(HashMap::new()),
+            diag_wait: DIAGNOSTICS_WAIT_TIMEOUT,
         }
     }
 
@@ -290,9 +300,13 @@ impl LspManager {
     /// N6 · fetch diagnostics for one file. Pull (`textDocument/diagnostic`,
     /// LSP 3.17) when the server advertised `diagnosticProvider`; otherwise
     /// fall back to waiting for a `publishDiagnostics` notification (bounded
-    /// by a message budget — the caller also wraps the whole call in a
-    /// wall-clock timeout). Blocking; run inside `spawn_blocking`.
+    /// by a message budget). Every blocking read below carries a shared
+    /// deadline (`self.diag_wait`), so a silent server can never park this
+    /// call (and the manager lock it holds) forever — the blocking thread
+    /// self-terminates instead of relying on the caller's wall-clock timeout.
+    /// Blocking; run inside `spawn_blocking`.
     fn fetch_diagnostics(&self, path: &Path, lang: LanguageKind) -> Result<Vec<Value>, String> {
+        let deadline = Instant::now() + self.diag_wait;
         let uri = path_to_uri(path);
         let text = std::fs::read_to_string(path)
             .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
@@ -307,16 +321,17 @@ impl LspManager {
         }
         let handle = servers.get_mut(&lang).expect("just inserted");
         if !handle.initialized {
-            initialize(handle, path)?;
+            initialize_with_deadline(handle, path, Some(deadline))?;
             handle.initialized = true;
         }
         did_open(handle, &uri, lang.language_id(), &text)?;
 
         if handle.pull_diagnostics {
-            let result = request(
+            let result = request_with_deadline(
                 handle,
                 "textDocument/diagnostic",
                 json!({ "textDocument": { "uri": uri } }),
+                Some(deadline),
             )?;
             // FullDocumentDiagnosticReport: { "kind": "full", "items": [...] }
             return Ok(result
@@ -327,10 +342,11 @@ impl LspManager {
         }
 
         // publishDiagnostics fallback: read messages until the notification
-        // for our URI arrives. Bounded so a quiet server cannot spin forever;
-        // the fs-tool caller additionally enforces a wall-clock timeout.
+        // for our URI arrives. Bounded by a message budget AND the shared
+        // read deadline — a quiet server returns a timeout error instead of
+        // spinning or blocking forever.
         for _ in 0..200 {
-            let msg = read_message(handle)?;
+            let msg = read_message(handle, Some(deadline))?;
             if msg.get("method").and_then(|m| m.as_str())
                 == Some("textDocument/publishDiagnostics")
             {
@@ -430,9 +446,10 @@ fn format_diagnostics_summary(path: &Path, items: &[Value]) -> Option<String> {
 /// N6 · 编辑成功后调用:拉取诊断并附加摘要。3s 超时;超时/失败/未覆盖
 /// 一律静默降级(仅 debug log),不阻塞主流程。
 ///
-/// 注意:超时后底层 spawn_blocking 任务不可中断——若 server 不再发声,
-/// 泄漏的阻塞线程会持 LspManager 锁直到 server 下次输出(didOpen 后
-/// server 必然发声,实际不会卡死);主流程不受影响。
+/// 诊断等待自身有界:LspManager 内每次阻塞读都带 deadline(见
+/// `DIAGNOSTICS_WAIT_TIMEOUT`),server 永不发声时阻塞调用在预算内自行
+/// 返回,不遗留持锁的 spawn_blocking 线程;此处 3s wall-clock 超时只是
+/// 冗余保险(对非 LspManager 的 EditDiagnostics 实现仍有效)。
 pub async fn append_post_edit_diagnostics(
     result: &mut String,
     diagnostics: &Option<Arc<dyn EditDiagnostics>>,
@@ -477,8 +494,18 @@ fn spawn_server(lang: LanguageKind) -> Result<LspServerHandle, String> {
 }
 
 fn initialize(handle: &mut LspServerHandle, root: &Path) -> Result<(), String> {
+    initialize_with_deadline(handle, root, None)
+}
+
+/// `deadline` bounds the blocking wait for the initialize response; `None`
+/// keeps the historical unbounded behavior (navigation path).
+fn initialize_with_deadline(
+    handle: &mut LspServerHandle,
+    root: &Path,
+    deadline: Option<Instant>,
+) -> Result<(), String> {
     let root_uri = path_to_uri(root.parent().unwrap_or(root));
-    let init: Value = request(
+    let init: Value = request_with_deadline(
         handle,
         "initialize",
         json!({
@@ -496,6 +523,7 @@ fn initialize(handle: &mut LspServerHandle, root: &Path) -> Result<(), String> {
                 }
             }
         }),
+        deadline,
     )?;
     // N6: record pull-diagnostics support (LSP 3.17 `diagnosticProvider`).
     handle.pull_diagnostics = init
@@ -539,9 +567,65 @@ fn write_message(handle: &mut LspServerHandle, msg: &Value) -> Result<(), String
         .map_err(|e| format!("write to server: {e}"))
 }
 
-fn read_message(handle: &mut LspServerHandle) -> Result<Value, String> {
+/// Block until at least one byte can be read, or the deadline expires.
+/// Bytes already sitting in the BufReader buffer count as readable (polling
+/// the fd alone would miss them). Deadline is enforced at message granularity:
+/// a server that dribbles a partial line/body can still block one read past
+/// the deadline — accepted residual; the target scenario (silent server) is
+/// fully bounded.
+fn wait_readable(reader: &BufReader<ChildStdout>, deadline: Option<Instant>) -> Result<(), String> {
+    if !reader.buffer().is_empty() {
+        return Ok(());
+    }
+    let Some(deadline) = deadline else {
+        return Ok(());
+    };
+    wait_fd_readable(reader, deadline)
+}
+
+#[cfg(unix)]
+fn wait_fd_readable(reader: &BufReader<ChildStdout>, deadline: Instant) -> Result<(), String> {
+    use std::os::fd::AsRawFd;
+    let fd = reader.get_ref().as_raw_fd();
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err("timed out waiting for language server output".into());
+        }
+        let ms = remaining.as_millis().clamp(1, i32::MAX as u128) as i32;
+        let mut pfd = libc::pollfd {
+            fd,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: `pfd` is a valid out-pointer; fd stays open (owned by the
+        // handle, which outlives this call).
+        let rc = unsafe { libc::poll(&mut pfd, 1, ms) };
+        if rc > 0 {
+            // Readable, or error/hang-up — let the following read report it.
+            return Ok(());
+        }
+        if rc == 0 {
+            return Err("timed out waiting for language server output".into());
+        }
+        let err = std::io::Error::last_os_error();
+        if err.kind() != std::io::ErrorKind::Interrupted {
+            return Err(format!("poll on server stdout: {err}"));
+        }
+    }
+}
+
+/// Non-unix fallback: no fd polling — reads stay unbounded (previous
+/// behavior), the caller-side wall-clock timeout still applies.
+#[cfg(not(unix))]
+fn wait_fd_readable(_reader: &BufReader<ChildStdout>, _deadline: Instant) -> Result<(), String> {
+    Ok(())
+}
+
+fn read_message(handle: &mut LspServerHandle, deadline: Option<Instant>) -> Result<Value, String> {
     let mut content_length: Option<usize> = None;
     loop {
+        wait_readable(&handle.stdout, deadline)?;
         let mut line = String::new();
         let n = handle
             .stdout
@@ -560,6 +644,7 @@ fn read_message(handle: &mut LspServerHandle) -> Result<Value, String> {
     }
     let len = content_length.ok_or("missing Content-Length")?;
     let mut buf = vec![0u8; len];
+    wait_readable(&handle.stdout, deadline)?;
     handle
         .stdout
         .read_exact(&mut buf)
@@ -568,13 +653,24 @@ fn read_message(handle: &mut LspServerHandle) -> Result<Value, String> {
 }
 
 fn request(handle: &mut LspServerHandle, method: &str, params: Value) -> Result<Value, String> {
+    request_with_deadline(handle, method, params, None)
+}
+
+/// `deadline` bounds every blocking read while awaiting the response; `None`
+/// keeps the historical unbounded behavior (navigation path).
+fn request_with_deadline(
+    handle: &mut LspServerHandle,
+    method: &str,
+    params: Value,
+    deadline: Option<Instant>,
+) -> Result<Value, String> {
     let id = handle.next_id;
     handle.next_id += 1;
     let msg = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
     write_message(handle, &msg)?;
     // Read until we get the response matching `id` (skip notifications/server requests).
     loop {
-        let resp = read_message(handle)?;
+        let resp = read_message(handle, deadline)?;
         if resp.get("id") == Some(&Value::from(id)) {
             if let Some(err) = resp.get("error") {
                 return Err(format!("LSP error on {method}: {err}"));
@@ -832,5 +928,182 @@ mod tests {
                     .contains("no language server")
             );
         }
+    }
+
+    // ── N6 · 诊断等待有界性(超时路径不泄漏阻塞线程)────────────
+
+    /// Minimal mock language server (bash): speaks LSP framing, answers
+    /// `textDocument/diagnostic` with a pull report and replies to
+    /// `textDocument/didOpen` with a `publishDiagnostics` notification.
+    const MOCK_LSP_SERVER: &str = r#"
+len=0
+while IFS= read -r line; do
+  line="${line%$'\r'}"
+  if [ -n "$line" ]; then
+    case "$line" in
+      Content-Length:*) len="${line#Content-Length: }";;
+    esac
+    continue
+  fi
+  body="$(dd bs=1 count="$len" 2>/dev/null)"
+  case "$body" in
+    *textDocument/didOpen*)
+      uri="$(printf '%s' "$body" | sed -n 's/.*"uri":"\([^"]*\)".*/\1/p')"
+      notif='{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"'"$uri"'","diagnostics":[{"severity":1,"range":{"start":{"line":3,"character":1}},"message":"fallback err"}]}}'
+      printf 'Content-Length: %d\r\n\r\n%s' "${#notif}" "$notif"
+      ;;
+    *textDocument/diagnostic*)
+      id="$(printf '%s' "$body" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')"
+      resp='{"jsonrpc":"2.0","id":'"${id:-1}"',"result":{"kind":"full","items":[{"severity":1,"range":{"start":{"line":0,"character":0}},"message":"mock error"}]}}'
+      printf 'Content-Length: %d\r\n\r\n%s' "${#resp}" "$resp"
+      ;;
+  esac
+  len=0
+done
+"#;
+
+    fn handle_from_child(mut child: Child, pull_diagnostics: bool) -> LspServerHandle {
+        let stdin = child.stdin.take().unwrap();
+        let stdout = child.stdout.take().unwrap();
+        LspServerHandle {
+            child,
+            stdin,
+            stdout: BufReader::new(stdout),
+            next_id: 1,
+            initialized: true, // skip the handshake; tests drive fetch directly
+            pull_diagnostics,
+        }
+    }
+
+    /// A "server" that reads stdin forever and never writes a byte back.
+    fn spawn_silent_handle(pull_diagnostics: bool) -> LspServerHandle {
+        let child = Command::new("bash")
+            .arg("-c")
+            .arg("while read -r l; do :; done")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        handle_from_child(child, pull_diagnostics)
+    }
+
+    fn spawn_mock_handle(pull_diagnostics: bool) -> LspServerHandle {
+        let child = Command::new("bash")
+            .arg("-c")
+            .arg(MOCK_LSP_SERVER)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        handle_from_child(child, pull_diagnostics)
+    }
+
+    fn manager_with(handle: LspServerHandle, diag_wait: Duration) -> LspManager {
+        LspManager {
+            servers: Mutex::new(HashMap::from([(LanguageKind::Rust, handle)])),
+            diag_wait,
+        }
+    }
+
+    fn temp_rs(dir: &tempfile::TempDir) -> std::path::PathBuf {
+        let f = dir.path().join("probe.rs");
+        std::fs::write(&f, "fn main() {}\n").unwrap();
+        f
+    }
+
+    #[test]
+    fn silent_server_fallback_wait_is_bounded() {
+        let dir = tempfile::TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
+        let file = temp_rs(&dir);
+        let manager = manager_with(spawn_silent_handle(false), Duration::from_millis(300));
+
+        let start = Instant::now();
+        let res = manager.fetch_diagnostics(&file, LanguageKind::Rust);
+        let elapsed = start.elapsed();
+
+        assert!(res.is_err(), "silent server must not yield diagnostics");
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "wait must self-terminate at the deadline, took {elapsed:?}"
+        );
+        // The call returned — the manager lock is not parked by a leaked wait.
+        let start = Instant::now();
+        let res = manager.fetch_diagnostics(&file, LanguageKind::Rust);
+        assert!(res.is_err());
+        assert!(
+            start.elapsed() < Duration::from_secs(2),
+            "manager must stay usable after a timed-out wait"
+        );
+    }
+
+    #[test]
+    fn silent_server_pull_wait_is_bounded() {
+        let dir = tempfile::TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
+        let file = temp_rs(&dir);
+        let manager = manager_with(spawn_silent_handle(true), Duration::from_millis(300));
+
+        let start = Instant::now();
+        let res = manager.fetch_diagnostics(&file, LanguageKind::Rust);
+        let elapsed = start.elapsed();
+
+        assert!(res.is_err(), "silent server must not yield diagnostics");
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "pull wait must self-terminate at the deadline, took {elapsed:?}"
+        );
+    }
+
+    /// End-to-end: `append_post_edit_diagnostics` over a silent server returns
+    /// promptly because the blocking task finishes on its own (inner bound
+    /// 300ms << outer 3s timeout) — no abandoned `spawn_blocking` thread.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn append_diagnostics_silent_server_leaves_no_blocking_task() {
+        let dir = tempfile::TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
+        let file = temp_rs(&dir);
+        let diagnostics: Option<Arc<dyn EditDiagnostics>> = Some(Arc::new(manager_with(
+            spawn_silent_handle(false),
+            Duration::from_millis(300),
+        )));
+
+        let mut s = "base".to_string();
+        let start = Instant::now();
+        append_post_edit_diagnostics(&mut s, &diagnostics, &file).await;
+        let elapsed = start.elapsed();
+
+        assert_eq!(s, "base", "silent server degrades to no summary");
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "returned via the self-bounded wait, not the 3s outer timeout: {elapsed:?}"
+        );
+    }
+
+    /// Pull path regression: mock server answers `textDocument/diagnostic`.
+    #[test]
+    fn pull_diagnostics_mock_server_roundtrip() {
+        let dir = tempfile::TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
+        let file = temp_rs(&dir);
+        let manager = manager_with(spawn_mock_handle(true), Duration::from_secs(5));
+
+        let items = manager
+            .fetch_diagnostics(&file, LanguageKind::Rust)
+            .expect("mock server must answer the pull request");
+        assert_eq!(items.len(), 1, "got: {items:?}");
+        assert_eq!(items[0]["message"], "mock error");
+    }
+
+    /// Fallback path regression: mock server publishes diagnostics on didOpen.
+    #[test]
+    fn publish_diagnostics_fallback_mock_server_roundtrip() {
+        let dir = tempfile::TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
+        let file = temp_rs(&dir);
+        let manager = manager_with(spawn_mock_handle(false), Duration::from_secs(5));
+
+        let items = manager
+            .fetch_diagnostics(&file, LanguageKind::Rust)
+            .expect("mock server must publish diagnostics");
+        assert_eq!(items.len(), 1, "got: {items:?}");
+        assert_eq!(items[0]["message"], "fallback err");
     }
 }

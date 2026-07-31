@@ -538,10 +538,11 @@ impl super::Agent {
             match tc.name.as_str() {
                 "shell" => {
                     if let Some(cmd) = tc.parameters.get("command").and_then(|v| v.as_str()) {
-                        // ① 测试命令识别 + 失败用例解析(神盘 CompletionChecklist)。
+                        // ① 测试命令识别 + 失败用例解析(神盘 CompletionChecklist,
+                        //    按本会话 id 分桶——多会话并发互不串扰)。
                         self.earth
                             .completion_checklist
-                            .ingest_test_command(cmd, &output, &error);
+                            .ingest_test_command(&self.id, cmd, &output, &error);
                         // ③ 测试命令 = 验证行为,连关计数清零。
                         if crate::plates::shen_spirit::completion_check::detect_test_command(cmd)
                             .is_some()
@@ -576,7 +577,9 @@ impl super::Agent {
                     ) {
                         verify.note_verification();
                         if error.is_none() && output.contains("Verdict: FAIL") {
-                            self.earth.completion_checklist.note_verification_anomaly();
+                            self.earth
+                                .completion_checklist
+                                .note_verification_anomaly(&self.id);
                         }
                     }
                 }
@@ -1206,7 +1209,7 @@ impl super::Agent {
             for reminder in self
                 .earth
                 .completion_checklist
-                .take_test_failure_reminders()
+                .take_test_failure_reminders(&self.id)
             {
                 infer_messages.push(Message::text(Role::User, reminder));
             }
@@ -1577,7 +1580,10 @@ impl super::Agent {
             // checklist 异常)作为确定性信号经【既有通道】回流——压低本轮
             // 写入 certainty_history 的确定度,Manas::adjust_from_certainty_trend
             // 在趋势中读到下坠(我执回升 = 更防御),不开旁路。
-            let recorded_certainty = if self.earth.completion_checklist.take_verification_anomaly()
+            let recorded_certainty = if self
+                .earth
+                .completion_checklist
+                .take_verification_anomaly(&self.id)
             {
                 (certainty.composite * 0.5).min(0.25)
             } else {

@@ -6,6 +6,8 @@
 use crate::plates::shen_spirit::hook::{Hook, HookEvent, HookResult, SpiritType};
 use async_trait::async_trait;
 
+use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -232,20 +234,84 @@ pub enum CompletionAssessment {
 }
 
 /// 完成检查清单——神盘 hook 观测，纯确定性逻辑。
+///
+/// 多会话隔离:可变状态按 session_id 分桶(挂法参照 SessionBus 的
+/// per-session 桶先例)——天盘 loop 摄入/取走都带本会话 id,A 会话的
+/// 测试失败提示/异常标记不会被 B 会话取走;子代理会话(ephemeral)以
+/// 各自 loop id 天然分桶。纯函数部分(测试命令识别/失败解析/提示格式化)
+/// 共享无状态。会话结束经 `end_session` 回收(rin 断连清扫挂点)。
+///
+/// 例外:hook 观测向量(exit_codes / files_created / grep_matches,仅供
+/// ConfidentStop `assess` 使用)挂固定桶——HookEvent::ToolPostExecute
+/// 不携带 session_id,无法按会话归属;该路径保持隔离前的进程级语义。
 pub struct CompletionChecklist {
-    vector: Mutex<CompletionVector>,
+    vectors: Mutex<SessionVectors>,
+}
+
+/// 会话状态表带界上限:超出时逐出最久未触会话(LRU),防长驻进程内存
+/// 无界增长(参照 SessionBus 各桶经 rin 断连清扫回收,此处再兜底一层)。
+const MAX_SESSION_VECTORS: usize = 64;
+
+/// hook 观测桶的固定键(见 CompletionChecklist 文档"例外"段)。
+const HOOK_BUCKET: &str = "__hook__";
+
+/// per-session 桶 + 触序(同一把锁内维护,map 与 order 始终一致)。
+#[derive(Default)]
+struct SessionVectors {
+    map: HashMap<String, CompletionVector>,
+    /// 触序:队首 = 最久未触;任何读写都把 key 挪到队尾。
+    order: VecDeque<String>,
+}
+
+impl SessionVectors {
+    fn touch(&mut self, session_id: &str) {
+        self.order.retain(|k| k != session_id);
+        self.order.push_back(session_id.to_string());
+    }
+
+    /// 写路径取桶:不存在则创建;满界时先逐出最久未触会话。
+    fn bucket(&mut self, session_id: &str) -> &mut CompletionVector {
+        if !self.map.contains_key(session_id) {
+            while self.map.len() >= MAX_SESSION_VECTORS {
+                let Some(oldest) = self.order.pop_front() else {
+                    break;
+                };
+                self.map.remove(&oldest);
+            }
+            self.map
+                .insert(session_id.to_string(), CompletionVector::default());
+        }
+        self.touch(session_id);
+        self.map.get_mut(session_id).expect("bucket just ensured")
+    }
+
+    /// 读路径取桶:不为缺失会话建桶(读不制造残留)。
+    fn bucket_if_present(&mut self, session_id: &str) -> Option<&mut CompletionVector> {
+        if !self.map.contains_key(session_id) {
+            return None;
+        }
+        self.touch(session_id);
+        self.map.get_mut(session_id)
+    }
+
+    fn remove(&mut self, session_id: &str) {
+        self.map.remove(session_id);
+        self.order.retain(|k| k != session_id);
+    }
 }
 
 impl CompletionChecklist {
     pub fn new() -> Self {
         Self {
-            vector: Mutex::new(CompletionVector::default()),
+            vectors: Mutex::new(SessionVectors::default()),
         }
     }
 
-    /// 从 ToolPostExecute 事件解析结构化信号。
+    /// 从 ToolPostExecute 事件解析结构化信号(hook 路径,挂固定桶——
+    /// hook 事件不携带 session_id,见结构体文档"例外"段)。
     pub fn ingest(&self, tool_name: &str, output: &str, error: &Option<String>) {
-        let mut v = self.vector.lock().unwrap_or_else(|e| e.into_inner());
+        let mut sv = self.vectors.lock().unwrap_or_else(|e| e.into_inner());
+        let v = sv.bucket(HOOK_BUCKET);
 
         // Parse sandbox exit code from output string: "[exit code: N]"
         if let Some(code) = parse_exit_code(output) {
@@ -267,24 +333,26 @@ impl CompletionChecklist {
         }
     }
 
-    /// ConfidentStop 时评估完成度。
+    /// ConfidentStop 时评估完成度(hook 固定桶)。
     pub fn assess(&self) -> CompletionAssessment {
-        let v = self.vector.lock().unwrap_or_else(|e| e.into_inner());
+        let mut sv = self.vectors.lock().unwrap_or_else(|e| e.into_inner());
         let mut missing = Vec::new();
 
-        // Check all exit codes
-        let failures: Vec<_> = v.exit_codes.iter().filter(|&&c| c != 0).collect();
-        if !failures.is_empty() {
-            missing.push(format!(
-                "{} shell command(s) failed (exit ≠ 0)",
-                failures.len()
-            ));
-        }
+        if let Some(v) = sv.bucket_if_present(HOOK_BUCKET) {
+            // Check all exit codes
+            let failures: Vec<_> = v.exit_codes.iter().filter(|&&c| c != 0).collect();
+            if !failures.is_empty() {
+                missing.push(format!(
+                    "{} shell command(s) failed (exit ≠ 0)",
+                    failures.len()
+                ));
+            }
 
-        // Check files actually exist on disk
-        for path in &v.files_created {
-            if !path.exists() {
-                missing.push(format!("claimed file not found: {}", path.display()));
+            // Check files actually exist on disk
+            for path in &v.files_created {
+                if !path.exists() {
+                    missing.push(format!("claimed file not found: {}", path.display()));
+                }
             }
         }
 
@@ -298,18 +366,26 @@ impl CompletionChecklist {
         }
     }
 
-    /// Reset the accumulated vector for a new task.
+    /// Reset the accumulated hook-bucket vector for a new task.
     pub fn reset(&self) {
-        *self.vector.lock().unwrap_or_else(|e| e.into_inner()) = CompletionVector::default();
+        let mut sv = self.vectors.lock().unwrap_or_else(|e| e.into_inner());
+        *sv.bucket(HOOK_BUCKET) = CompletionVector::default();
     }
 
     /// #15 · 摄入一次 shell 调用的测试命令观测(天盘在工具结账时调用,
-    /// 命令文本只有调用方才可见——hook 事件不载入参)。
+    /// 命令文本只有调用方才可见——hook 事件不载入参)。按 session_id
+    /// 分桶:多会话并发时各自累积,互不串扰。
     ///
     /// 非测试命令直接返回;测试命令失败(解析到失败用例 / 退出码非零 /
     /// 工具级错误)则记录 TestFailure 并置验证异常标记;通过的测试命令
     /// 不产生信号(修复确认由后续观测自然覆盖)。
-    pub fn ingest_test_command(&self, command: &str, output: &str, error: &Option<String>) {
+    pub fn ingest_test_command(
+        &self,
+        session_id: &str,
+        command: &str,
+        output: &str,
+        error: &Option<String>,
+    ) {
         let Some(kind) = detect_test_command(command) else {
             return;
         };
@@ -324,7 +400,8 @@ impl CompletionChecklist {
         } else {
             None
         };
-        let mut v = self.vector.lock().unwrap_or_else(|e| e.into_inner());
+        let mut sv = self.vectors.lock().unwrap_or_else(|e| e.into_inner());
+        let v = sv.bucket(session_id);
         v.anomaly_pending = true;
         v.test_failures.push(TestFailure {
             command: crate::utils::truncate_chars(command, 120),
@@ -334,29 +411,46 @@ impl CompletionChecklist {
         });
     }
 
-    /// #15 · 取走全部待注入的定点修复提示(drain——同一失败只提示一次)。
-    pub fn take_test_failure_reminders(&self) -> Vec<String> {
-        let mut v = self.vector.lock().unwrap_or_else(|e| e.into_inner());
+    /// #15 · 取走该会话全部待注入的定点修复提示(drain——同一失败只
+    /// 提示一次)。只读本会话的桶,其他会话的待注入提示不受影响。
+    pub fn take_test_failure_reminders(&self, session_id: &str) -> Vec<String> {
+        let mut sv = self.vectors.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(v) = sv.bucket_if_present(session_id) else {
+            return Vec::new();
+        };
         v.test_failures
             .drain(..)
             .map(|f| format_failure_reminder(&f))
             .collect()
     }
 
-    /// #15 · 位识融合信号:取一次验证异常标记(drain)。天盘在确定度
-    /// 评估后调用,为真则压低本轮写入 certainty_history 的确定度。
-    pub fn take_verification_anomaly(&self) -> bool {
-        let mut v = self.vector.lock().unwrap_or_else(|e| e.into_inner());
+    /// #15 · 位识融合信号:取一次该会话的验证异常标记(drain)。天盘在
+    /// 确定度评估后调用,为真则压低本轮写入 certainty_history 的确定度。
+    pub fn take_verification_anomaly(&self, session_id: &str) -> bool {
+        let mut sv = self.vectors.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(v) = sv.bucket_if_present(session_id) else {
+            return false;
+        };
         std::mem::take(&mut v.anomaly_pending)
     }
 
     /// #15 · 外部观测到的验证异常(如 Verifier 子代理复核不通过,
-    /// "Verdict: FAIL")——与测试失败同一回流通道。
-    pub fn note_verification_anomaly(&self) {
-        self.vector
+    /// "Verdict: FAIL")——与测试失败同一回流通道,记到发起复核的
+    /// 会话桶。
+    pub fn note_verification_anomaly(&self, session_id: &str) {
+        self.vectors
             .lock()
             .unwrap_or_else(|e| e.into_inner())
+            .bucket(session_id)
             .anomaly_pending = true;
+    }
+
+    /// 会话结束回收该会话的桶(rin 断连清扫挂点;LRU 超界逐出是兜底)。
+    pub fn end_session(&self, session_id: &str) {
+        self.vectors
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(session_id);
     }
 }
 
@@ -524,37 +618,42 @@ FAILED tests/test_z.py::test_w - ValueError
     #[test]
     fn ingest_passing_test_command_is_silent() {
         let cl = CompletionChecklist::new();
-        cl.ingest_test_command("cargo test", "test result: ok. 3 passed\n[exit code: 0]", &None);
-        assert!(cl.take_test_failure_reminders().is_empty());
-        assert!(!cl.take_verification_anomaly());
+        cl.ingest_test_command(
+            "s1",
+            "cargo test",
+            "test result: ok. 3 passed\n[exit code: 0]",
+            &None,
+        );
+        assert!(cl.take_test_failure_reminders("s1").is_empty());
+        assert!(!cl.take_verification_anomaly("s1"));
         // 非测试命令同样静默。
-        cl.ingest_test_command("ls", "boom\n[exit code: 1]", &None);
-        assert!(cl.take_test_failure_reminders().is_empty());
+        cl.ingest_test_command("s1", "ls", "boom\n[exit code: 1]", &None);
+        assert!(cl.take_test_failure_reminders("s1").is_empty());
     }
 
     #[test]
     fn ingest_failing_test_command_yields_pinpoint_reminder() {
         let cl = CompletionChecklist::new();
-        cl.ingest_test_command("cargo test --lib", CARGO_FAIL_OUTPUT, &None);
-        let reminders = cl.take_test_failure_reminders();
+        cl.ingest_test_command("s1", "cargo test --lib", CARGO_FAIL_OUTPUT, &None);
+        let reminders = cl.take_test_failure_reminders("s1");
         assert_eq!(reminders.len(), 1);
         assert!(reminders[0].contains("cargo test --lib"), "{reminders:?}");
         assert!(reminders[0].contains("foo::tests::b"), "{reminders:?}");
         assert!(reminders[0].contains("bar::tests::c"), "{reminders:?}");
         assert!(reminders[0].contains("Suggested focus"), "{reminders:?}");
         // drain 后不再重复提示。
-        assert!(cl.take_test_failure_reminders().is_empty());
+        assert!(cl.take_test_failure_reminders("s1").is_empty());
         // 验证异常标记:取一次为真,再取为假(单次回流)。
-        assert!(cl.take_verification_anomaly());
-        assert!(!cl.take_verification_anomaly());
+        assert!(cl.take_verification_anomaly("s1"));
+        assert!(!cl.take_verification_anomaly("s1"));
     }
 
     #[test]
     fn unparseable_failure_degrades_to_tail_excerpt() {
         let cl = CompletionChecklist::new();
         let out = "weird custom runner output\nsomething broke badly\n[exit code: 1]";
-        cl.ingest_test_command("pytest", out, &None);
-        let reminders = cl.take_test_failure_reminders();
+        cl.ingest_test_command("s1", "pytest", out, &None);
+        let reminders = cl.take_test_failure_reminders("s1");
         assert_eq!(reminders.len(), 1);
         assert!(reminders[0].contains("could not be parsed"), "{reminders:?}");
         assert!(reminders[0].contains("something broke badly"), "{reminders:?}");
@@ -563,9 +662,94 @@ FAILED tests/test_z.py::test_w - ValueError
     #[test]
     fn note_verification_anomaly_sets_flag_once() {
         let cl = CompletionChecklist::new();
-        assert!(!cl.take_verification_anomaly());
-        cl.note_verification_anomaly();
-        assert!(cl.take_verification_anomaly());
-        assert!(!cl.take_verification_anomaly());
+        assert!(!cl.take_verification_anomaly("s1"));
+        cl.note_verification_anomaly("s1");
+        assert!(cl.take_verification_anomaly("s1"));
+        assert!(!cl.take_verification_anomaly("s1"));
+    }
+
+    // ── 多会话隔离 ────────────────────────────────────────────
+
+    /// 两个会话并发摄入测试失败(线程交错),各自只取到自己的提示;
+    /// 异常标记按会话独立,单次取走语义保持。
+    #[test]
+    fn concurrent_sessions_drain_only_their_own() {
+        let cl = std::sync::Arc::new(CompletionChecklist::new());
+        let mut handles = Vec::new();
+        for (sid, case) in [("sess-a", "foo::a"), ("sess-b", "foo::b")] {
+            let cl = cl.clone();
+            handles.push(std::thread::spawn(move || {
+                let out = format!("test {case} ... FAILED\n[exit code: 101]");
+                for _ in 0..16 {
+                    cl.ingest_test_command(sid, "cargo test", &out, &None);
+                }
+            }));
+        }
+        for h in handles {
+            h.join().unwrap();
+        }
+        let a = cl.take_test_failure_reminders("sess-a");
+        let b = cl.take_test_failure_reminders("sess-b");
+        assert_eq!(a.len(), 16, "sess-a drains exactly its own: {a:?}");
+        assert_eq!(b.len(), 16, "sess-b drains exactly its own: {b:?}");
+        assert!(
+            a.iter().all(|r| r.contains("foo::a") && !r.contains("foo::b")),
+            "no cross-talk into sess-a: {a:?}"
+        );
+        assert!(
+            b.iter().all(|r| r.contains("foo::b") && !r.contains("foo::a")),
+            "no cross-talk into sess-b: {b:?}"
+        );
+        // drain 是单次的;异常标记各自独立取走。
+        assert!(cl.take_test_failure_reminders("sess-a").is_empty());
+        assert!(cl.take_verification_anomaly("sess-a"));
+        assert!(cl.take_verification_anomaly("sess-b"));
+        assert!(!cl.take_verification_anomaly("sess-a"));
+        assert!(!cl.take_verification_anomaly("sess-b"));
+    }
+
+    /// 单会话语义回归:同会话多次摄入按序聚合,一次 drain 取净。
+    #[test]
+    fn single_session_aggregates_then_drains_once() {
+        let cl = CompletionChecklist::new();
+        cl.ingest_test_command("s1", "cargo test --lib", CARGO_FAIL_OUTPUT, &None);
+        cl.ingest_test_command("s1", "pytest", "FAILED t.py::test_x - E\n[exit code: 1]", &None);
+        let reminders = cl.take_test_failure_reminders("s1");
+        assert_eq!(reminders.len(), 2);
+        assert!(reminders[0].contains("foo::tests::b"), "{reminders:?}");
+        assert!(reminders[1].contains("t.py::test_x"), "{reminders:?}");
+        assert!(cl.take_test_failure_reminders("s1").is_empty());
+    }
+
+    /// end_session 回收该会话的桶;其他会话不受影响。
+    #[test]
+    fn end_session_drops_only_that_session() {
+        let cl = CompletionChecklist::new();
+        cl.ingest_test_command("s1", "cargo test --lib", CARGO_FAIL_OUTPUT, &None);
+        cl.ingest_test_command("s2", "cargo test --lib", CARGO_FAIL_OUTPUT, &None);
+        cl.end_session("s1");
+        assert!(cl.take_test_failure_reminders("s1").is_empty());
+        assert!(!cl.take_verification_anomaly("s1"));
+        assert_eq!(cl.take_test_failure_reminders("s2").len(), 1);
+        assert!(cl.take_verification_anomaly("s2"));
+    }
+
+    /// 带界 LRU:会话桶超过上限时逐出最久未触会话(内存不随会话数
+    /// 无界增长);被逐会话的待取信号随之丢弃。
+    #[test]
+    fn session_vectors_lru_evicts_oldest_beyond_cap() {
+        let cl = CompletionChecklist::new();
+        for i in 0..MAX_SESSION_VECTORS {
+            cl.note_verification_anomaly(&format!("s{i}"));
+        }
+        // 触一次 s0(取走即视为活跃),使其不再是最久未触。
+        assert!(cl.take_verification_anomaly("s0"));
+        // 第 cap+1 个会话触发逐出:最久未触的 s1 被逐,s0 存活。
+        cl.note_verification_anomaly("overflow");
+        assert!(!cl.take_verification_anomaly("s1"), "oldest untouched evicted");
+        assert!(cl.take_verification_anomaly("overflow"));
+        // s0 桶仍在(标记已被上面取走,这里验证桶未被逐:重新标记可取)。
+        cl.note_verification_anomaly("s0");
+        assert!(cl.take_verification_anomaly("s0"));
     }
 }

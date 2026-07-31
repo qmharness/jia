@@ -39,6 +39,9 @@ use super::SessionTokens;
 /// session_modes 断连即清)。只清会话残留,不削弱"首次必询问"——新会话
 /// 仍需重新批准。steer 队列(steer_queues)有 type-ahead 语义:断连时
 /// 未消费的插话须留给下一次 run,**不在清扫之列**。
+///
+/// CompletionChecklist 的 per-session 桶(测试失败提示/验证异常标记)
+/// 同点经 `end_session` 回收;桶的 LRU 超界逐出是兜底,此处是正常清扫。
 fn sweep_pending_for_sessions(
     pending_questions: &Arc<Mutex<HashMap<String, crate::plates::ren_human::PendingQuestion>>>,
     pending_confirmations: &Arc<
@@ -46,6 +49,7 @@ fn sweep_pending_for_sessions(
     >,
     session_modes: &Arc<Mutex<HashMap<String, InteractionMode>>>,
     session_bus: &crate::plates::ren_human::SessionBus,
+    completion_checklist: &crate::plates::shen_spirit::completion_check::CompletionChecklist,
     sids: &[String],
 ) {
     if sids.is_empty() {
@@ -71,10 +75,12 @@ fn sweep_pending_for_sessions(
         map.retain(|sid, _| !sids.contains(sid));
         before - map.len()
     };
-    // N1/#15 · 批准记忆与验收标准按 sid 清扫(steer 队列有意保留)。
+    // N1/#15 · 批准记忆与验收标准按 sid 清扫(steer 队列有意保留);
+    // CompletionChecklist 的会话桶同点回收。
     for sid in sids {
         session_bus.clear_session_approvals(sid);
         session_bus.clear_criteria(sid);
+        completion_checklist.end_session(sid);
     }
     if removed_questions + removed_confirmations + removed_modes > 0 {
         tracing::info!(
@@ -405,6 +411,7 @@ async fn handle_rin_connection(
                     &earth.session_bus.pending_confirmations,
                     &earth.session_bus.session_modes,
                     &earth.session_bus,
+                    &earth.completion_checklist,
                     &conn_sessions,
                 );
                 return Err(e);
@@ -984,6 +991,7 @@ async fn handle_rin_connection(
         &earth.session_bus.pending_confirmations,
         &earth.session_bus.session_modes,
         &earth.session_bus,
+        &earth.completion_checklist,
         &conn_sessions,
     );
 
@@ -1039,6 +1047,7 @@ mod tests {
         let modes: Arc<Mutex<HashMap<String, InteractionMode>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let bus = SessionBus::new();
+        let checklist = crate::plates::shen_spirit::completion_check::CompletionChecklist::new();
 
         let mk_q = |sid: &str| {
             let (tx, _rx) = tokio::sync::oneshot::channel::<String>();
@@ -1073,7 +1082,14 @@ mod tests {
             m.insert("s2".into(), InteractionMode::Auto);
         }
 
-        sweep_pending_for_sessions(&questions, &confirmations, &modes, &bus, &["s1".to_string()]);
+        sweep_pending_for_sessions(
+            &questions,
+            &confirmations,
+            &modes,
+            &bus,
+            &checklist,
+            &["s1".to_string()],
+        );
 
         let q = questions.lock().unwrap();
         assert!(!q.contains_key("q-mine"), "own session entry must be swept");
@@ -1088,15 +1104,16 @@ mod tests {
         assert!(m.contains_key("s2"), "other session mode must survive");
 
         // 空 sids 是 no-op。
-        sweep_pending_for_sessions(&questions, &confirmations, &modes, &bus, &[]);
+        sweep_pending_for_sessions(&questions, &confirmations, &modes, &bus, &checklist, &[]);
         assert_eq!(q.len(), 2);
         assert_eq!(c.len(), 2);
         assert_eq!(m.len(), 1);
     }
 
     /// N1/#15 · 断连清扫后:批准记忆不再命中(新会话须重新询问——只清会话
-    /// 残留,不削弱"首次必询问");验收标准按会话清除;steer 队列有
-    /// type-ahead 语义,断连【不清】,未消费插话留给下一次 run。
+    /// 残留,不削弱"首次必询问");验收标准与 CompletionChecklist 会话桶按
+    /// 会话清除;steer 队列有 type-ahead 语义,断连【不清】,未消费插话留
+    /// 给下一次 run。
     #[test]
     fn sweep_clears_approvals_and_criteria_but_keeps_steer() {
         use crate::plates::ren_human::{SessionBus, SteerPriority};
@@ -1110,8 +1127,10 @@ mod tests {
         let modes: Arc<Mutex<HashMap<String, InteractionMode>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let bus = SessionBus::new();
+        let checklist = crate::plates::shen_spirit::completion_check::CompletionChecklist::new();
 
         // s1 有过批准记忆与验收标准;s2 也有(须存活)。s1 队列里有未消费 steer。
+        // s1/s2 的 CompletionChecklist 桶里各置一个验证异常标记。
         let input = serde_json::json!({"path": "/tmp/a"});
         let key = approval_key("read_file", &input);
         bus.session_approvals
@@ -1135,6 +1154,8 @@ mod tests {
                 priority: SteerPriority::Next,
             },
         );
+        checklist.note_verification_anomaly("s1");
+        checklist.note_verification_anomaly("s2");
 
         // 断连前:s1 批准记忆命中(豁免询问)。
         assert!(bus
@@ -1144,7 +1165,14 @@ mod tests {
             .get("s1")
             .is_some_and(|keys| keys.contains(&key)));
 
-        sweep_pending_for_sessions(&questions, &confirmations, &modes, &bus, &["s1".to_string()]);
+        sweep_pending_for_sessions(
+            &questions,
+            &confirmations,
+            &modes,
+            &bus,
+            &checklist,
+            &["s1".to_string()],
+        );
 
         // 断连后:s1 批准记忆不再命中(新会话须重新询问);s2 不受影响。
         assert!(
@@ -1164,6 +1192,12 @@ mod tests {
         let steer = bus.drain_steer("s1");
         assert_eq!(steer.len(), 1);
         assert_eq!(steer[0].content, "type-ahead");
+        // CompletionChecklist 会话桶:s1 回收,s2 保留。
+        assert!(
+            !checklist.take_verification_anomaly("s1"),
+            "swept session checklist state must be gone"
+        );
+        assert!(checklist.take_verification_anomaly("s2"));
     }
 
     /// P1-2/L1 · 每连接 cron 转发器:对端断连(写失败)后任务必须退出,
