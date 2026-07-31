@@ -225,4 +225,25 @@ mod tests {
                 .contains("outside project root")
         );
     }
+
+    /// #11 · 视图对齐:read_file 对 CRLF 文件输出 LF 视图(tokio lines()
+    /// 剥掉 '\r'),与 patch_file 的 LF 视图匹配/替换一致 —— "读到的内容"
+    /// 必然能作为 old_string 匹配上。
+    #[tokio::test]
+    async fn read_file_crlf_shows_lf_view() {
+        let dir = tempfile::TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
+        let path = dir.path().join("crlf.txt");
+        std::fs::write(&path, "alpha\r\nbeta\r\ngamma\r\n").unwrap();
+
+        let tool = ReadFileTool::new();
+        let result = tool
+            .execute(
+                serde_json::json!({"path": path.to_string_lossy()}),
+                &test_ctx(),
+            )
+            .await;
+        let content = result.unwrap();
+        assert!(!content.contains('\r'), "LF view, got: {content:?}");
+        assert!(content.contains("alpha\nbeta\ngamma\n"), "got: {content:?}");
+    }
 }

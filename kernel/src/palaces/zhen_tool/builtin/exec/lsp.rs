@@ -34,9 +34,14 @@ impl Default for LspTool {
 
 impl LspTool {
     pub fn new() -> Self {
-        Self {
-            manager: Arc::new(LspManager::new()),
-        }
+        Self::with_manager(Arc::new(LspManager::new()))
+    }
+
+    /// N6: share one LspManager with the fs edit tools (post-edit
+    /// diagnostics) so a single server pool serves both — 工具单例不动,
+    /// worktree 重建(仅换 ExecContext)时 LSP 不重启。
+    pub fn with_manager(manager: Arc<LspManager>) -> Self {
+        Self { manager }
     }
 }
 
@@ -181,6 +186,8 @@ struct LspServerHandle {
     stdout: BufReader<ChildStdout>,
     next_id: i64,
     initialized: bool,
+    /// Server advertised `diagnosticProvider` (LSP 3.17 pull diagnostics).
+    pull_diagnostics: bool,
 }
 
 pub struct LspManager {
@@ -279,6 +286,168 @@ impl LspManager {
 
         Ok(format_result(&result))
     }
+
+    /// N6 · fetch diagnostics for one file. Pull (`textDocument/diagnostic`,
+    /// LSP 3.17) when the server advertised `diagnosticProvider`; otherwise
+    /// fall back to waiting for a `publishDiagnostics` notification (bounded
+    /// by a message budget — the caller also wraps the whole call in a
+    /// wall-clock timeout). Blocking; run inside `spawn_blocking`.
+    fn fetch_diagnostics(&self, path: &Path, lang: LanguageKind) -> Result<Vec<Value>, String> {
+        let uri = path_to_uri(path);
+        let text = std::fs::read_to_string(path)
+            .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+
+        let mut servers = self
+            .servers
+            .lock()
+            .map_err(|e| format!("lock error: {e}"))?;
+        if let std::collections::hash_map::Entry::Vacant(e) = servers.entry(lang) {
+            let handle = spawn_server(lang)?;
+            e.insert(handle);
+        }
+        let handle = servers.get_mut(&lang).expect("just inserted");
+        if !handle.initialized {
+            initialize(handle, path)?;
+            handle.initialized = true;
+        }
+        did_open(handle, &uri, lang.language_id(), &text)?;
+
+        if handle.pull_diagnostics {
+            let result = request(
+                handle,
+                "textDocument/diagnostic",
+                json!({ "textDocument": { "uri": uri } }),
+            )?;
+            // FullDocumentDiagnosticReport: { "kind": "full", "items": [...] }
+            return Ok(result
+                .get("items")
+                .and_then(|i| i.as_array())
+                .cloned()
+                .unwrap_or_default());
+        }
+
+        // publishDiagnostics fallback: read messages until the notification
+        // for our URI arrives. Bounded so a quiet server cannot spin forever;
+        // the fs-tool caller additionally enforces a wall-clock timeout.
+        for _ in 0..200 {
+            let msg = read_message(handle)?;
+            if msg.get("method").and_then(|m| m.as_str())
+                == Some("textDocument/publishDiagnostics")
+            {
+                let params = msg.get("params").cloned().unwrap_or(Value::Null);
+                if params.get("uri").and_then(|u| u.as_str()) == Some(uri.as_str()) {
+                    return Ok(params
+                        .get("diagnostics")
+                        .and_then(|d| d.as_array())
+                        .cloned()
+                        .unwrap_or_default());
+                }
+            }
+        }
+        Err("no publishDiagnostics received".into())
+    }
+}
+
+// ── N6 · 编辑后主动诊断 (post-edit diagnostics) ─────────────
+
+/// fs 编辑工具(patch_file/write_file)写入成功后经此接口拉取诊断摘要。
+/// 同步阻塞接口;调用方(见 `append_post_edit_diagnostics`)负责
+/// `spawn_blocking` + 超时。诊断是读——lsp 保持戊仪只读。
+pub trait EditDiagnostics: Send + Sync {
+    /// `None`: 无 error/warning、语言未接入 LSP、或拉取失败(静默降级)。
+    /// `Some`: 已格式化的摘要,直接附加到工具结果尾部。
+    fn post_edit_summary(&self, path: &Path) -> Option<String>;
+}
+
+impl EditDiagnostics for LspManager {
+    fn post_edit_summary(&self, path: &Path) -> Option<String> {
+        let lang = LanguageKind::from_path(path)?;
+        match self.fetch_diagnostics(path, lang) {
+            Ok(items) => format_diagnostics_summary(path, &items),
+            Err(e) => {
+                tracing::debug!(path = %path.display(), error = %e, "post-edit diagnostics failed");
+                None
+            }
+        }
+    }
+}
+
+/// Count errors/warnings and format the summary appended to edit results.
+/// Returns None when there are no errors or warnings (无诊断不附加).
+fn format_diagnostics_summary(path: &Path, items: &[Value]) -> Option<String> {
+    let mut errors = 0usize;
+    let mut warnings = 0usize;
+    let mut samples: Vec<String> = Vec::new();
+    for d in items {
+        // LSP DiagnosticSeverity: 1=Error 2=Warning 3=Info 4=Hint
+        let severity = d.get("severity").and_then(|s| s.as_i64()).unwrap_or(1);
+        if severity != 1 && severity != 2 {
+            continue;
+        }
+        if severity == 1 {
+            errors += 1;
+        } else {
+            warnings += 1;
+        }
+        if samples.len() < 3 {
+            let line = d
+                .pointer("/range/start/line")
+                .and_then(|l| l.as_i64())
+                .unwrap_or(0)
+                + 1;
+            let msg = d
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("?")
+                .lines()
+                .next()
+                .unwrap_or("?");
+            samples.push(format!("{line}: {msg}"));
+        }
+    }
+    if errors == 0 && warnings == 0 {
+        return None;
+    }
+    let mut parts = Vec::new();
+    if errors > 0 {
+        parts.push(format!("{} error{}", errors, if errors > 1 { "s" } else { "" }));
+    }
+    if warnings > 0 {
+        parts.push(format!(
+            "{} warning{}",
+            warnings,
+            if warnings > 1 { "s" } else { "" }
+        ));
+    }
+    Some(format!(
+        "\n[LSP 诊断: {} — {}: {}]",
+        parts.join(", "),
+        path.display(),
+        samples.join("; ")
+    ))
+}
+
+/// N6 · 编辑成功后调用:拉取诊断并附加摘要。3s 超时;超时/失败/未覆盖
+/// 一律静默降级(仅 debug log),不阻塞主流程。
+///
+/// 注意:超时后底层 spawn_blocking 任务不可中断——若 server 不再发声,
+/// 泄漏的阻塞线程会持 LspManager 锁直到 server 下次输出(didOpen 后
+/// server 必然发声,实际不会卡死);主流程不受影响。
+pub async fn append_post_edit_diagnostics(
+    result: &mut String,
+    diagnostics: &Option<Arc<dyn EditDiagnostics>>,
+    path: &Path,
+) {
+    let Some(d) = diagnostics else { return };
+    let d = d.clone();
+    let p = path.to_path_buf();
+    let task = tokio::task::spawn_blocking(move || d.post_edit_summary(&p));
+    match tokio::time::timeout(std::time::Duration::from_secs(3), task).await {
+        Ok(Ok(Some(summary))) => result.push_str(&summary),
+        Ok(Ok(None)) => {}
+        Ok(Err(e)) => tracing::debug!("post-edit diagnostics join error: {e}"),
+        Err(_) => tracing::debug!(path = %path.display(), "post-edit diagnostics timed out"),
+    }
 }
 
 fn spawn_server(lang: LanguageKind) -> Result<LspServerHandle, String> {
@@ -303,12 +472,13 @@ fn spawn_server(lang: LanguageKind) -> Result<LspServerHandle, String> {
         stdout: BufReader::new(stdout),
         next_id: 1,
         initialized: false,
+        pull_diagnostics: false,
     })
 }
 
 fn initialize(handle: &mut LspServerHandle, root: &Path) -> Result<(), String> {
     let root_uri = path_to_uri(root.parent().unwrap_or(root));
-    let _init: Value = request(
+    let init: Value = request(
         handle,
         "initialize",
         json!({
@@ -320,11 +490,17 @@ fn initialize(handle: &mut LspServerHandle, root: &Path) -> Result<(), String> {
                     "references": {},
                     "hover": { "contentFormat": ["markdown", "plaintext"] },
                     "documentSymbol": { "hierarchicalDocumentSymbolSupport": false },
-                    "callHierarchy": { "dynamicRegistration": false }
+                    "callHierarchy": { "dynamicRegistration": false },
+                    "publishDiagnostics": {},
+                    "diagnostic": { "dynamicRegistration": false }
                 }
             }
         }),
     )?;
+    // N6: record pull-diagnostics support (LSP 3.17 `diagnosticProvider`).
+    handle.pull_diagnostics = init
+        .pointer("/capabilities/diagnosticProvider")
+        .is_some_and(|v| !v.is_null());
     // Send initialized notification (no response expected)
     notify(handle, "initialized", json!({}))?;
     Ok(())
@@ -544,6 +720,47 @@ mod tests {
     fn format_null_result() {
         assert_eq!(format_result(&Value::Null), "No results.");
         assert_eq!(format_result(&json!([])), "No results.");
+    }
+
+    // ── N6 · 诊断摘要格式化 ─────────────────────────────────
+
+    #[test]
+    fn diagnostics_summary_counts_and_samples() {
+        let items = json!([
+            { "severity": 1, "range": { "start": { "line": 41, "character": 4 } }, "message": "missing semicolon\nmore detail" },
+            { "severity": 1, "range": { "start": { "line": 9, "character": 0 } }, "message": "unused import" },
+            { "severity": 2, "range": { "start": { "line": 2, "character": 0 } }, "message": "dead code" },
+            { "severity": 3, "range": { "start": { "line": 0, "character": 0 } }, "message": "info ignored" }
+        ]);
+        let out = format_diagnostics_summary(
+            std::path::Path::new("src/main.rs"),
+            items.as_array().unwrap(),
+        )
+        .unwrap();
+        assert!(out.contains("2 errors, 1 warning"), "got: {out}");
+        assert!(out.contains("src/main.rs"), "got: {out}");
+        assert!(out.contains("42: missing semicolon"), "1-based line + first line only, got: {out}");
+        assert!(!out.contains("info ignored"), "info severity skipped, got: {out}");
+    }
+
+    #[test]
+    fn diagnostics_summary_empty_or_no_errors_is_none() {
+        assert_eq!(
+            format_diagnostics_summary(std::path::Path::new("a.rs"), &[]),
+            None
+        );
+        let infos = json!([{ "severity": 3, "range": { "start": { "line": 0 } }, "message": "hint" }]);
+        assert_eq!(
+            format_diagnostics_summary(std::path::Path::new("a.rs"), infos.as_array().unwrap()),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn append_diagnostics_none_handle_is_noop() {
+        let mut s = "base".to_string();
+        append_post_edit_diagnostics(&mut s, &None, std::path::Path::new("a.rs")).await;
+        assert_eq!(s, "base");
     }
 
     #[tokio::test]

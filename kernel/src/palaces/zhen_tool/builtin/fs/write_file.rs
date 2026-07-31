@@ -1,13 +1,19 @@
 use crate::error::ToolError;
 use async_trait::async_trait;
 use serde_json::Value;
+use std::sync::Arc;
 
 use crate::palaces::qian_permission::PathOp;
 use crate::palaces::zhen_tool::base::BaseTool;
+use crate::palaces::zhen_tool::builtin::exec::lsp::{EditDiagnostics, append_post_edit_diagnostics};
 use crate::stems::CeremoniesIntent;
 use crate::stems::action::ExecContext;
 
-pub struct WriteFileTool {}
+pub struct WriteFileTool {
+    /// N6 · 可选 LSP 诊断句柄(共享 LspManager)。None 时行为与注入前
+    /// 完全一致;拉取失败/超时静默降级,不阻塞主流程。
+    diagnostics: Option<Arc<dyn EditDiagnostics>>,
+}
 
 impl Default for WriteFileTool {
     fn default() -> Self {
@@ -17,7 +23,11 @@ impl Default for WriteFileTool {
 
 impl WriteFileTool {
     pub fn new() -> Self {
-        Self {}
+        Self { diagnostics: None }
+    }
+
+    pub fn with_diagnostics(diagnostics: Option<Arc<dyn EditDiagnostics>>) -> Self {
+        Self { diagnostics }
     }
 }
 
@@ -115,11 +125,14 @@ impl BaseTool for WriteFileTool {
             }
         }
 
-        Ok(format!(
+        let mut result = format!(
             "Wrote {} bytes to {}",
             content.len(),
             canonical.display()
-        ))
+        );
+        // N6 · 编辑后 LSP 主动诊断(静默降级,不阻塞主流程)
+        append_post_edit_diagnostics(&mut result, &self.diagnostics, &canonical).await;
+        Ok(result)
     }
 }
 
@@ -167,5 +180,51 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    // ── N6 · 编辑后诊断注入 ─────────────────────────────────
+
+    struct MockDiagnostics(Option<String>);
+    impl EditDiagnostics for MockDiagnostics {
+        fn post_edit_summary(&self, _path: &std::path::Path) -> Option<String> {
+            self.0.clone()
+        }
+    }
+
+    #[tokio::test]
+    async fn write_file_appends_diagnostics_summary() {
+        let tool = WriteFileTool::with_diagnostics(Some(Arc::new(MockDiagnostics(Some(
+            "\n[LSP 诊断: 2 errors, 1 warning — src/main.rs: 42: missing semicolon]".to_string(),
+        )))));
+        let result = tool
+            .execute(
+                serde_json::json!({
+                    "path": "jia-test-write-diag.txt",
+                    "content": "fn main() {}\n"
+                }),
+                &test_ctx(),
+            )
+            .await;
+        let out = result.unwrap();
+        assert!(out.contains("Wrote"), "got: {out}");
+        assert!(out.contains("[LSP 诊断: 2 errors, 1 warning"), "got: {out}");
+        let _ = tokio::fs::remove_file("jia-test-write-diag.txt").await;
+    }
+
+    #[tokio::test]
+    async fn write_file_diagnostics_silent_when_none() {
+        let tool = WriteFileTool::with_diagnostics(Some(Arc::new(MockDiagnostics(None))));
+        let result = tool
+            .execute(
+                serde_json::json!({
+                    "path": "jia-test-write-nodiag.txt",
+                    "content": "ok\n"
+                }),
+                &test_ctx(),
+            )
+            .await;
+        let out = result.unwrap();
+        assert!(!out.contains("LSP"), "silent degrade, got: {out}");
+        let _ = tokio::fs::remove_file("jia-test-write-nodiag.txt").await;
     }
 }
