@@ -104,11 +104,23 @@ impl TaskStore {
 
 pub struct TaskTool {
     store: Arc<TaskStore>,
+    /// #15 · 会话总线(人盘)——completion criterion 的存取边界。
+    /// None = 未绑定(直接构造的测试/受限环境),criterion 动作报不可用。
+    session_bus: Option<Arc<crate::plates::ren_human::SessionBus>>,
 }
 
 impl TaskTool {
     pub fn new(store: Arc<TaskStore>) -> Self {
-        Self { store }
+        Self {
+            store,
+            session_bus: None,
+        }
+    }
+
+    /// #15 · 绑定会话总线(地盘装配时注入;criterion 动作由此可用)。
+    pub fn with_session_bus(mut self, bus: Arc<crate::plates::ren_human::SessionBus>) -> Self {
+        self.session_bus = Some(bus);
+        self
     }
 }
 
@@ -121,7 +133,10 @@ impl BaseTool for TaskTool {
     fn description(&self) -> String {
         "Manage a structured task list. Use to track progress on complex multi-step work. \
          Actions: create (subject + description), list (show all), get (by id), \
-         update (set status: pending/in_progress/completed/deleted)."
+         update (set status: pending/in_progress/completed/deleted), \
+         set_criteria (declare session acceptance criteria as a list of strings — \
+         completion claims are blocked until each is checked), \
+         check_criterion (mark one criterion as checked after verifying it against actual results)."
             .to_string()
     }
 
@@ -139,7 +154,7 @@ impl BaseTool for TaskTool {
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["create", "list", "get", "update"],
+                    "enum": ["create", "list", "get", "update", "set_criteria", "check_criterion"],
                     "description": "The action to perform on the task list"
                 },
                 "id": {
@@ -158,6 +173,15 @@ impl BaseTool for TaskTool {
                     "type": "string",
                     "enum": ["pending", "in_progress", "completed", "deleted"],
                     "description": "New task status (required for update)"
+                },
+                "criteria": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Acceptance criteria for this session (required for set_criteria; replaces any previous list)"
+                },
+                "criterion": {
+                    "type": "string",
+                    "description": "The criterion text to mark as checked (required for check_criterion; exact or substring match)"
                 }
             },
             "required": ["action"]
@@ -174,6 +198,49 @@ impl BaseTool for TaskTool {
             .ok_or("Missing 'action' parameter")?;
 
         match action {
+            "set_criteria" => {
+                // #15 · Goal 式验收标准:挂会话总线(内存),宣布完成前逐条对照。
+                let bus = self
+                    .session_bus
+                    .as_ref()
+                    .ok_or("Completion criteria are not available (session bus not bound)")?;
+                let arr = input["criteria"]
+                    .as_array()
+                    .ok_or("Missing 'criteria' parameter (array of strings)")?;
+                let list: Vec<String> = arr
+                    .iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect();
+                if list.is_empty() {
+                    return Err("'criteria' must be a non-empty array of strings".into());
+                }
+                bus.set_criteria(&_ctx.session_id, list.clone());
+                let items = list
+                    .iter()
+                    .map(|c| format!("- [ ] {c}"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                Ok(format!(
+                    "Set {} completion criterion/criteria for this session. Each must be checked \
+                     (action=check_criterion) before a completion claim is accepted:\n{items}",
+                    list.len()
+                ))
+            }
+            "check_criterion" => {
+                let bus = self
+                    .session_bus
+                    .as_ref()
+                    .ok_or("Completion criteria are not available (session bus not bound)")?;
+                let text = input["criterion"]
+                    .as_str()
+                    .ok_or("Missing 'criterion' parameter")?;
+                match bus.check_criterion(&_ctx.session_id, text) {
+                    Ok(remaining) => Ok(format!(
+                        "Criterion checked: {text}\nRemaining unchecked: {remaining}"
+                    )),
+                    Err(e) => Err(ToolError::exec(self.name(), e)),
+                }
+            }
             "create" => {
                 let subject = input["subject"]
                     .as_str()
@@ -230,7 +297,7 @@ impl BaseTool for TaskTool {
                 })?)
             }
             _ => {
-                Err(format!("Unknown action: '{action}'. Valid: create, list, get, update").into())
+                Err(format!("Unknown action: '{action}'. Valid: create, list, get, update, set_criteria, check_criterion").into())
             }
         }
     }
@@ -293,5 +360,82 @@ mod tests {
         );
         assert_eq!(TaskStatus::from_str("deleted"), Some(TaskStatus::Deleted));
         assert_eq!(TaskStatus::from_str("bogus"), None);
+    }
+
+    // ── #15 · completion criterion 动作 ───────────────────────
+
+    fn test_ctx(session_id: &str) -> crate::stems::action::ExecContext {
+        let perms = Arc::new(
+            crate::palaces::qian_permission::PermissionMatrix::from_config(
+                &crate::palaces::kun_config::SecuritySection::default(),
+                std::path::Path::new("/tmp"),
+                std::path::PathBuf::from("/tmp/backups"),
+            ),
+        );
+        let mut ctx = crate::stems::action::ExecContext::new(perms);
+        ctx.session_id = session_id.to_string();
+        ctx
+    }
+
+    #[tokio::test]
+    async fn criterion_actions_roundtrip_via_session_bus() {
+        let bus = Arc::new(crate::plates::ren_human::SessionBus::new());
+        let tool = TaskTool::new(TaskStore::new()).with_session_bus(bus.clone());
+        let ctx = test_ctx("crit-session");
+
+        let out = tool
+            .execute(
+                serde_json::json!({"action": "set_criteria", "criteria": ["tests pass", "docs updated"]}),
+                &ctx,
+            )
+            .await
+            .unwrap();
+        assert!(out.contains("2 completion criterion"), "{out}");
+        assert_eq!(bus.unchecked_criteria("crit-session").len(), 2);
+
+        let out = tool
+            .execute(
+                serde_json::json!({"action": "check_criterion", "criterion": "tests pass"}),
+                &ctx,
+            )
+            .await
+            .unwrap();
+        assert!(out.contains("Remaining unchecked: 1"), "{out}");
+
+        // 未命中报错;其他会话互不影响。
+        assert!(
+            tool.execute(
+                serde_json::json!({"action": "check_criterion", "criterion": "nope"}),
+                &ctx,
+            )
+            .await
+            .is_err()
+        );
+        assert!(bus.unchecked_criteria("other-session").is_empty());
+    }
+
+    #[tokio::test]
+    async fn criterion_actions_require_bound_bus() {
+        let tool = TaskTool::new(TaskStore::new());
+        let ctx = test_ctx("s");
+        assert!(
+            tool.execute(
+                serde_json::json!({"action": "set_criteria", "criteria": ["x"]}),
+                &ctx,
+            )
+            .await
+            .is_err()
+        );
+        // 空清单同样拒绝。
+        let bus = Arc::new(crate::plates::ren_human::SessionBus::new());
+        let tool = TaskTool::new(TaskStore::new()).with_session_bus(bus);
+        assert!(
+            tool.execute(
+                serde_json::json!({"action": "set_criteria", "criteria": []}),
+                &ctx,
+            )
+            .await
+            .is_err()
+        );
     }
 }

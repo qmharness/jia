@@ -9,7 +9,7 @@ use crate::palaces::xun_context::ContextWindow;
 use crate::palaces::xun_context::handoff;
 use crate::palaces::zhong_core::JiaCore;
 use crate::palaces::zhong_core::backoff::RetryBackoff;
-use crate::plates::ren_human::{HumanGate, HumanPlate};
+use crate::plates::ren_human::{HumanGate, HumanPlate, SteerMessage, SteerPriority};
 use crate::plates::shen_spirit::hook::{HookEvent, HookRegistry, SpiritType, fire_void_hooks};
 use crate::plates::shen_spirit::{EventBus, RuntimeEvent};
 use crate::stems::Stem;
@@ -106,6 +106,60 @@ impl RepeatGuard {
     }
 }
 
+// ── #15 · 验证闭环(verification loop)─────────────────────────
+//
+// 儒家"信"的确定度自评在神盘的对抗性延伸:验证信号(测试失败、任务
+// 连关未验证、实质代码变更)以中性事实语言提示模型,不指责、不阻塞
+// 主流程(测试输出解析是同步纯计算,微秒级;Verifier 是子代理委派,
+// 经 #8 同一门禁与 zhong_core)。Loop-local 运行态,与 RepeatGuard
+// 同款:per-session、不落盘、不进记忆种子。
+
+/// 连关多少个任务(期间无任何测试/验证命令)触发一次 nudge。
+const VERIFY_NUDGE_STREAK: u32 = 3;
+
+#[derive(Default)]
+struct VerifyTracker {
+    /// 自最近一次验证(测试命令 / Verifier 委派)以来连关的任务数。
+    completions_since_verify: u32,
+    /// 待注入的 nudge(每 turn 最多一次;注入点 take)。
+    pending_nudge: Option<String>,
+    /// 本 run 实质代码变更的文件(write_file/patch_file 成功,去重)。
+    touched_files: Vec<String>,
+    /// 本 run 已发出的 Verifier 复核提示次数。
+    verifier_nudges: u32,
+}
+
+impl VerifyTracker {
+    /// task 工具成功把任务置为 completed:连关计数;达阈值排一次 nudge
+    /// 并复位(每 3 个未验证完成提醒一次;Option 占位保证每 turn 最多一条)。
+    fn note_task_completion(&mut self) {
+        self.completions_since_verify += 1;
+        if self.completions_since_verify >= VERIFY_NUDGE_STREAK {
+            self.completions_since_verify = 0;
+            if self.pending_nudge.is_none() {
+                self.pending_nudge = Some(
+                    "[Verification] 3 tasks in a row were marked completed without any test or \
+                     verification command in between. Before wrapping up, run the project's test \
+                     suite (e.g. cargo test / pytest / pnpm test / go test) to confirm the \
+                     completed work holds — or state explicitly why no verification is needed."
+                        .to_string(),
+                );
+            }
+        }
+    }
+
+    /// 出现验证行为(测试命令或 Verifier 委派):连关计数清零。
+    fn note_verification(&mut self) {
+        self.completions_since_verify = 0;
+    }
+
+    fn note_touched(&mut self, path: &str) {
+        if !path.is_empty() && !self.touched_files.iter().any(|p| p == path) {
+            self.touched_files.push(path.to_string());
+        }
+    }
+}
+
 // ── Agent::run ─────────────────────────────────────────────────
 
 impl super::Agent {
@@ -118,11 +172,97 @@ impl super::Agent {
     /// normally-ended streams are recorded), and post_loop's lifecycle work
     /// (consolidation, distillation, …) is not duplicated here.
     async fn save_history_now(&self) {
+        // U4 · ephemeral sub-agents never touch the sessions table (位识边界:
+        // 临时性 —— 子代理会话经 subagent_sessions 持久化,见 delegate)。
+        if self.ephemeral {
+            return;
+        }
         if let Ok(json) = serde_json::to_string(&self.history) {
             if let Err(e) = self.earth.store_async.save_session(&self.id, &json).await {
                 tracing::warn!(session = %self.id, error = %e, "Failed to save session");
             }
         }
+    }
+
+    // ── #9 · steer(turn 内用户插话)──────────────────────────────
+    //
+    // steer 是【真实用户消息】——折入时写入 history、可被熏习、压缩(U3)
+    // 时按保留段机制对待;与后台任务通知/repeat-guard 提醒的 ephemeral
+    // 注入(只进 infer_messages、不进 history)有本质区别。
+    //
+    // 检查点只设在批屏障(一批工具执行完、下一次 LLM 调用前),绝不打断
+    // 批内 GeJu 评估与工具执行。RepeatGuard 不因插话重置(连续相同调用
+    // 的熔断保护在插话后仍然有效);TurnCertainty 无需特判——下一轮自然
+    // 基于含插话的新 history 评估。
+
+    /// 把 steer 消息作为真实用户消息折入 history(附 `[steer]` 轻量
+    /// 标记区分普通输入),熏习检测与 run() 入口一致,并通知前端。
+    async fn fold_steer_into_history(
+        &mut self,
+        msgs: Vec<SteerMessage>,
+        tx: &mpsc::UnboundedSender<AgentEvent>,
+    ) {
+        for msg in msgs {
+            // L1 熏习:作用于用户原话(不含 [steer] 标记),与 run() 入口同款。
+            let store = self.earth.store.clone();
+            let session_id = self.id.clone();
+            let content = msg.content.clone();
+            tokio::task::spawn_blocking(move || {
+                SignalDetector::process(&store, &session_id, &content);
+            })
+            .await
+            .ok();
+
+            self.history.push(HistoryEntry::User {
+                content: crate::utils::sanitize_message(&format!("[steer] {}", msg.content)),
+                images: vec![],
+            });
+            tracing::info!(session = %self.id, priority = ?msg.priority, "steer folded into history");
+            let _ = tx.send(AgentEvent::SteerFolded {
+                content: msg.content,
+            });
+        }
+    }
+
+    /// 批屏障检查点:drain steer 队列,按优先级处置。
+    ///
+    /// - Now  → 与 Esc 相同的取消路径:全部剩余插话折入(真实用户消息
+    ///   不丢失),cancel token 打取消,返回 true,调用方落盘后 return;
+    /// - Next → 本检查点必折入,下一次 LLM 调用自然看到;
+    /// - Later → 中途检查点不折入,回灌队列留待 turn 末(若 turn 即将
+    ///   自然结束,作为下一条用户输入处理)。
+    async fn fold_steer_at_checkpoint(&mut self, ctx: &RunContext<'_>) -> bool {
+        let drained = self.earth.session_bus.drain_steer(&self.id);
+        if drained.is_empty() {
+            return false;
+        }
+        if drained.iter().any(|m| m.priority == SteerPriority::Now) {
+            // Now: turn 即刻终止,不存在"以后"——Later 一并折入。
+            self.fold_steer_into_history(drained, &ctx.tx).await;
+            ctx.cancel_token.cancel();
+            return true;
+        }
+        let (later, next): (Vec<SteerMessage>, Vec<SteerMessage>) = drained
+            .into_iter()
+            .partition(|m| m.priority == SteerPriority::Later);
+        self.earth.session_bus.requeue_steer(&self.id, later);
+        self.fold_steer_into_history(next, &ctx.tx).await;
+        false
+    }
+
+    /// drain 并折入全部剩余 steer,返回是否有折入。
+    ///
+    /// 用于两处:(1) turn 自然结束前——还有插话则折入并续跑(插话成为
+    /// 下一条用户输入),此时 Now 与 Next/Later 无别(turn 已结束,无需
+    /// 取消);(2) 取消/错误退出兜底——steer 是真实用户消息,绝不随
+    /// 退出静默丢弃。
+    async fn fold_all_steer(&mut self, tx: &mpsc::UnboundedSender<AgentEvent>) -> bool {
+        let drained = self.earth.session_bus.drain_steer(&self.id);
+        if drained.is_empty() {
+            return false;
+        }
+        self.fold_steer_into_history(drained, tx).await;
+        true
     }
 
     /// U7 · 流式早派发 — gate (+prepare) one freshly-reassembled native call
@@ -140,7 +280,7 @@ impl super::Agent {
     ) {
         match gate_one_tool(
             tc,
-            &self.earth.tools,
+            self.tools(),
             ctx.event_bus,
             ctx.hook_registry,
             &ctx.tx,
@@ -375,6 +515,7 @@ impl super::Agent {
         outcome: CallOutcome,
         turn_tool_count: u32,
         ctx: &RunContext<'_>,
+        verify: &mut VerifyTracker,
     ) {
         let CallOutcome {
             output,
@@ -385,6 +526,58 @@ impl super::Agent {
             target_palace,
             synthetic_cancel,
         } = outcome;
+
+        // #15 · 验证闭环信号采集(神盘观测,不阻塞:纯同步解析,微秒级)。
+        // 合成取消无真实执行,跳过;失败/通过都如实记录,不评判模型。
+        if !synthetic_cancel {
+            match tc.name.as_str() {
+                "shell" => {
+                    if let Some(cmd) = tc.parameters.get("command").and_then(|v| v.as_str()) {
+                        // ① 测试命令识别 + 失败用例解析(神盘 CompletionChecklist)。
+                        self.earth
+                            .completion_checklist
+                            .ingest_test_command(cmd, &output, &error);
+                        // ③ 测试命令 = 验证行为,连关计数清零。
+                        if crate::plates::shen_spirit::completion_check::detect_test_command(cmd)
+                            .is_some()
+                        {
+                            verify.note_verification();
+                        }
+                    }
+                }
+                "task" => {
+                    // ③ 连关计数:仅成功置 completed 计一次。
+                    if error.is_none()
+                        && tc.parameters.get("action").and_then(|v| v.as_str()) == Some("update")
+                        && tc.parameters.get("status").and_then(|v| v.as_str())
+                            == Some("completed")
+                    {
+                        verify.note_task_completion();
+                    }
+                }
+                "write_file" | "patch_file" => {
+                    // ② 实质代码变更(ConfidentStop 复核提示的触发条件)。
+                    if error.is_none()
+                        && let Some(p) = tc.parameters.get("path").and_then(|v| v.as_str())
+                    {
+                        verify.note_touched(p);
+                    }
+                }
+                "delegate" => {
+                    // ②⑤ Verifier 委派 = 验证行为;复核不通过(Verdict: FAIL)
+                    // 是确定性异常信号,经 checklist 回流 Manas(位识融合)。
+                    if crate::palaces::zhen_tool::builtin::delegate::requests_verifier(
+                        &tc.parameters,
+                    ) {
+                        verify.note_verification();
+                        if error.is_none() && output.contains("Verdict: FAIL") {
+                            self.earth.completion_checklist.note_verification_anomaly();
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
 
         // Track consecutive failures per tool (GeJu Layer 3 runtime
         // supplement). 合成取消 neither failed nor succeeded — the
@@ -525,8 +718,9 @@ impl super::Agent {
 
         // L1 perfuming: detect explicit user signals before appending to history (zero-LLM).
         // Runs in spawn_blocking to avoid SQLite I/O on the tokio worker thread.
+        // U4: ephemeral sub-agents skip perfuming entirely (位识边界).
         for msg in &messages {
-            if matches!(msg.role, Role::User) {
+            if !self.ephemeral && matches!(msg.role, Role::User) {
                 let store = self.earth.store.clone();
                 let session_id = self.id.clone();
                 let content = msg.content.clone();
@@ -552,11 +746,8 @@ impl super::Agent {
         }
 
         // Persist initial history so user message survives before first turn
-        if let Ok(json) = serde_json::to_string(&self.history) {
-            if let Err(e) = self.earth.store_async.save_session(&self.id, &json).await {
-                tracing::warn!(session = %self.id, error = %e, "Failed to save initial session");
-            }
-        }
+        // (save_history_now is a no-op for ephemeral sub-agents).
+        self.save_history_now().await;
 
         // N2 · repeat guard — loop-local, spans turns within this run() so a
         // model stuck re-issuing one call across turns is still caught.
@@ -564,6 +755,11 @@ impl super::Agent {
         // Reminder queued by the previous tool batch; injected into the next
         // inference as an ephemeral user message (never persisted to history).
         let mut repeat_reminder: Option<String> = None;
+        // #15 · 验证闭环 — loop-local 追踪(③ 连关 nudge、② 实质变更),
+        // 与 RepeatGuard 同款 per-session 运行态;收尾门禁排队的提醒
+        // (④ criterion / ② Verifier 建议)在下一次推理前 ephemeral 注入。
+        let mut verify_tracker = VerifyTracker::default();
+        let mut stop_reminders: Vec<String> = Vec::new();
 
         loop {
             // XiuMen (休门) — agent pause. While the gate is closed the agent
@@ -576,6 +772,10 @@ impl super::Agent {
                         session = %self.id,
                         "Agent loop cancelled while paused (XiuMen closed)"
                     );
+                    // #9 · 取消退出兜底:未消费的 steer 是真实用户消息,不丢弃。
+                    if self.fold_all_steer(&ctx.tx).await {
+                        self.save_history_now().await;
+                    }
                     return;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -591,6 +791,10 @@ impl super::Agent {
                     "Reached maximum turns ({})",
                     self.max_turns
                 )));
+                // #9 · 退出兜底:未消费的 steer 折入并落盘,留给下一次 run。
+                if self.fold_all_steer(&ctx.tx).await {
+                    self.save_history_now().await;
+                }
                 break;
             }
 
@@ -607,6 +811,16 @@ impl super::Agent {
                     let seed_store = SeedStore::new(self.earth.store.clone());
                     seed_store.touch_batch(&ids);
                 }
+            }
+
+            // #9 · steer 检查点 —— 批屏障:上一批工具已按声明序结账、本次
+            // LLM 调用未发。Next 折入 history(下方 to_llm_messages 自然带
+            // 上);Now 走与 Esc 相同的取消路径(折入兜底 + 落盘后 return)。
+            // 首个迭代同样生效:run 开始前队列里的 type-ahead 插话在此折入。
+            if self.fold_steer_at_checkpoint(ctx).await {
+                tracing::info!(session = %self.id, "Agent loop steered with Now priority — cancelling");
+                self.save_history_now().await;
+                return;
             }
 
             // Build messages for LLM: system prompt + history.
@@ -979,12 +1193,30 @@ impl super::Agent {
                 infer_messages.push(Message::text(Role::User, reminder));
             }
 
+            // #15 · 验证闭环提醒 —— 同形同地 ephemeral 注入,与 steer/后台
+            // 通知共存(不入 history):
+            //   ① 测试失败定点修复提示(神盘 CompletionChecklist drain);
+            //   ③ 任务连关未验证 nudge(每 turn 最多一次);
+            //   ④/② 收尾门禁排队的提醒(criterion 逐条对照 / Verifier 建议)。
+            for reminder in self
+                .earth
+                .completion_checklist
+                .take_test_failure_reminders()
+            {
+                infer_messages.push(Message::text(Role::User, reminder));
+            }
+            if let Some(nudge) = verify_tracker.pending_nudge.take() {
+                infer_messages.push(Message::text(Role::User, nudge));
+            }
+            for reminder in stop_reminders.drain(..) {
+                infer_messages.push(Message::text(Role::User, reminder));
+            }
+
             // Build tool schemas for native tools API (openai/anthropic/gemini).
             let use_native = crate::palaces::zhong_core::use_native_tools(&ctx.core.provider_kind);
             let tool_schemas: Option<Vec<crate::stems::action::ToolSchema>> = if use_native {
                 let schemas: Vec<_> = self
-                    .earth
-                    .tools
+                    .tools()
                     .list_core()
                     .iter()
                     .map(|t| crate::stems::action::ToolSchema {
@@ -1133,10 +1365,21 @@ impl super::Agent {
                             // history —— U1/B3 同款)。
                             self.wind_down_early(&mut early, &native_tool_calls, ctx, &mut touched_acc)
                                 .await;
+                            // #9 · 取消退出兜底:未消费的 steer 不丢弃。
+                            self.fold_all_steer(&ctx.tx).await;
                             self.save_history_now().await;
                             return;
                         }
                         Some(Err(e)) => {
+                            // U4 · 子代理限流回压:429 接入 SubagentBatch 的
+                            // burst-then-throttle(指数退避缩容,恢复由
+                            // maybe_recover 在成功完成后渐进进行)。仅限流
+                            // 信号,不改变门禁/重试语义。
+                            if self.ephemeral
+                                && matches!(e, crate::error::ProviderError::RateLimited { .. })
+                            {
+                                self.earth.subagent_batch.on_rate_limited();
+                            }
                             // P0-3 + #1: retry with exponential backoff.
                             // Always attempt failover (to record failure +
                             // try provider switch), but retry even when
@@ -1147,6 +1390,8 @@ impl super::Agent {
                             {
                                 if ctx.cancel_token.is_cancelled() {
                                     tracing::info!(session = %self.id, "Agent loop cancelled");
+                                    // #9 · 取消退出兜底。
+                                    self.fold_all_steer(&ctx.tx).await;
                                     self.save_history_now().await;
                                     return;
                                 }
@@ -1194,6 +1439,8 @@ impl super::Agent {
                             }
                             tracing::error!(session = %self.id, error = %e, "LLM inference error");
                             let _ = ctx.tx.send(AgentEvent::Error(format!("{e}")));
+                            // #9 · 错误退出兜底:未消费的 steer 不丢弃。
+                            self.fold_all_steer(&ctx.tx).await;
                             self.save_history_now().await;
                             return;
                         }
@@ -1245,8 +1492,7 @@ impl super::Agent {
                 native_tool_calls
             } else {
                 let tool_names: Vec<&str> = self
-                    .earth
-                    .tools
+                    .tools()
                     .list_names()
                     .iter()
                     .map(|s| s.as_str())
@@ -1276,6 +1522,8 @@ impl super::Agent {
                 // U7: 中止在途早派发并做合成取消账目(事件,不写 history)。
                 self.wind_down_early(&mut early, &tool_calls, ctx, &mut touched_acc)
                     .await;
+                // #9 · 取消退出兜底:未消费的 steer 不丢弃。
+                self.fold_all_steer(&ctx.tx).await;
                 self.save_history_now().await;
                 return;
             }
@@ -1295,7 +1543,17 @@ impl super::Agent {
                 self.max_turns,
                 &CertaintyParams::default(),
             );
-            self.certainty_history.push(certainty.composite);
+            // #15 · 位识融合点:验证异常(测试失败 / Verifier 复核不通过 /
+            // checklist 异常)作为确定性信号经【既有通道】回流——压低本轮
+            // 写入 certainty_history 的确定度,Manas::adjust_from_certainty_trend
+            // 在趋势中读到下坠(我执回升 = 更防御),不开旁路。
+            let recorded_certainty = if self.earth.completion_checklist.take_verification_anomaly()
+            {
+                (certainty.composite * 0.5).min(0.25)
+            } else {
+                certainty.composite
+            };
+            self.certainty_history.push(recorded_certainty);
             // Adjust atma-graha based on certainty trend (feature-gated)
             if self.earth.config.app_config.cognition.certainty_enabled {
                 self.manas
@@ -1315,6 +1573,71 @@ impl super::Agent {
             );
 
             if tool_calls.is_empty() {
+                // ── #15 · 验证闭环收尾门禁(宣布完成前的确定性对照)──
+                // ④ completionCriterion:有未对照的验收标准 → 注入逐条对照
+                //    提醒并续跑(本轮不收尾);模型对照勾选后再收尾,硬上限仍
+                //    是 max_turns 安全网。
+                let unchecked = self.earth.session_bus.unchecked_criteria(&self.id);
+                if !unchecked.is_empty() {
+                    let list = unchecked
+                        .iter()
+                        .map(|c| format!("- {c}"))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    stop_reminders.push(format!(
+                        "[Completion criteria] This session declared {} acceptance criterion/criteria \
+                         that are not yet checked off:\n{list}\nBefore wrapping up, review each one \
+                         against the actual results and either mark it checked (task tool, \
+                         action=check_criterion) or report why it cannot be met.",
+                        unchecked.len()
+                    ));
+                    ctx.event_bus.emit(RuntimeEvent::TurnEnd {
+                        turn: self.turn_count as u64,
+                    });
+                    continue;
+                }
+                // ② ConfidentStop + 实质代码变更 → 提示可委派 Verifier 复核
+                //    (建议,不强制自动委派——强制会拉长每轮,提示层先行)。
+                //    注:TurnCertainty 的 ConfidentStop 判定要求 no_tool_run
+                //    信号(连续无工具快照),而无工具轮不录 TurnSnapshot——
+                //    在真实收尾点该判定结构性不可达;故门禁挂在唯一的真实
+                //    完成路径(无工具调用收尾)+ 本 run 有实质变更上,这也
+                //    正是 certainty 语义里"模型宣布完成"的时刻。
+                let max_verifier_nudges = if self.earth.config.app_config.agent.verify_on_stop {
+                    2 // verify_on_stop=true:建议后未验证再宣布完成,追加一次较强提醒。
+                } else {
+                    1
+                };
+                if !self.ephemeral
+                    && !verify_tracker.touched_files.is_empty()
+                    && verify_tracker.verifier_nudges < max_verifier_nudges
+                {
+                    verify_tracker.verifier_nudges += 1;
+                    let files = verify_tracker.touched_files.join(", ");
+                    let text = if verify_tracker.verifier_nudges == 1 {
+                        format!(
+                            "[Verification] This run modified {} file(s): {files}. Before wrapping up \
+                             you MAY delegate a Verifier sub-agent (delegate with \
+                             subagent_type=\"Verifier\") to independently re-run the tests and check \
+                             the claimed artifacts. This is a suggestion, not a requirement — if you \
+                             have already verified the changes yourself, say so and wrap up.",
+                            verify_tracker.touched_files.len()
+                        )
+                    } else {
+                        format!(
+                            "[Verification] verify_on_stop is enabled and no verification (test command \
+                             or Verifier delegation) has run since the changes to: {files}. Please \
+                             verify before claiming completion — run the test suite or delegate a \
+                             Verifier sub-agent — or state explicitly what was already verified."
+                        )
+                    };
+                    stop_reminders.push(text);
+                    ctx.event_bus.emit(RuntimeEvent::TurnEnd {
+                        turn: self.turn_count as u64,
+                    });
+                    continue;
+                }
+
                 // Certainty signal is informational (logged, observed by TaiYin).
                 // Empty tool calls always end the turn — the LLM chose to respond
                 // with text only. Certainty enriches the observation but does not
@@ -1329,6 +1652,13 @@ impl super::Agent {
                 ctx.event_bus.emit(RuntimeEvent::TurnEnd {
                     turn: self.turn_count as u64,
                 });
+                // #9 · turn 自然结束前折入剩余 steer(Next 迟到 / Later 到
+                // 期):还有插话则不 break —— 折入 history 后续跑,插话作为
+                // 下一条用户输入进入下一 turn;此时 Now 与 Next/Later 无别
+                // (turn 已结束,无需取消)。
+                if self.fold_all_steer(&ctx.tx).await {
+                    continue;
+                }
                 break;
             }
 
@@ -1376,15 +1706,21 @@ impl super::Agent {
                     if let EarlySlot::Done(outcome) =
                         std::mem::replace(&mut early.slots[k], EarlySlot::Consumed)
                     {
-                        self.absorb_outcome(&tool_calls[k], outcome, tool_calls.len() as u32, ctx)
-                            .await;
+                        self.absorb_outcome(
+                            &tool_calls[k],
+                            outcome,
+                            tool_calls.len() as u32,
+                            ctx,
+                            &mut verify_tracker,
+                        )
+                        .await;
                     }
                 }
             }
 
             let batches = crate::plates::tian_heaven::tool_scheduler::plan_batches(
                 &tool_calls,
-                &self.earth.tools,
+                self.tools(),
             );
 
             let max_fail = self.max_consecutive_failures;
@@ -1468,7 +1804,7 @@ impl super::Agent {
 
                             gate_one_tool(
                                 tc,
-                                &self.earth.tools,
+                                self.tools(),
                                 ctx.event_bus,
                                 ctx.hook_registry,
                                 &ctx.tx,
@@ -1740,7 +2076,7 @@ impl super::Agent {
                     let Some(outcome) = outcomes[i].take() else {
                         continue;
                     };
-                    self.absorb_outcome(tc, outcome, tool_calls.len() as u32, ctx)
+                    self.absorb_outcome(tc, outcome, tool_calls.len() as u32, ctx, &mut verify_tracker)
                         .await;
                     tool_count += 1;
                 }
@@ -1749,6 +2085,8 @@ impl super::Agent {
                 // N2 force stop — same收尾 shape as the max-turns exit:
                 // persist history as-is and leave the turn loop; SessionEnd
                 // and Done are emitted by the shared teardown below.
+                // #9 · 退出兜底:未消费的 steer 折入落盘,不随退出丢弃。
+                self.fold_all_steer(&ctx.tx).await;
                 self.save_history_now().await;
                 break;
             }
@@ -3147,6 +3485,8 @@ Done."#;
             io: Arc::new(ChannelManager::default()),
             config: config_loader,
             tools: Arc::new(toollist),
+            subagent_readonly_tools: Arc::new(ToolRegistry::new()),
+            subagent_coder_tools: Arc::new(ToolRegistry::new()),
             main_core: Arc::new(JiaCore::new(&dummy_profile, "dummy")),
             aux_core: None,
             permissions,
@@ -3258,6 +3598,9 @@ Done."#;
                 },
             ],
             vec![ChunkItem::Chunk(StreamChunk::Delta("done".to_string()))],
+            // #15 · 本 run 有实质代码变更(w.txt),首次纯文本收尾会触发一次
+            // Verifier 复核建议(ephemeral 提示,续跑一轮);第三轮文本收尾。
+            vec![ChunkItem::Chunk(StreamChunk::Delta("verified".to_string()))],
         ]);
         let core = native_core(provider);
 
@@ -3394,5 +3737,724 @@ Done."#;
         let hist = tool_history(&agent);
         assert_eq!(hist.len(), 1);
         assert!(hist[0].1.contains("xml-content"));
+    }
+
+    // ── #9: steer(turn 内用户插话)─────────────────────────────
+
+    /// 在指定 infer 调用(0-based)时把一条 steer 推入 session_bus,并记录
+    /// 每次调用实际看到的 user 消息内容(验证折入时机与 ephemeral 共存)。
+    struct SteerProvider {
+        steps: std::sync::Mutex<std::collections::VecDeque<MockStep>>,
+        calls: Arc<AtomicUsize>,
+        bus: Arc<crate::plates::ren_human::SessionBus>,
+        session_id: String,
+        inject_at: usize,
+        steer: Option<SteerMessage>,
+        seen_users: Arc<std::sync::Mutex<Vec<Vec<String>>>>,
+    }
+
+    impl LlmProvider for SteerProvider {
+        fn infer_stream(
+            &self,
+            messages: Vec<Message>,
+            _tools: Option<&[crate::stems::action::ToolSchema]>,
+            _cancel_token: Option<CancellationToken>,
+        ) -> std::pin::Pin<Box<dyn futures::Stream<Item = Result<StreamChunk, ProviderError>> + Send>>
+        {
+            let idx = self.calls.fetch_add(1, Ordering::SeqCst);
+            self.seen_users.lock().unwrap().push(
+                messages
+                    .iter()
+                    .filter(|m| matches!(m.role, Role::User))
+                    .map(|m| m.content.clone())
+                    .collect(),
+            );
+            if idx == self.inject_at && let Some(s) = &self.steer {
+                self.bus.push_steer(&self.session_id, s.clone());
+            }
+            let step = self
+                .steps
+                .lock()
+                .unwrap()
+                .pop_front()
+                .unwrap_or(MockStep::Complete("extra"));
+            let (tx, rx) = mpsc::unbounded_channel();
+            tokio::spawn(async move {
+                let text = match step {
+                    MockStep::Complete(t) => t,
+                    _ => "extra",
+                };
+                for ch in text.chars() {
+                    let _ = tx.send(Ok(StreamChunk::Delta(ch.to_string())));
+                }
+            });
+            Box::pin(tokio_stream::wrappers::UnboundedReceiverStream::new(rx))
+        }
+    }
+
+    fn steer_provider(
+        steps: Vec<MockStep>,
+        earth: &crate::plates::di_earth::EarthPlate,
+        session_id: &str,
+        inject_at: usize,
+        steer: Option<SteerMessage>,
+        calls: Arc<AtomicUsize>,
+        seen_users: Arc<std::sync::Mutex<Vec<Vec<String>>>>,
+    ) -> Box<dyn LlmProvider> {
+        Box::new(SteerProvider {
+            steps: std::sync::Mutex::new(steps.into()),
+            calls,
+            bus: earth.session_bus.clone(),
+            session_id: session_id.to_string(),
+            inject_at,
+            steer,
+            seen_users,
+        })
+    }
+
+    /// run_agent 的 steer 变体:返回 cancel token 以便断言 Now 取消。
+    async fn run_steer_agent(
+        earth: Arc<crate::plates::di_earth::EarthPlate>,
+        core: &JiaCore,
+        session_id: &str,
+    ) -> (super::super::Agent, Vec<AgentEvent>, CancellationToken) {
+        let human_plate =
+            HumanPlate::with_state(earth.permissions.clone(), earth.session_bus.clone());
+        let (tx, mut rx) = mpsc::unbounded_channel::<AgentEvent>();
+        let cancel = CancellationToken::new();
+        let mut agent = super::super::Agent::new(session_id.into(), earth.clone());
+        let ctx = RunContext {
+            core,
+            human_plate: &human_plate,
+            event_bus: &earth.spirit.event_bus,
+            hook_registry: &earth.spirit.hook_registry,
+            tx,
+            cancel_token: &cancel,
+        };
+        agent.run(vec![Message::text(Role::User, "hi")], &ctx).await;
+        let mut events = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            events.push(ev);
+        }
+        (agent, events, cancel)
+    }
+
+    fn steer(content: &str, priority: SteerPriority) -> SteerMessage {
+        SteerMessage {
+            content: content.to_string(),
+            priority,
+        }
+    }
+
+    fn user_texts(agent: &super::super::Agent) -> Vec<&str> {
+        agent
+            .history
+            .iter()
+            .filter_map(|e| match e {
+                HistoryEntry::User { content, .. } => Some(content.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Next:工具批屏障处(执行完一批、下一次 LLM 调用前)折入 history。
+    #[tokio::test]
+    async fn steer_next_folds_at_batch_barrier() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = temp_earth(tmp.path());
+        let ws = tmp.path().join("workspace");
+        std::fs::create_dir_all(&ws).unwrap();
+        let target = ws.join("x.txt");
+        std::fs::write(&target, "steer-content").unwrap();
+        let tool_text = format!(
+            "reading\n<tool_call>\n{{\"tool\": \"read_file\", \"parameters\": {{\"path\": \"{}\"}}}}\n</tool_call>",
+            target.display()
+        );
+        let tool_text: &'static str = Box::leak(tool_text.into_boxed_str());
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen: Arc<std::sync::Mutex<Vec<Vec<String>>>> = Arc::new(std::sync::Mutex::new(vec![]));
+        // 首次 infer 进行中注入 Next —— 模拟 agent busy 时用户插话。
+        let provider = steer_provider(
+            vec![MockStep::Complete(tool_text), MockStep::Complete("final")],
+            &earth,
+            "steer-next",
+            0,
+            Some(steer("checkpoint note", SteerPriority::Next)),
+            calls.clone(),
+            seen.clone(),
+        );
+        let core = router_core(vec![provider]);
+
+        let (agent, events, _cancel) = run_steer_agent(earth, &core, "steer-next").await;
+
+        assert_eq!(calls.load(Ordering::SeqCst), 2, "tool turn + final turn");
+        // 折入发生在批屏障:第一次 LLM 调用看不到,第二次看到。
+        let seen = seen.lock().unwrap();
+        assert!(
+            !seen[0].iter().any(|c| c.contains("[steer]")),
+            "first LLM call must not see the steer: {:?}",
+            seen[0]
+        );
+        assert!(
+            seen[1].iter().any(|c| c == "[steer] checkpoint note"),
+            "second LLM call must see the folded steer: {:?}",
+            seen[1]
+        );
+        drop(seen);
+        // steer 是真实用户消息:入 history(与后台通知的 ephemeral 不同)。
+        let users = user_texts(&agent);
+        assert!(
+            users.contains(&"[steer] checkpoint note"),
+            "steer must be persisted in history: {users:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, AgentEvent::SteerFolded { content } if content == "checkpoint note")),
+            "SteerFolded event must be emitted: {events:?}"
+        );
+        assert!(events.iter().any(|e| matches!(e, AgentEvent::Done)));
+    }
+
+    /// Now:走与 Esc 相同的取消路径 —— 不再发起下一次 LLM 调用,cancel
+    /// token 打取消;插话本体仍折入 history(真实用户消息不丢失)。
+    #[tokio::test]
+    async fn steer_now_takes_cancel_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = temp_earth(tmp.path());
+        let ws = tmp.path().join("workspace");
+        std::fs::create_dir_all(&ws).unwrap();
+        let target = ws.join("x.txt");
+        std::fs::write(&target, "steer-content").unwrap();
+        let tool_text = format!(
+            "reading\n<tool_call>\n{{\"tool\": \"read_file\", \"parameters\": {{\"path\": \"{}\"}}}}\n</tool_call>",
+            target.display()
+        );
+        let tool_text: &'static str = Box::leak(tool_text.into_boxed_str());
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen: Arc<std::sync::Mutex<Vec<Vec<String>>>> = Arc::new(std::sync::Mutex::new(vec![]));
+        let provider = steer_provider(
+            vec![MockStep::Complete(tool_text)],
+            &earth,
+            "steer-now",
+            0,
+            Some(steer("halt and listen", SteerPriority::Now)),
+            calls.clone(),
+            seen.clone(),
+        );
+        let core = router_core(vec![provider]);
+
+        let (agent, _events, cancel) = run_steer_agent(earth, &core, "steer-now").await;
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "Now must cancel before the next LLM call"
+        );
+        assert!(cancel.is_cancelled(), "Now must trip the cancel token");
+        let users = user_texts(&agent);
+        assert!(
+            users.contains(&"[steer] halt and listen"),
+            "Now message must still be folded into history: {users:?}"
+        );
+    }
+
+    /// Later:turn 自然结束前折入,作为下一条用户输入进入下一 turn。
+    #[tokio::test]
+    async fn steer_later_becomes_next_input_at_turn_end() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = temp_earth(tmp.path());
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen: Arc<std::sync::Mutex<Vec<Vec<String>>>> = Arc::new(std::sync::Mutex::new(vec![]));
+        let provider = steer_provider(
+            vec![
+                MockStep::Complete("answer one"),
+                MockStep::Complete("answer two"),
+            ],
+            &earth,
+            "steer-later",
+            0,
+            Some(steer("follow up", SteerPriority::Later)),
+            calls.clone(),
+            seen.clone(),
+        );
+        let core = router_core(vec![provider]);
+
+        let (agent, events, _cancel) = run_steer_agent(earth, &core, "steer-later").await;
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            2,
+            "Later must keep the run going as the next user input"
+        );
+        let seen = seen.lock().unwrap();
+        assert!(
+            !seen[0].iter().any(|c| c.contains("[steer]")),
+            "first call must not see the Later steer: {:?}",
+            seen[0]
+        );
+        assert!(
+            seen[1].iter().any(|c| c == "[steer] follow up"),
+            "the turn after fold must see it: {:?}",
+            seen[1]
+        );
+        drop(seen);
+        assert_eq!(assistant_texts(&agent), ["answer one", "answer two"]);
+        assert!(events.iter().any(|e| matches!(e, AgentEvent::Done)));
+    }
+
+    /// Later 不在中途批屏障折入:工具批后的检查点只折 Next,Later 回灌
+    /// 队列留待 turn 末。
+    #[tokio::test]
+    async fn steer_later_is_not_folded_at_mid_turn_checkpoint() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = temp_earth(tmp.path());
+        let ws = tmp.path().join("workspace");
+        std::fs::create_dir_all(&ws).unwrap();
+        let target = ws.join("x.txt");
+        std::fs::write(&target, "steer-content").unwrap();
+        let tool_text = format!(
+            "reading\n<tool_call>\n{{\"tool\": \"read_file\", \"parameters\": {{\"path\": \"{}\"}}}}\n</tool_call>",
+            target.display()
+        );
+        let tool_text: &'static str = Box::leak(tool_text.into_boxed_str());
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen: Arc<std::sync::Mutex<Vec<Vec<String>>>> = Arc::new(std::sync::Mutex::new(vec![]));
+        let provider = steer_provider(
+            vec![
+                MockStep::Complete(tool_text),
+                MockStep::Complete("after tools"),
+                MockStep::Complete("answer to later"),
+            ],
+            &earth,
+            "steer-later-mid",
+            0,
+            Some(steer("deferred note", SteerPriority::Later)),
+            calls.clone(),
+            seen.clone(),
+        );
+        let core = router_core(vec![provider]);
+
+        let (agent, _events, _cancel) = run_steer_agent(earth, &core, "steer-later-mid").await;
+
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        let seen = seen.lock().unwrap();
+        assert!(
+            !seen[1].iter().any(|c| c.contains("[steer]")),
+            "mid-turn checkpoint must NOT fold Later: {:?}",
+            seen[1]
+        );
+        assert!(
+            seen[2].iter().any(|c| c == "[steer] deferred note"),
+            "Later folds at turn end and is seen by the next call: {:?}",
+            seen[2]
+        );
+        drop(seen);
+        // assistant 首条是含 tool_call 的原始响应;后续两轮是纯文本。
+        let texts = assistant_texts(&agent);
+        assert_eq!(texts.len(), 3);
+        assert_eq!(texts[1..], ["after tools", "answer to later"]);
+    }
+
+    /// 与后台任务通知并存不互吃:steer 入 history(持久),后台通知只进
+    /// infer_messages(ephemeral);同一次 LLM 调用两者都看到。
+    #[tokio::test]
+    async fn steer_coexists_with_background_notification() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = temp_earth(tmp.path());
+
+        // 一个已终态、未通知的后台任务 —— 下一次 LLM 调用前注入 ephemeral 通知。
+        // (register 强制 Running,需 update_status 转到终态。)
+        let task_id = earth.background_tasks.register(
+            crate::palaces::zhen_tool::builtin::exec::background_task::BackgroundTask {
+                id: "b_steer_01".into(),
+                task_type: crate::palaces::zhen_tool::builtin::exec::background_task::TaskType::Shell,
+                status: crate::palaces::zhen_tool::builtin::exec::background_task::TaskStatus::Running,
+                description: "ls -la".into(),
+                output_file: tmp.path().join("out.txt"),
+                output_offset: 0,
+                notified: false,
+                started_at: std::time::Instant::now(),
+                ended_at: None,
+                tool_use_id: None,
+                agent_id: None,
+                exit_code: None,
+            },
+        );
+        earth.background_tasks.update_status(
+            &task_id,
+            crate::palaces::zhen_tool::builtin::exec::background_task::TaskStatus::Completed,
+            Some(0),
+        );
+        // type-ahead:run 开始前排队,首个检查点折入。
+        earth.session_bus.push_steer(
+            "steer-coex",
+            steer("typed ahead", SteerPriority::Next),
+        );
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen: Arc<std::sync::Mutex<Vec<Vec<String>>>> = Arc::new(std::sync::Mutex::new(vec![]));
+        let provider = steer_provider(
+            vec![MockStep::Complete("done")],
+            &earth,
+            "steer-coex",
+            usize::MAX, // 不在调用中注入 —— 已提前排队
+            None,
+            calls.clone(),
+            seen.clone(),
+        );
+        let core = router_core(vec![provider]);
+
+        let (agent, _events, _cancel) = run_steer_agent(earth, &core, "steer-coex").await;
+
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 1);
+        assert!(
+            seen[0].iter().any(|c| c == "[steer] typed ahead"),
+            "steer visible to the LLM call: {:?}",
+            seen[0]
+        );
+        assert!(
+            seen[0].iter().any(|c| c.contains("[Background task")),
+            "background notification visible to the same call: {:?}",
+            seen[0]
+        );
+        drop(seen);
+        // steer 持久、通知 ephemeral —— history 只留 steer。
+        let users = user_texts(&agent);
+        assert!(users.contains(&"[steer] typed ahead"), "{users:?}");
+        assert!(
+            !users.iter().any(|c| c.contains("[Background task")),
+            "ephemeral notification must not enter history: {users:?}"
+        );
+    }
+
+    // ── #15 · 验证闭环 ────────────────────────────────────────
+
+    /// ① 测试命令失败 → 失败用例解析 + 定点修复提示作为 ephemeral
+    /// reminder 注入下一 turn;⑤ 验证异常经 certainty_history 既有通道
+    /// 回流(本轮写入的确定度被压低)。
+    #[tokio::test]
+    async fn test_failure_pinpoint_reminder_injected_next_turn() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = temp_earth(tmp.path());
+        let ws = tmp.path().join("workspace");
+        std::fs::create_dir_all(&ws).unwrap();
+
+        // 命令含 "cargo test"(被识别),输出含 cargo 风格失败行(被解析)。
+        let tool_text: &'static str = Box::leak(
+            "run tests\n<tool_call>\n{\"tool\": \"shell\", \"parameters\": {\"command\": \"echo 'test foo::a ... FAILED'; echo 'running cargo test'; exit 1\"}}\n</tool_call>"
+                .to_string()
+                .into_boxed_str(),
+        );
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen: Arc<std::sync::Mutex<Vec<Vec<String>>>> = Arc::new(std::sync::Mutex::new(vec![]));
+        let provider = steer_provider(
+            vec![MockStep::Complete(tool_text), MockStep::Complete("fixing it")],
+            &earth,
+            "verify-15a",
+            usize::MAX,
+            None,
+            calls.clone(),
+            seen.clone(),
+        );
+        let core = router_core(vec![provider]);
+
+        let (agent, _events, _cancel) = run_steer_agent(earth, &core, "verify-15a").await;
+
+        assert_eq!(calls.load(Ordering::SeqCst), 2, "tool turn + final turn");
+        let seen = seen.lock().unwrap();
+        assert!(
+            !seen[0].iter().any(|c| c.contains("[Verification]")),
+            "first call must not see the reminder: {:?}",
+            seen[0]
+        );
+        let reminder = seen[1]
+            .iter()
+            .find(|c| c.contains("[Verification]"))
+            .expect("pinpoint reminder injected before the second call");
+        assert!(reminder.contains("foo::a"), "failed case listed: {reminder}");
+        assert!(
+            reminder.contains("cargo test"),
+            "command echoed: {reminder}"
+        );
+        drop(seen);
+        // 提醒是 ephemeral 注入:不入 history。
+        let users = user_texts(&agent);
+        assert!(
+            !users.iter().any(|c| c.contains("[Verification]")),
+            "reminder must not enter history: {users:?}"
+        );
+        // ⑤ 位识融合:失败在 turn1 工具结账时摄入,turn2 评估时取走异常
+        // 标记——turn2 写入 certainty_history 的确定度被压低(≤0.25)。
+        assert_eq!(agent.certainty_history.len(), 2);
+        assert!(
+            agent.certainty_history[1] <= 0.25,
+            "verification anomaly must deflate recorded certainty: {:?}",
+            agent.certainty_history
+        );
+    }
+
+    /// ③ 连续完成 3 个任务而期间无任何测试/验证命令 → 注入一次 nudge;
+    /// 触发后计数复位(再完成 2 个未达阈值,不再 nudge;每 turn 最多一次)。
+    #[tokio::test]
+    async fn task_completion_streak_without_verification_nudges_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        // task 工具须进注册表:probe_earth 追加(独立 store,预置 5 个任务)。
+        let task_store = crate::palaces::zhen_tool::builtin::exec::task::TaskStore::new();
+        let mut ids = Vec::new();
+        for i in 1..=5 {
+            ids.push(
+                task_store
+                    .create(&format!("task {i}"), "")
+                    .unwrap()
+                    .id,
+            );
+        }
+        let task_tool: Arc<dyn crate::palaces::zhen_tool::base::BaseTool> = Arc::new(
+            crate::palaces::zhen_tool::builtin::exec::task::TaskTool::new(task_store),
+        );
+        let earth = probe_earth(tmp.path(), vec![task_tool]);
+        std::fs::create_dir_all(tmp.path().join("workspace")).unwrap();
+
+        let complete = |id: &str| -> String {
+            format!(
+                "close it\n<tool_call>\n{{\"tool\": \"task\", \"parameters\": {{\"action\": \"update\", \"id\": \"{id}\", \"status\": \"completed\"}}}}\n</tool_call>"
+            )
+        };
+        let steps: Vec<MockStep> = vec![
+            MockStep::Complete(Box::leak(complete(&ids[0]).into_boxed_str())),
+            MockStep::Complete(Box::leak(complete(&ids[1]).into_boxed_str())),
+            MockStep::Complete(Box::leak(complete(&ids[2]).into_boxed_str())),
+            // 第 4 次调用前应看到 nudge;本轮回 1 个完成(复位后计数=1)。
+            MockStep::Complete(Box::leak(complete(&ids[3]).into_boxed_str())),
+            // 再完成 1 个(计数=2,未达阈值)。
+            MockStep::Complete(Box::leak(complete(&ids[4]).into_boxed_str())),
+            MockStep::Complete("all done"),
+        ];
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen: Arc<std::sync::Mutex<Vec<Vec<String>>>> = Arc::new(std::sync::Mutex::new(vec![]));
+        let provider = steer_provider(
+            steps,
+            &earth,
+            "verify-15b",
+            usize::MAX,
+            None,
+            calls.clone(),
+            seen.clone(),
+        );
+        let core = router_core(vec![provider]);
+
+        let (_agent, _events, _cancel) = run_steer_agent(earth, &core, "verify-15b").await;
+
+        assert_eq!(calls.load(Ordering::SeqCst), 6);
+        let seen = seen.lock().unwrap();
+        let nudges: Vec<usize> = seen
+            .iter()
+            .enumerate()
+            .filter_map(|(i, msgs)| {
+                msgs.iter()
+                    .any(|c| c.contains("3 tasks in a row"))
+                    .then_some(i)
+            })
+            .collect();
+        assert_eq!(
+            nudges,
+            [3],
+            "nudge exactly once, before the 4th call: {nudges:?}"
+        );
+    }
+
+    /// ④ completionCriterion:有未对照的验收标准时宣布完成(无工具调用
+    /// 收尾)被拦——注入逐条对照提醒续跑;全部对照后方可收尾。
+    #[tokio::test]
+    async fn completion_criteria_block_stop_until_checked() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = temp_earth(tmp.path());
+
+        earth
+            .session_bus
+            .set_criteria("verify-15c", vec!["tests pass".into()]);
+
+        // 第二次调用时由 provider 模拟"对照完成"的效果(对照动作本身即
+        // task.rs 的 check_criterion,已单测);此后收尾应被放行。
+        struct CriterionProvider {
+            steps: std::sync::Mutex<std::collections::VecDeque<MockStep>>,
+            calls: Arc<AtomicUsize>,
+            bus: Arc<crate::plates::ren_human::SessionBus>,
+            session_id: String,
+            seen_users: Arc<std::sync::Mutex<Vec<Vec<String>>>>,
+        }
+        impl LlmProvider for CriterionProvider {
+            fn infer_stream(
+                &self,
+                messages: Vec<Message>,
+                _tools: Option<&[crate::stems::action::ToolSchema]>,
+                _cancel_token: Option<CancellationToken>,
+            ) -> std::pin::Pin<
+                Box<dyn futures::Stream<Item = Result<StreamChunk, ProviderError>> + Send>,
+            > {
+                let idx = self.calls.fetch_add(1, Ordering::SeqCst);
+                self.seen_users.lock().unwrap().push(
+                    messages
+                        .iter()
+                        .filter(|m| matches!(m.role, Role::User))
+                        .map(|m| m.content.clone())
+                        .collect(),
+                );
+                if idx == 1 {
+                    // 模型看到提醒后对照勾选了验收标准(效果等价)。
+                    self.bus
+                        .check_criterion(&self.session_id, "tests pass")
+                        .unwrap();
+                }
+                let step = self
+                    .steps
+                    .lock()
+                    .unwrap()
+                    .pop_front()
+                    .unwrap_or(MockStep::Complete("extra"));
+                let (tx, rx) = mpsc::unbounded_channel();
+                tokio::spawn(async move {
+                    let text = match step {
+                        MockStep::Complete(t) => t,
+                        _ => "extra",
+                    };
+                    for ch in text.chars() {
+                        let _ = tx.send(Ok(StreamChunk::Delta(ch.to_string())));
+                    }
+                });
+                Box::pin(tokio_stream::wrappers::UnboundedReceiverStream::new(rx))
+            }
+        }
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen: Arc<std::sync::Mutex<Vec<Vec<String>>>> = Arc::new(std::sync::Mutex::new(vec![]));
+        let provider: Box<dyn LlmProvider> = Box::new(CriterionProvider {
+            steps: std::sync::Mutex::new(
+                vec![MockStep::Complete("all done"), MockStep::Complete("checked, done")]
+                    .into(),
+            ),
+            calls: calls.clone(),
+            bus: earth.session_bus.clone(),
+            session_id: "verify-15c".into(),
+            seen_users: seen.clone(),
+        });
+        let core = router_core(vec![provider]);
+
+        let (_agent, _events, _cancel) = run_steer_agent(earth.clone(), &core, "verify-15c").await;
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            2,
+            "first stop must be blocked by the unchecked criterion"
+        );
+        let seen = seen.lock().unwrap();
+        let reminder = seen[1]
+            .iter()
+            .find(|c| c.contains("[Completion criteria]"))
+            .expect("criterion reminder injected before the second call");
+        assert!(reminder.contains("tests pass"), "{reminder}");
+        drop(seen);
+        assert!(
+            earth.session_bus.unchecked_criteria("verify-15c").is_empty(),
+            "criterion checked → stop allowed"
+        );
+    }
+
+    /// ② 本 run 有实质代码变更(write_file 成功)时,宣布完成 → 提示可
+    /// 委派 Verifier 复核(建议,每 run 一次);无实质变更则不提示。
+    #[tokio::test]
+    async fn verifier_hint_on_stop_after_code_changes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = temp_earth(tmp.path());
+        let ws = tmp.path().join("workspace");
+        std::fs::create_dir_all(&ws).unwrap();
+        let target = ws.join("a.txt");
+
+        let write_text = format!(
+            "write\n<tool_call>\n{{\"tool\": \"write_file\", \"parameters\": {{\"path\": \"{}\", \"content\": \"x\"}}}}\n</tool_call>",
+            target.display()
+        );
+        let write_text: &'static str = Box::leak(write_text.into_boxed_str());
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen: Arc<std::sync::Mutex<Vec<Vec<String>>>> = Arc::new(std::sync::Mutex::new(vec![]));
+        let provider = steer_provider(
+            vec![
+                MockStep::Complete(write_text),
+                MockStep::Complete("done"),
+                MockStep::Complete("already verified, done"),
+            ],
+            &earth,
+            "verify-15d",
+            usize::MAX,
+            None,
+            calls.clone(),
+            seen.clone(),
+        );
+        let core = router_core(vec![provider]);
+
+        let (_agent, _events, _cancel) = run_steer_agent(earth, &core, "verify-15d").await;
+
+        // 第一次收尾被提示拦截(续跑一轮),第二次放行(每 run 一次)。
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        let seen = seen.lock().unwrap();
+        let hint = seen[2]
+            .iter()
+            .find(|c| c.contains("[Verification]"))
+            .expect("verifier hint injected before the third call");
+        assert!(hint.contains("Verifier"), "{hint}");
+        assert!(hint.contains("a.txt"), "touched file listed: {hint}");
+        assert!(
+            !seen[1].iter().any(|c| c.contains("[Verification]")),
+            "no hint before the first stop attempt: {:?}",
+            seen[1]
+        );
+    }
+
+    /// ② 反面:无实质代码变更(只读)时宣布完成 —— 不提示,直接收尾。
+    #[tokio::test]
+    async fn no_verifier_hint_without_code_changes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let earth = temp_earth(tmp.path());
+        let ws = tmp.path().join("workspace");
+        std::fs::create_dir_all(&ws).unwrap();
+        let target = ws.join("r.txt");
+        std::fs::write(&target, "content").unwrap();
+
+        let read_text = format!(
+            "read\n<tool_call>\n{{\"tool\": \"read_file\", \"parameters\": {{\"path\": \"{}\"}}}}\n</tool_call>",
+            target.display()
+        );
+        let read_text: &'static str = Box::leak(read_text.into_boxed_str());
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen: Arc<std::sync::Mutex<Vec<Vec<String>>>> = Arc::new(std::sync::Mutex::new(vec![]));
+        let provider = steer_provider(
+            vec![MockStep::Complete(read_text), MockStep::Complete("done")],
+            &earth,
+            "verify-15e",
+            usize::MAX,
+            None,
+            calls.clone(),
+            seen.clone(),
+        );
+        let core = router_core(vec![provider]);
+
+        let (_agent, _events, _cancel) = run_steer_agent(earth, &core, "verify-15e").await;
+
+        assert_eq!(calls.load(Ordering::SeqCst), 2, "stop immediately, no hint");
+        let seen = seen.lock().unwrap();
+        assert!(
+            !seen.iter().flatten().any(|c| c.contains("[Verification]")),
+            "no verifier hint without code changes: {seen:?}"
+        );
     }
 }

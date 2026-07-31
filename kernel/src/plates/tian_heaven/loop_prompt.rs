@@ -15,6 +15,13 @@ After receiving tool results, continue reasoning to help the user.";
             None => return DEFAULT_IDENTITY.to_string(),
         };
 
+        // U4 · sub-agent identity is a task charter, not a cultivated 人设 —
+        // no atma_graha modulation suffix (ephemeral agents carry no Manas
+        // history, so the suffix would be noise).
+        if self.ephemeral {
+            return ren.to_string();
+        }
+
         if self.manas.atma_graha >= 0.60 {
             format!("{ren}\n\nEmbody these values. Stay close to them.")
         } else {
@@ -34,6 +41,22 @@ After receiving tool results, continue reasoning to help the user.";
         let ren = self.build_ren_prompt();
         let stable_suffix = self.build_stable_prompt(use_native);
         let stable = format!("{ren}{stable_suffix}");
+
+        // U4 · ephemeral sub-agents: no dynamic segment at all (token economy +
+        // 位识边界) — no skills, no user profile, no memory catalog/seeds, no
+        // shared todo block. Only the per-mode notice survives, with a
+        // sub-agent-specific text (no exit_plan_mode — that tool is not in the
+        // sub-agent registry).
+        if self.ephemeral {
+            let dynamic = if self.interaction_mode == crate::stems::InteractionMode::Plan {
+                "【只读子代理】你只能使用只读工具。变更类工具会被门禁拒绝；需要用户确认的工具调用同样会被拒绝（子代理无法询问）。遇到拒绝不要重试，改用只读方式继续，或在最终报告中如实说明限制。"
+                    .to_string()
+            } else {
+                "【子代理】你无法向用户提问或请求确认。需要确认的工具调用会被门禁拒绝；遇到拒绝不要重试，换用其他方式完成，或在最终报告中如实说明限制。"
+                    .to_string()
+            };
+            return crate::palaces::zhong_core::SystemPrompt { stable, dynamic };
+        }
 
         let mut dynamic = self.build_dynamic_prompt();
         // P3 · plan mode notice (in dynamic segment — it is a per-mode instruction,

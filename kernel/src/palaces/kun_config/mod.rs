@@ -615,11 +615,18 @@ pub struct AgentSection {
     /// Maximum turns per session (default: 50).
     /// Can be overridden with JIA_MAX_TURNS env var.
     pub max_turns: u32,
+    /// #15 · ConfidentStop 复核提示强度(验证闭环):false(默认)= 每次
+    /// run 一次软性建议;true = 建议后未验证即再次宣布完成时,追加一次
+    /// 较强提醒。刻意不做自动委派——强制复核会拉长每轮,提示层先行。
+    pub verify_on_stop: bool,
 }
 
 impl Default for AgentSection {
     fn default() -> Self {
-        Self { max_turns: 50 }
+        Self {
+            max_turns: 50,
+            verify_on_stop: false,
+        }
     }
 }
 
