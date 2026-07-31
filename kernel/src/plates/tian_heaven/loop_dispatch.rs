@@ -189,7 +189,17 @@ pub async fn gate_one_tool(
     // GeJu.evaluate so GeJu remains a pure 干叠加 evaluator (A2) — the planning
     // gate is a 人盘 concern, not a 格局 concern. enter/exit_plan_mode are
     // is_destructive()=false so they pass (D1: no self-deadlock).
-    if interaction_mode == InteractionMode::Plan && tool.is_destructive() {
+    //
+    // U4 · 子代理收紧(公理 4,只收紧):delegate/send_message 的 ceremony 为
+    // 戊仪(只读型委派),但 Coder 子代理可写。谋划态下按名拦截——
+    // delegate 参数请求 Coder(单个或 tasks[] 任一)即拒;send_message 可能
+    // 续聊一个类型绑定的 Coder 会话,无法从入参判定,一律拒(退出谋划态后
+    // 再续聊)。门禁与主循环同一代码点,杜绝经子代理绕过谋划态。
+    let plan_blocked = tool.is_destructive()
+        || tc.name == "send_message"
+        || (tc.name == "delegate"
+            && crate::palaces::zhen_tool::builtin::delegate::requests_coder(&tc.parameters));
+    if interaction_mode == InteractionMode::Plan && plan_blocked {
         let err = format!(
             "【谋划态】当前为只读计划模式，变更类工具 '{}' 被拒。完成方案后用 exit_plan_mode 退出谋划态再执行。",
             tc.name
@@ -699,6 +709,81 @@ mod tests {
             "s1",
             id,
         )
+    }
+
+    /// U4 · 谋划态拦截(公理 4 只收紧):delegate 请求 Coder(单个或
+    /// tasks[] 任一)与 send_message 在计划模式下按变更类拒绝;delegate
+    /// 只读类型(Explore/Plan)不受影响。
+    #[tokio::test]
+    async fn plan_mode_blocks_delegate_coder_and_send_message() {
+        use crate::palaces::zhen_tool::builtin::delegate::{DelegateTool, SendMessageTool};
+
+        let mut tools = crate::palaces::zhen_tool::ToolRegistry::new();
+        tools.register(Arc::new(DelegateTool::new()));
+        tools.register(Arc::new(SendMessageTool::new()));
+        tools.register(Arc::new(crate::palaces::zhen_tool::builtin::fs::read_file::ReadFileTool::new()));
+        let bus = EventBus::new();
+        let hooks = HookRegistry::new();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let failures: HashMap<String, u32> = HashMap::new();
+
+        let gate = |name: &str, params: serde_json::Value| {
+            let tc = ToolCall {
+                id: "c1".to_string(),
+                name: name.to_string(),
+                parameters: params,
+            };
+            let tools = &tools;
+            let bus = &bus;
+            let hooks = &hooks;
+            let tx = &tx;
+            let failures = &failures;
+            async move {
+                gate_one_tool(
+                    &tc,
+                    tools,
+                    bus,
+                    hooks,
+                    tx,
+                    failures,
+                    3,
+                    InteractionMode::Plan,
+                    &[],
+                    &[],
+                    0.5,
+                )
+                .await
+            }
+        };
+
+        let planning_denied = |g: GatedCall| match g {
+            GatedCall::Finished(o) => o.execution_mode == "planning_denied",
+            GatedCall::Cleared { .. } => false,
+        };
+
+        // delegate + Coder → 拒
+        assert!(planning_denied(
+            gate("delegate", serde_json::json!({"subagent_type": "Coder", "prompt": "x"})).await
+        ));
+        // delegate + tasks[] 含 Coder → 拒
+        assert!(planning_denied(
+            gate("delegate", serde_json::json!({
+                "tasks": [{"subagent_type": "Explore", "prompt": "a"},
+                          {"subagent_type": "Coder", "prompt": "b"}]
+            })).await
+        ));
+        // send_message(可能续聊 Coder 会话)→ 拒
+        assert!(planning_denied(
+            gate("send_message", serde_json::json!({"subagent_id": "s", "message": "m"})).await
+        ));
+        // delegate + 只读类型 → 不拦(过了谋划短路,后续 GeJu 照常)
+        assert!(!planning_denied(
+            gate("delegate", serde_json::json!({"subagent_type": "Explore", "prompt": "x"})).await
+        ));
+        // 只读工具 → 不拦
+        assert!(!planning_denied(
+            gate("read_file", serde_json::json!({"path": "x"})).await
+        ));
     }
 
     #[test]

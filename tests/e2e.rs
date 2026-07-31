@@ -158,6 +158,8 @@ fn temp_earth(store: Arc<Store>, temp_dir: &std::path::Path) -> Arc<EarthPlate> 
         io: Arc::new(kernel::palaces::kan_io::ChannelManager::default()),
         config: config_loader,
         tools: Arc::new(toollist),
+        subagent_readonly_tools: Arc::new(ToolRegistry::new()),
+        subagent_coder_tools: Arc::new(ToolRegistry::new()),
         main_core: Arc::new(JiaCore::new(&dummy_profile, "dummy")),
         aux_core: None,
         permissions: permissions.clone(),

@@ -92,6 +92,17 @@ pub struct Agent {
     /// Seed co-activation matrix — tracks which seeds are retrieved together.
     /// Per-project sparse matrix with exponential decay.
     pub coactivation: crate::vijnana::vasana::coactivation::SeedCoActivationMatrix,
+    /// U4 · sub-agent tool registry override. None = the full EarthPlate
+    /// registry (main sessions); Some = a restricted registry (read-only for
+    /// Explore/Plan, writable for Coder). Gating, batching and prompt all
+    /// resolve through [`Agent::tools`], so the registry swap is the ONLY
+    /// difference — the gate code path stays shared (公理 3).
+    pub tools_override: Option<Arc<crate::palaces::zhen_tool::ToolRegistry>>,
+    /// U4 · ephemeral sub-agent session (位识边界): no ren_soul load/seed,
+    /// no memory perfuming/injection, no session-history persistence, no
+    /// post_loop. The final report returns via the delegate result; the
+    /// scratchpad stays the shared channel.
+    pub ephemeral: bool,
 }
 
 impl Agent {
@@ -146,6 +157,8 @@ impl Agent {
             interaction_mode: InteractionMode::Auto,
             certainty_history: Vec::new(),
             coactivation: Default::default(),
+            tools_override: None,
+            ephemeral: false,
         };
         // Load ren_soul.md — auto-seed default if missing.
         s.load_ren_soul();
@@ -154,6 +167,22 @@ impl Agent {
 
     /// Create an agent with persisted session state.
     pub fn with_session(
+        id: String,
+        earth: Arc<EarthPlate>,
+        history: Vec<HistoryEntry>,
+        manas: Manas,
+        distilled_hashes: std::collections::HashSet<u64>,
+    ) -> Self {
+        let mut s = Self::construct(id, earth, history, manas, distilled_hashes);
+        // Load ren_soul.md — if it doesn't exist, auto-seed default.
+        s.load_ren_soul();
+        s
+    }
+
+    /// Shared constructor body. ren_soul loading is left to the caller:
+    /// sub-agents (`for_subagent`) must NOT load it (位识边界 — no Alaya
+    /// seed write, no file auto-seed).
+    fn construct(
         id: String,
         earth: Arc<EarthPlate>,
         history: Vec<HistoryEntry>,
@@ -182,7 +211,7 @@ impl Agent {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(earth.config.app_config.agent.max_turns);
-        let mut s = Self {
+        Self {
             id,
             exec_ctx,
             principles,
@@ -210,10 +239,45 @@ impl Agent {
             interaction_mode: InteractionMode::Auto,
             certainty_history: Vec::new(),
             coactivation: Default::default(),
-        };
-        // Load ren_soul.md — if it doesn't exist, auto-seed default.
-        s.load_ren_soul();
+            tools_override: None,
+            ephemeral: false,
+        }
+    }
+
+    /// U4 · sub-agent constructor ( ephemeral · 位识边界).
+    ///
+    /// Shares the main loop and its gates (公理 3: 同一代码路径) but severs
+    /// all memory interactions: no ren_soul load (no file auto-seed, no Alaya
+    /// seed write), no perfuming/seed injection (loop.rs gates on `ephemeral`),
+    /// no session-history persistence, no post_loop (the caller simply does
+    /// not call it). `identity` takes the ren slot of the system prompt;
+    /// `tools` becomes the agent's whole reachable tool set.
+    pub fn for_subagent(
+        id: String,
+        earth: Arc<EarthPlate>,
+        history: Vec<HistoryEntry>,
+        tools: Arc<crate::palaces::zhen_tool::ToolRegistry>,
+        identity: String,
+    ) -> Self {
+        let mut s = Self::construct(
+            id,
+            earth,
+            history,
+            Manas::default(),
+            std::collections::HashSet::new(),
+        );
+        s.ren_soul = Some(identity);
+        s.tools_override = Some(tools);
+        s.ephemeral = true;
         s
+    }
+
+    /// The tool registry this agent sees: the sub-agent override when set,
+    /// otherwise the full EarthPlate registry (六仪不动).
+    pub fn tools(&self) -> &crate::palaces::zhen_tool::ToolRegistry {
+        self.tools_override
+            .as_deref()
+            .unwrap_or(&self.earth.tools)
     }
 
     /// Activate skills whose path patterns match the files touched this turn.
@@ -371,10 +435,9 @@ Be attentive, truthful, and serve with sincerity.\n\
         // cacheable stable segment); the agent discovers them via `toolsearch`.
         // `toolsearch` itself is core but only advertised when external tools
         // exist (keeps the no-MCP prompt identical to pre-P9 → D4).
-        let has_external = !self.earth.tools.list_external().is_empty();
+        let has_external = !self.tools().list_external().is_empty();
         let tools: Vec<_> = self
-            .earth
-            .tools
+            .tools()
             .list_core()
             .into_iter()
             .filter(|t| t.name() != "toolsearch" || has_external)
@@ -410,8 +473,11 @@ Be attentive, truthful, and serve with sincerity.\n\
 
         // Skills marked `always: true` are injected into every prompt. These are
         // part of the stable segment. Context-activated skills (dynamic) are in
-        // `build_dynamic_prompt`.
-        if let Ok(skills) = self.earth.skills.read() {
+        // `build_dynamic_prompt`. U4: ephemeral sub-agents get no skill
+        // injection (token economy — the identity prompt is self-contained).
+        if !self.ephemeral
+            && let Ok(skills) = self.earth.skills.read()
+        {
             let always_skills: Vec<_> =
                 skills.list_all().into_iter().filter(|s| s.always).collect();
             if !always_skills.is_empty() {
@@ -572,6 +638,8 @@ mod tests {
             io: Arc::new(ChannelManager::default()),
             config: config_loader,
             tools: Arc::new(toollist),
+            subagent_readonly_tools: Arc::new(ToolRegistry::new()),
+            subagent_coder_tools: Arc::new(ToolRegistry::new()),
             main_core: Arc::new(JiaCore::new(&dummy_profile, "dummy")),
             aux_core: None,
             permissions,

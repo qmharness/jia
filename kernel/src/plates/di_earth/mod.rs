@@ -24,7 +24,7 @@ use crate::palaces::zhen_tool::builtin::browser::web_fetch::WebFetchTool;
 use crate::palaces::zhen_tool::builtin::computer::computer_use::ComputerUseTool;
 #[cfg(feature = "agent-tool")]
 use crate::palaces::zhen_tool::builtin::delegate::SendMessageTool;
-use crate::palaces::zhen_tool::builtin::exec::lsp::LspTool;
+use crate::palaces::zhen_tool::builtin::exec::lsp::{LspManager, LspTool};
 use crate::palaces::zhen_tool::builtin::exec::retrieve_tool_result::RetrieveToolResultTool;
 use crate::palaces::zhen_tool::builtin::exec::shell::ShellTool;
 use crate::palaces::zhen_tool::builtin::exec::task::{TaskStore, TaskTool};
@@ -51,7 +51,7 @@ use crate::palaces::zhen_tool::builtin::cron::CronStore;
 use crate::palaces::zhen_tool::builtin::cron::CronTool;
 use crate::palaces::zhen_tool::builtin::cron_runner;
 #[cfg(feature = "agent-tool")]
-use crate::palaces::zhen_tool::builtin::delegate::{DelegateTool, SubagentSession, SubagentType};
+use crate::palaces::zhen_tool::builtin::delegate::{DelegateTool, SubagentSession};
 #[cfg(feature = "git")]
 use crate::palaces::zhen_tool::builtin::exec::git::GitTool;
 use crate::palaces::zhen_tool::builtin::namarupa::NamaRupaTool;
@@ -79,6 +79,10 @@ pub struct EarthPlate {
     pub io: Arc<ChannelManager>,                       // 坎一
     pub config: Arc<ConfigLoader>,                     // 坤二
     pub tools: Arc<ToolRegistry>,                      // 震三
+    /// U4 · 只读子代理(Explore/Plan)注册表。
+    pub subagent_readonly_tools: Arc<ToolRegistry>,
+    /// U4 · Coder 子代理可写注册表(强制 worktree 隔离,无 enter/exit_worktree)。
+    pub subagent_coder_tools: Arc<ToolRegistry>,
     pub main_core: Arc<JiaCore>,                       // 中五 (主模型)
     pub aux_core: Option<Arc<JiaCore>>, // 辅模型: 用于 consolidation/distillation/reflection
     pub permissions: Arc<PermissionMatrix>, // 乾六
@@ -209,22 +213,31 @@ impl EarthPlate {
         subtool_registry.register(Arc::new(ComputerUseTool::new()));
         #[cfg(feature = "web-search")]
         subtool_registry.register(Arc::new(WebSearchTool::new()));
-        let _subtools = Arc::new(subtool_registry);
+        let subagent_readonly_tools = Arc::new(subtool_registry);
 
         // P2-1 · 会话总线(人盘)——五簇可变会话状态,create early:
         // DelegateTool/SendMessageTool/AskUserQuestionTool below hold clones.
         let session_bus = Arc::new(SessionBus::new());
 
         let mut tool_registry = ToolRegistry::new();
+        // N6 · LSP 共享句柄:同一 LspManager 同时供 lsp 导航工具与 fs
+        // 编辑后主动诊断(patch_file/write_file)使用。工具是地盘单例
+        // (六仪不动),worktree 重建仅换 ExecContext —— LSP 服务器池
+        // 共享,不随重建重启。
+        let lsp_manager = Arc::new(LspManager::new());
         tool_registry.register(Arc::new(ReadFileTool::new()));
-        tool_registry.register(Arc::new(WriteFileTool::new()));
+        tool_registry.register(Arc::new(WriteFileTool::with_diagnostics(Some(
+            lsp_manager.clone(),
+        ))));
         // ShellTool registered below with background_tasks
         tool_registry.register(Arc::new(GrepTool::new()));
         tool_registry.register(Arc::new(GlobTool::new()));
-        tool_registry.register(Arc::new(EditTool::new()));
+        tool_registry.register(Arc::new(EditTool::with_diagnostics(Some(
+            lsp_manager.clone(),
+        ))));
         // N5 · 艮八宫(癸·藏)——回滚是"藏之取",撤销 write_file/patch_file 的编辑
         tool_registry.register(Arc::new(RevertFileTool::new()));
-        tool_registry.register(Arc::new(LspTool::new()));
+        tool_registry.register(Arc::new(LspTool::with_manager(lsp_manager.clone())));
         // #10 · 震三宫(戊仪只读)——取回超阈值落盘的完整工具结果(按 tool_call_id 分段)
         tool_registry.register(Arc::new(RetrieveToolResultTool::new()));
         // P3 · plan-mode control tools (read-only, non-destructive — D1)
@@ -251,14 +264,13 @@ impl EarthPlate {
         let subagent_batch =
             Arc::new(crate::plates::tian_heaven::subagent_batch::SubagentBatch::new());
 
-        // P8 · send_message (continue a sub-agent) + cross-worker scratchpad
+        // U4 · send_message (continue a sub-agent) + cross-worker scratchpad.
+        // DelegateTool/SendMessageTool 迟绑定 Weak<EarthPlate>(装配完成后
+        // bind_earth —— 子代理运行需要整盘:子代理注册表/spirit/aux_core)。
         #[cfg(feature = "agent-tool")]
-        tool_registry.register(Arc::new(SendMessageTool::new(
-            main_core.clone(),
-            _subtools.clone(),
-            session_bus.subagent_sessions.clone(),
-            subagent_batch.clone(),
-        )));
+        let send_message_tool = Arc::new(SendMessageTool::new());
+        #[cfg(feature = "agent-tool")]
+        tool_registry.register(send_message_tool.clone());
         tool_registry.register(Arc::new(ScratchpadWriteTool::new()));
         tool_registry.register(Arc::new(ScratchpadReadTool::new()));
 
@@ -270,14 +282,44 @@ impl EarthPlate {
         tool_registry.register(Arc::new(GitTool::new()));
 
         // Task store — CRUD task tracking, shared for potential REST API access
+        // #15 · 绑定会话总线:completion criterion(set/check)动作经此存取。
         let task_store = TaskStore::new();
-        tool_registry.register(Arc::new(TaskTool::new(task_store.clone())));
+        tool_registry.register(Arc::new(
+            TaskTool::new(task_store.clone()).with_session_bus(session_bus.clone()),
+        ));
 
         // Background task store — for fire-and-forget shell/agent/workflow tasks
         let background_tasks = BackgroundTaskStore::new();
         tool_registry.register(Arc::new(ShellTool::with_background_tasks(
             background_tasks.clone(),
         )));
+
+        // U4 · Coder 子代理可写注册表(read/write/patch/shell/git/grep/glob/
+        // lsp/revert + scratchpad 共享通道 + retrieve_tool_result)。强制
+        // worktree 隔离由 run_subagent 执行;enter/exit_worktree 故意【不】
+        // 注册——隔离边界对子代理模型不可退(结构性收紧)。LSP 服务器池与主
+        // 注册表共享同一 LspManager(六仪不动)。
+        let mut coder_registry = ToolRegistry::new();
+        coder_registry.register(Arc::new(ReadFileTool::new()));
+        coder_registry.register(Arc::new(WriteFileTool::with_diagnostics(Some(
+            lsp_manager.clone(),
+        ))));
+        coder_registry.register(Arc::new(EditTool::with_diagnostics(Some(
+            lsp_manager.clone(),
+        ))));
+        coder_registry.register(Arc::new(GrepTool::new()));
+        coder_registry.register(Arc::new(GlobTool::new()));
+        coder_registry.register(Arc::new(ShellTool::with_background_tasks(
+            background_tasks.clone(),
+        )));
+        #[cfg(feature = "git")]
+        coder_registry.register(Arc::new(GitTool::new()));
+        coder_registry.register(Arc::new(LspTool::with_manager(lsp_manager.clone())));
+        coder_registry.register(Arc::new(RevertFileTool::new()));
+        coder_registry.register(Arc::new(RetrieveToolResultTool::new()));
+        coder_registry.register(Arc::new(ScratchpadWriteTool::new()));
+        coder_registry.register(Arc::new(ScratchpadReadTool::new()));
+        let subagent_coder_tools = Arc::new(coder_registry);
 
         // Pending questions — shared between AskUserQuestionTool and REST /answer endpoint
         tool_registry.register(Arc::new(AskUserQuestionTool::new(
@@ -332,6 +374,8 @@ impl EarthPlate {
         let store_async = StoreAsync::new(store.clone());
 
         // P8 · crash recovery: hydrate subagent sessions from SQLite
+        // (U4: v2 信封携带类型/模型/授权/worktree 绑定;legacy Vec<Message>
+        // 行由 from_stored 转换为 HistoryEntry)。
         if let Ok(rows) = store.load_all_subagent_sessions() {
             if !rows.is_empty() {
                 let mut guard = session_bus
@@ -339,20 +383,10 @@ impl EarthPlate {
                     .lock()
                     .unwrap_or_else(|e| e.into_inner());
                 for (id, messages_json, subagent_type, created_at, last_used) in rows {
-                    if let Ok(messages) =
-                        serde_json::from_str::<Vec<crate::types::Message>>(&messages_json)
+                    if let Some(session) =
+                        SubagentSession::from_stored(&messages_json, &subagent_type, created_at, last_used)
                     {
-                        let st =
-                            SubagentType::from_str(&subagent_type).unwrap_or(SubagentType::Explore);
-                        guard.insert(
-                            id,
-                            SubagentSession {
-                                messages,
-                                subagent_type: st,
-                                created_at,
-                                last_used,
-                            },
-                        );
+                        guard.insert(id, session);
                     }
                 }
                 tracing::info!(
@@ -365,15 +399,11 @@ impl EarthPlate {
         // Register NamaRupaTool — agentic graph memory (nāma-rūpa)
         tool_registry.register(Arc::new(NamaRupaTool::new(store.clone())));
 
-        // P1 · Register DelegateTool with Store for sub-agent session persistence
+        // U4 · DelegateTool(迟绑定,装配完成后 bind_earth)
         #[cfg(feature = "agent-tool")]
-        tool_registry.register(Arc::new(DelegateTool::new(
-            main_core.clone(),
-            _subtools.clone(),
-            store.clone(),
-            session_bus.subagent_sessions.clone(),
-            subagent_batch.clone(),
-        )));
+        let delegate_tool = Arc::new(DelegateTool::new());
+        #[cfg(feature = "agent-tool")]
+        tool_registry.register(delegate_tool.clone());
 
         // Load WASM plugins from plugins/ directory
         #[cfg(feature = "wasm-plugin")]
@@ -449,6 +479,8 @@ impl EarthPlate {
             io,
             config: config_loader,
             tools,
+            subagent_readonly_tools,
+            subagent_coder_tools,
             main_core,
             aux_core,
             permissions,
@@ -467,6 +499,14 @@ impl EarthPlate {
             pid_path,
             backup_dir,
         });
+
+        // U4 · 迟绑定:delegate/send_message 取整盘弱引用(子代理注册表、
+        // spirit、aux_core、后台任务、会话总线皆经盘取用)。
+        #[cfg(feature = "agent-tool")]
+        {
+            delegate_tool.bind_earth(&earth);
+            send_message_tool.bind_earth(&earth);
+        }
 
         // ── P2-2 · 点火运行时编排(天盘)──
         // 起局装配期的单向点火(组装根语义):cron 触发的会话编排上天盘,

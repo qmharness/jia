@@ -132,6 +132,8 @@ fn temp_earth(
         io: Arc::new(kernel::palaces::kan_io::ChannelManager::default()),
         config: config_loader,
         tools: Arc::new(toollist),
+        subagent_readonly_tools: Arc::new(ToolRegistry::new()),
+        subagent_coder_tools: Arc::new(ToolRegistry::new()),
         main_core: Arc::new(JiaCore::new(profile, &profile.default_main_model().to_string())),
         aux_core: None,
         permissions: permissions.clone(),
