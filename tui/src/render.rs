@@ -186,7 +186,7 @@ pub fn render_messages(f: &mut Frame, area: Rect, lines: &[ChatLine]) {
 
 static SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-/// 状态栏 — 输入框上方：状态图标 · 九星相位 · 本轮用时
+/// 状态栏 — 输入框上方：状态图标 · 九星相位 · 本轮用时 · 后台任务通知
 pub fn render_status_bar(
     f: &mut Frame,
     area: Rect,
@@ -197,6 +197,8 @@ pub fn render_status_bar(
     spinner_idx: usize,
     model: &str,
     session_id: Option<&str>,
+    bg_count: usize,
+    task_notification: Option<&str>,
 ) {
     let (icon, icon_style) = if status == StatusIcon::Working {
         (
@@ -214,11 +216,44 @@ pub fn render_status_bar(
 
     // mid 不再自带尾分隔——tail 已有前导 ` · `,两个分隔符紧邻会显示成 "· ·"。
     // (形参 phase = 九星相位名,非 GeJu 格局名。)
-    let mid = if phase.is_empty() {
-        String::new()
-    } else {
-        format!(" {phase}")
+    let mid = {
+        let mut parts = Vec::new();
+        if !phase.is_empty() {
+            parts.push(phase.to_string());
+        }
+        if bg_count > 0 {
+            parts.push(format!("⬡ {}", bg_count));
+        }
+        if parts.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", parts.join(" "))
+        }
     };
+
+    // Build spans: icon + mid + tail, plus optional task notification
+    let mut spans: Vec<Span> = vec![
+        Span::styled(icon.clone(), icon_style),
+        Span::styled(
+            format!("{mid}{tail}"),
+            Style::default().fg(Color::Indexed(245)),
+        ),
+    ];
+
+    // Show background task notification if present (expires after 5s via caller)
+    if let Some(notif) = task_notification {
+        // Truncate to fit
+        let max_len = area.width.saturating_sub(20) as usize;
+        let short = if notif.len() > max_len {
+            format!("{}…", &notif[..max_len.saturating_sub(1)])
+        } else {
+            notif.to_string()
+        };
+        spans.push(Span::styled(
+            format!(" · {short}"),
+            Style::default().fg(Color::Cyan),
+        ));
+    }
 
     // 右侧:model · provider · session_id(会话未生成则省略 sid 段)。
     let sid = session_id
@@ -239,13 +274,7 @@ pub fn render_status_bar(
     };
 
     f.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(icon, icon_style),
-            Span::styled(
-                format!("{mid}{tail}"),
-                Style::default().fg(Color::Indexed(245)),
-            ),
-        ])),
+        Paragraph::new(Line::from(spans)),
         left,
     );
     f.render_widget(
@@ -582,39 +611,18 @@ mod tests {
         };
         let lines = welcome_lines(&spec);
 
-        // Four rows: solid back / body+eye(negative space)+version / belly+model / paws+path.
-        assert_eq!(lines.len(), 4, "rows: {:?}", lines);
+        // Three rows: compact tiger emblem + aligned info text.
+        assert_eq!(lines.len(), 3, "rows: {:?}", lines);
 
-        assert!(
-            lines[0].text.contains('▗') && lines[0].text.contains('▖'),
-            "solid back edge: {:?}",
-            lines[0].text
-        );
-        assert!(
-            lines[1].text.contains("Jia v0.2.0"),
-            "body row with version: {:?}",
-            lines[1].text
-        );
-        assert!(
-            lines[1].text.contains('█') && lines[1].text.contains(' '),
-            "solid body with negative-space eye: {:?}",
-            lines[1].text
-        );
-        assert!(
-            lines[2].text.contains('▟') && lines[2].text.contains('▘'),
-            "belly close: {:?}",
-            lines[2].text
-        );
-        assert!(
-            lines[2].text.contains("gemini-2.5-pro · gemini"),
-            "model: {:?}",
-            lines[2].text
-        );
-        assert!(
-            lines[3].text.contains("~/demo"),
-            "path: {:?}",
-            lines[3].text
-        );
+        // Row 0: ears ▗▄▄▄▄▄▄▄▖ + version
+        assert!(lines[0].text.contains("Jia v0.2.0"), "row0: {:?}", lines[0].text);
+        assert!(lines[0].text.starts_with("▗"), "row0 tiger: {:?}", lines[0].text);
+        // Row 1: body █████████▌ + model
+        assert!(lines[1].text.contains("gemini-2.5-pro · gemini"));
+        assert!(lines[1].text.starts_with("█"), "row1 tiger: {:?}", lines[1].text);
+        // Row 2: belly ▀▀▀▀▀▀▀▘ + workspace
+        assert!(lines[2].text.contains("~/demo"), "row2: {:?}", lines[2].text);
+        assert!(lines[2].text.starts_with("▀"), "row2 tiger: {:?}", lines[2].text);
     }
 
     #[test]
@@ -626,15 +634,13 @@ mod tests {
             workspace: "",
         };
         let lines = welcome_lines(&spec);
-        assert_eq!(lines.len(), 4);
-        // Empty model → line 3 (chin row) shows provider without "·".
+        assert_eq!(lines.len(), 3);
         assert!(
-            lines[2].text.contains("gemini") && !lines[2].text.contains('·'),
-            "line3: {:?}",
-            lines[2].text
+            lines[1].text.contains("gemini") && !lines[1].text.contains('·'),
+            "line1: {:?}",
+            lines[1].text
         );
-        // Empty project → line 4 (beard row) has no path.
-        assert!(!lines[3].text.contains("~/"), "line4: {:?}", lines[3].text);
+        assert!(!lines[2].text.contains("~/"), "line2: {:?}", lines[2].text);
     }
 
     // ── Markdown Rendering Tests ─────────────────────────────

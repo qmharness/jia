@@ -60,6 +60,7 @@ pub enum StreamEvent {
     },
     Session {
         session_id: String,
+        title: Option<String>,
     },
     ToolCall {
         tool: String,
@@ -103,6 +104,27 @@ pub enum StreamEvent {
     Retrying {
         attempt: u32,
     },
+    /// Background task started.
+    TaskStarted {
+        task_id: String,
+        description: String,
+        task_type: String,
+        tool_use_id: Option<String>,
+    },
+    /// Background task completed.
+    TaskCompleted {
+        task_id: String,
+        status: String,
+        summary: String,
+        output_file: String,
+        tool_use_id: Option<String>,
+    },
+    /// Background task stalled.
+    TaskStalled {
+        task_id: String,
+        description: String,
+        tail_output: String,
+    },
 }
 
 impl StreamEvent {
@@ -114,6 +136,7 @@ impl StreamEvent {
             }),
             "session" => Some(StreamEvent::Session {
                 session_id: value["session_id"].as_str()?.to_string(),
+                title: value["title"].as_str().map(|s| s.to_string()),
             }),
             "tool_call" => Some(StreamEvent::ToolCall {
                 tool: value["tool"].as_str()?.to_string(),
@@ -162,6 +185,24 @@ impl StreamEvent {
             // needs the signal, not the count.
             "retrying" => Some(StreamEvent::Retrying {
                 attempt: value["attempt"].as_u64().unwrap_or(0) as u32,
+            }),
+            "task_started" => Some(StreamEvent::TaskStarted {
+                task_id: value["task_id"].as_str().unwrap_or("?").to_string(),
+                description: value["description"].as_str().unwrap_or("?").to_string(),
+                task_type: value["task_type"].as_str().unwrap_or("shell").to_string(),
+                tool_use_id: value["tool_use_id"].as_str().map(String::from),
+            }),
+            "task_completed" => Some(StreamEvent::TaskCompleted {
+                task_id: value["task_id"].as_str().unwrap_or("?").to_string(),
+                status: value["status"].as_str().unwrap_or("completed").to_string(),
+                summary: value["summary"].as_str().unwrap_or("").to_string(),
+                output_file: value["output_file"].as_str().unwrap_or("").to_string(),
+                tool_use_id: value["tool_use_id"].as_str().map(String::from),
+            }),
+            "task_stalled" => Some(StreamEvent::TaskStalled {
+                task_id: value["task_id"].as_str().unwrap_or("?").to_string(),
+                description: value["description"].as_str().unwrap_or("?").to_string(),
+                tail_output: value["tail_output"].as_str().unwrap_or("").to_string(),
             }),
             _ => None,
         }

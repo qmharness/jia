@@ -23,17 +23,16 @@ pub struct WelcomeSpec<'a> {
     pub workspace: &'a str,
 }
 
-/// Build the welcome block as a tiger tally (虎符, minimal solid silhouette):
-/// long solid body, tail tip at left, head block at right, two legs below.
+/// Build the welcome block — a compact tiger tally (虎符) emblem beside clean info text.
 ///
-///   ▗▄▖▗▄▄▄▄▄▄▄▄▄▄▄▄▖
-///   ▝▀▜███████████████▙▖  Jia v{version}
-///    ▝▀▄▄▄▄▄▄▄▄▄▄▄▄▟▘   {model} · {provider}
-///     ▗▟▘      ▗▟▘       ~/{workspace}
+/// ```text
+/// ▗▄▄▄▄▄▄▄▖  Jia v0.1.0
+/// █████████▌  model · provider
+/// ▀▀▀▀▀▀▀▘   ~/workspace
+/// ```
 ///
-/// 甲为大将军,大将军持虎符——极简实心:一整块虎身,左尾一点,右首一块,下踞双足。
-/// Lives in the normal scrollback (PageUp reveals it),
-/// prepended to the message stream inside `render_messages`.
+/// 虎头朝右：耳翘 ▗▄▖，吻突 ▌，颏收 ▘。身尾横贯而行高填实。
+/// 甲为大将军，大将军持虎符。虎头朝右为出师之形。
 pub(crate) fn welcome_lines(spec: &WelcomeSpec) -> Vec<ChatLine> {
     let cyan = Style::default().fg(Color::Cyan);
     let dim = Style::default().fg(Color::Indexed(245));
@@ -51,19 +50,15 @@ pub(crate) fn welcome_lines(spec: &WelcomeSpec) -> Vec<ChatLine> {
 
     vec![
         ChatLine {
-            text: "▗▄▖▗▄▄▄▄▄▄▄▄▄▄▄▄▖".to_string(),
+            text: format!("▗▄▄▄▄▄▄▄▖  Jia v{}", spec.version),
             style: cyan,
         },
         ChatLine {
-            text: format!("▝▀▜███████████████▙▖  Jia v{}", spec.version),
-            style: cyan,
-        },
-        ChatLine {
-            text: format!(" ▝▀▄▄▄▄▄▄▄▄▄▄▄▄▟▘   {}", model_label),
+            text: format!("█████████▌  {}", model_label),
             style: dim,
         },
         ChatLine {
-            text: format!("  ▗▟▘      ▗▟▘       {}", path_label),
+            text: format!("▀▀▀▀▀▀▀▘   {}", path_label),
             style: dim,
         },
     ]

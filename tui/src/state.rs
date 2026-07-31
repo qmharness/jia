@@ -119,9 +119,26 @@ pub(crate) struct App {
     pub(crate) workspace_id: String,
     /// S2: rollback anchor for the in-flight LLM stream (see `StreamAnchor`).
     pub(crate) stream_anchor: Option<StreamAnchor>,
+    /// Count of currently-running background tasks (shell/agent/workflow).
+    /// Updated via TaskStarted (+1) and TaskCompleted (-1) stream events.
+    pub(crate) running_background_tasks: usize,
+    /// Last background task completion notification text (shown briefly in footer).
+    pub(crate) last_task_notification: Option<(String, Instant)>,
 }
 
 // ── Public API ─────────────────────────────────────────────
+
+/// Set the terminal window title to show the current session title.
+fn set_terminal_title(title: &str) {
+    let display = if title.len() > 60 {
+        &title[..60]
+    } else {
+        title
+    };
+    // println! flushes to fd 1 — bypasses crossterm's stderr rendering.
+    // \x07 (BEL) terminates the OSC sequence; trailing \n is harmless.
+    println!("\x1b]2;jia · {}\x07", display);
+}
 
 /// Push the welcome block into the terminal scrollback once at startup.
 impl App {
@@ -480,7 +497,15 @@ impl App {
                 session_id,
                 entries,
             } => {
-                self.session_id = Some(session_id);
+                self.session_id = Some(session_id.clone());
+                // Set terminal title from first user message in history
+                let first_user = entries
+                    .iter()
+                    .find(|e| e.get("role").and_then(|v| v.as_str()) == Some("user"))
+                    .and_then(|e| e.get("content").and_then(|v| v.as_str()));
+                if let Some(content) = first_user {
+                    set_terminal_title(content);
+                }
                 self.lines.clear();
                 for entry in &entries {
                     let role = entry["role"].as_str().unwrap_or("");
@@ -632,8 +657,14 @@ impl App {
                 self.agent_phase = AgentPhase::Reasoning;
                 self.spinner_idx = (self.spinner_idx + 1) % 10;
             }
-            StreamEvent::Session { session_id } => {
+            StreamEvent::Session {
+                session_id,
+                title,
+            } => {
                 self.session_id = Some(session_id);
+                if let Some(ref t) = title {
+                    set_terminal_title(t);
+                }
             }
             StreamEvent::ContextPressure => {
                 self.agent_phase = AgentPhase::ContextManage;
@@ -761,6 +792,36 @@ impl App {
                 // with `< rows.len()` / `> inserted_rows`, so no panic.
                 tracing::debug!(attempt, "LLM retry: truncated partial assistant bubble");
             }
+            StreamEvent::TaskStarted {
+                task_id: _,
+                description: _,
+                task_type: _,
+                tool_use_id: _,
+            } => {
+                self.running_background_tasks = self.running_background_tasks.saturating_add(1);
+            }
+            StreamEvent::TaskCompleted {
+                task_id: _,
+                status: _,
+                summary,
+                output_file: _,
+                tool_use_id: _,
+            } => {
+                self.running_background_tasks = self.running_background_tasks.saturating_sub(1);
+                self.last_task_notification =
+                    Some((summary, Instant::now()));
+            }
+            StreamEvent::TaskStalled {
+                task_id: _,
+                description,
+                tail_output: _,
+            } => {
+                // Show stall notification in the footer
+                self.last_task_notification = Some((
+                    format!("⚠ {description} — may be waiting for input"),
+                    Instant::now(),
+                ));
+            }
             StreamEvent::ToolCall { .. } => {
                 self.agent_phase = AgentPhase::ToolCalling;
                 // Add blank separator
@@ -797,6 +858,11 @@ impl App {
         let cwd = std::env::current_dir()
             .ok()
             .and_then(|p| p.to_str().map(String::from));
+        // Set terminal title from first message of a new session
+        if self.session_id.is_none() {
+            set_terminal_title(text);
+        }
+
         let client_msg = ClientMsg::Agent {
             messages: vec![msg],
             session_id: self.session_id.clone(),
@@ -946,6 +1012,8 @@ mod tests {
             workspace_name: String::new(),
             workspace_id: String::new(),
             stream_anchor: None,
+            running_background_tasks: 0,
+            last_task_notification: None,
         }
     }
 
@@ -1022,6 +1090,8 @@ mod p1_4_tests {
             workspace_name: String::new(),
             workspace_id: String::new(),
             stream_anchor: None,
+            running_background_tasks: 0,
+            last_task_notification: None,
         }
     }
 
@@ -1097,6 +1167,8 @@ mod s2_retry_tests {
             workspace_name: String::new(),
             workspace_id: String::new(),
             stream_anchor: None,
+            running_background_tasks: 0,
+            last_task_notification: None,
         }
     }
 
@@ -1236,6 +1308,8 @@ mod cancel_tests {
             workspace_name: String::new(),
             workspace_id: String::new(),
             stream_anchor: None,
+            running_background_tasks: 0,
+            last_task_notification: None,
         };
         app
     }

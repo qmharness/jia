@@ -68,6 +68,8 @@ pub async fn run_app(
         workspace_name: String::new(),
         workspace_id: String::new(),
         stream_anchor: None,
+        running_background_tasks: 0,
+        last_task_notification: None,
     };
 
     if has_project {
@@ -360,6 +362,15 @@ pub(crate) fn render_frame_with_cursor(
         }
 
         if !matches!(app.input_mode, InputMode::Welcome { .. }) {
+            // Expire task notifications after 5 seconds
+            let task_notif = app.last_task_notification.as_ref().and_then(|(msg, ts)| {
+                if ts.elapsed().as_secs() < 5 {
+                    Some(msg.as_str())
+                } else {
+                    None
+                }
+            });
+
             render::render_status_bar(
                 f,
                 areas.status_bar,
@@ -374,6 +385,8 @@ pub(crate) fn render_frame_with_cursor(
                 app.spinner_idx,
                 &format!("{} · {}", app.llm.model_id, app.llm.provider),
                 app.session_id.as_deref(),
+                app.running_background_tasks,
+                task_notif,
             );
             cursor = render::render_input(f, areas.input, &app.composer);
             // info_bar 显示 InteractionMode(plan mode / auto mode)——这是

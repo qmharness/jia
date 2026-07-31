@@ -107,6 +107,8 @@ pub async fn run(_config: kernel::palaces::kun_config::AppConfig) {
 
     enable_raw_mode().expect("Failed to enable raw mode");
     let mut stderr = std::io::stderr();
+    // Set initial terminal title
+    println!("\x1b]2;jia\x07");
     // Main screen (not alternate) so content scrolls into the terminal's native
     // scrollback. Inline viewport reserves VIEWPORT_HEIGHT rows at the bottom.
     execute!(&mut stderr, cursor::Hide, EnableAlternateScroll).expect("Failed to setup terminal");
@@ -168,8 +170,9 @@ pub async fn run(_config: kernel::palaces::kun_config::AppConfig) {
     cancel_token.cancel();
 
     // Restore terminal (main screen): clear inline viewport residue, show
-    // cursor, disable alternate scroll + raw mode, newline for the shell prompt.
+    // cursor, disable alternate scroll + raw mode, reset title, newline.
     let _ = terminal.clear();
+    println!("\x1b]2;\x07");
     let _ = execute!(std::io::stderr(), cursor::Show, DisableAlternateScroll);
     let _ = disable_raw_mode();
     eprintln!();
