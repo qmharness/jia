@@ -126,6 +126,7 @@ fn temp_earth(store: Arc<Store>, temp_dir: &std::path::Path) -> Arc<EarthPlate> 
         hooks: vec![],
         cognition: CognitionSection::default(),
         system_prompt: kernel::palaces::kun_config::DEFAULT_SYSTEM_PROMPT.to_string(),
+        agent: Default::default(),
     };
     let config_loader = Arc::new(kernel::palaces::kun_config::ConfigLoader::from_app_config(
         config,
@@ -163,6 +164,8 @@ fn temp_earth(store: Arc<Store>, temp_dir: &std::path::Path) -> Arc<EarthPlate> 
         skills: Arc::new(std::sync::RwLock::new(SkillRegistry::new())),
         cron: kernel::palaces::zhen_tool::builtin::cron::CronStore::new(tmp.join("cron")),
         task_store: kernel::palaces::zhen_tool::builtin::exec::task::TaskStore::new(),
+        background_tasks: kernel::palaces::zhen_tool::builtin::exec::background_task::BackgroundTaskStore::new(),
+        subagent_batch: std::sync::Arc::new(kernel::plates::tian_heaven::subagent_batch::SubagentBatch::new()),
         store_async: kernel::palaces::gen_store::async_store::StoreAsync::new(store.clone()),
         store,
         spirit: Arc::new(SpiritPlate::new()),
