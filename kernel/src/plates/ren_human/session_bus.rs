@@ -107,6 +107,16 @@ impl SessionBus {
             .remove(session_id);
     }
 
+    /// #15 · 清扫某会话的验收标准(断连清扫时调用,参照 session_modes 的
+    /// 处理 —— 会话级设置,断连即清)。steer 队列有 type-ahead 语义,
+    /// 断连【不清】,不在此列。
+    pub fn clear_criteria(&self, session_id: &str) {
+        self.completion_criteria
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(session_id);
+    }
+
     /// #9 · 推入一条 steer 插话(FIFO)。会话无活跃 run 时不报错——
     /// 消息留在队列中,下一次 run 的首个检查点会折入(类"type-ahead")。
     pub fn push_steer(&self, session_id: &str, msg: SteerMessage) {

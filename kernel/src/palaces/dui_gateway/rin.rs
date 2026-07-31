@@ -33,12 +33,19 @@ use super::SessionTokens;
 /// ask_user,新 pending 条目无人清扫、无超时,会持 session_lock 永久等待;
 /// 缓解:确认类等待有 confirmation_timeout 兜底,ask_user 的彻底解法是断连
 /// 即 cancel 本连接 token(语义变更,未采纳)。
+///
+/// N1/#15 · 同点清扫 SessionBus 上的会话级桶:批准记忆(session_approvals,
+/// 迭代二备好待挂)与验收标准(completion_criteria,会话级设置,参照
+/// session_modes 断连即清)。只清会话残留,不削弱"首次必询问"——新会话
+/// 仍需重新批准。steer 队列(steer_queues)有 type-ahead 语义:断连时
+/// 未消费的插话须留给下一次 run,**不在清扫之列**。
 fn sweep_pending_for_sessions(
     pending_questions: &Arc<Mutex<HashMap<String, crate::plates::ren_human::PendingQuestion>>>,
     pending_confirmations: &Arc<
         Mutex<HashMap<String, crate::plates::ren_human::PendingConfirmation>>,
     >,
     session_modes: &Arc<Mutex<HashMap<String, InteractionMode>>>,
+    session_bus: &crate::plates::ren_human::SessionBus,
     sids: &[String],
 ) {
     if sids.is_empty() {
@@ -64,6 +71,11 @@ fn sweep_pending_for_sessions(
         map.retain(|sid, _| !sids.contains(sid));
         before - map.len()
     };
+    // N1/#15 · 批准记忆与验收标准按 sid 清扫(steer 队列有意保留)。
+    for sid in sids {
+        session_bus.clear_session_approvals(sid);
+        session_bus.clear_criteria(sid);
+    }
     if removed_questions + removed_confirmations + removed_modes > 0 {
         tracing::info!(
             removed_questions,
@@ -392,6 +404,7 @@ async fn handle_rin_connection(
                     &earth.session_bus.pending_questions,
                     &earth.session_bus.pending_confirmations,
                     &earth.session_bus.session_modes,
+                    &earth.session_bus,
                     &conn_sessions,
                 );
                 return Err(e);
@@ -970,6 +983,7 @@ async fn handle_rin_connection(
         &earth.session_bus.pending_questions,
         &earth.session_bus.pending_confirmations,
         &earth.session_bus.session_modes,
+        &earth.session_bus,
         &conn_sessions,
     );
 
@@ -1016,7 +1030,7 @@ mod tests {
     /// P1-2/L2: session_modes 一并按 sid 清扫。
     #[test]
     fn sweep_removes_only_target_sessions() {
-        use crate::plates::ren_human::{PendingConfirmation, PendingQuestion};
+        use crate::plates::ren_human::{PendingConfirmation, PendingQuestion, SessionBus};
 
         let questions: Arc<Mutex<HashMap<String, PendingQuestion>>> =
             Arc::new(Mutex::new(HashMap::new()));
@@ -1024,6 +1038,7 @@ mod tests {
             Arc::new(Mutex::new(HashMap::new()));
         let modes: Arc<Mutex<HashMap<String, InteractionMode>>> =
             Arc::new(Mutex::new(HashMap::new()));
+        let bus = SessionBus::new();
 
         let mk_q = |sid: &str| {
             let (tx, _rx) = tokio::sync::oneshot::channel::<String>();
@@ -1058,7 +1073,7 @@ mod tests {
             m.insert("s2".into(), InteractionMode::Auto);
         }
 
-        sweep_pending_for_sessions(&questions, &confirmations, &modes, &["s1".to_string()]);
+        sweep_pending_for_sessions(&questions, &confirmations, &modes, &bus, &["s1".to_string()]);
 
         let q = questions.lock().unwrap();
         assert!(!q.contains_key("q-mine"), "own session entry must be swept");
@@ -1073,10 +1088,82 @@ mod tests {
         assert!(m.contains_key("s2"), "other session mode must survive");
 
         // 空 sids 是 no-op。
-        sweep_pending_for_sessions(&questions, &confirmations, &modes, &[]);
+        sweep_pending_for_sessions(&questions, &confirmations, &modes, &bus, &[]);
         assert_eq!(q.len(), 2);
         assert_eq!(c.len(), 2);
         assert_eq!(m.len(), 1);
+    }
+
+    /// N1/#15 · 断连清扫后:批准记忆不再命中(新会话须重新询问——只清会话
+    /// 残留,不削弱"首次必询问");验收标准按会话清除;steer 队列有
+    /// type-ahead 语义,断连【不清】,未消费插话留给下一次 run。
+    #[test]
+    fn sweep_clears_approvals_and_criteria_but_keeps_steer() {
+        use crate::plates::ren_human::{SessionBus, SteerPriority};
+        use crate::palaces::qian_permission::policy::approval_key;
+
+        let questions: Arc<Mutex<HashMap<String, crate::plates::ren_human::PendingQuestion>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let confirmations: Arc<
+            Mutex<HashMap<String, crate::plates::ren_human::PendingConfirmation>>,
+        > = Arc::new(Mutex::new(HashMap::new()));
+        let modes: Arc<Mutex<HashMap<String, InteractionMode>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let bus = SessionBus::new();
+
+        // s1 有过批准记忆与验收标准;s2 也有(须存活)。s1 队列里有未消费 steer。
+        let input = serde_json::json!({"path": "/tmp/a"});
+        let key = approval_key("read_file", &input);
+        bus.session_approvals
+            .lock()
+            .unwrap()
+            .entry("s1".to_string())
+            .or_default()
+            .insert(key.clone());
+        bus.session_approvals
+            .lock()
+            .unwrap()
+            .entry("s2".to_string())
+            .or_default()
+            .insert(key.clone());
+        bus.set_criteria("s1", vec!["tests pass".into()]);
+        bus.set_criteria("s2", vec!["docs".into()]);
+        bus.push_steer(
+            "s1",
+            crate::plates::ren_human::SteerMessage {
+                content: "type-ahead".into(),
+                priority: SteerPriority::Next,
+            },
+        );
+
+        // 断连前:s1 批准记忆命中(豁免询问)。
+        assert!(bus
+            .session_approvals
+            .lock()
+            .unwrap()
+            .get("s1")
+            .is_some_and(|keys| keys.contains(&key)));
+
+        sweep_pending_for_sessions(&questions, &confirmations, &modes, &bus, &["s1".to_string()]);
+
+        // 断连后:s1 批准记忆不再命中(新会话须重新询问);s2 不受影响。
+        assert!(
+            bus.session_approvals.lock().unwrap().get("s1").is_none(),
+            "swept session approvals must be gone"
+        );
+        assert!(bus
+            .session_approvals
+            .lock()
+            .unwrap()
+            .get("s2")
+            .is_some_and(|keys| keys.contains(&key)));
+        // 验收标准:s1 清,s2 留。
+        assert!(bus.unchecked_criteria("s1").is_empty());
+        assert_eq!(bus.unchecked_criteria("s2"), ["docs"]);
+        // steer 队列不清:type-ahead 插话仍在,留给下一次 run 折入。
+        let steer = bus.drain_steer("s1");
+        assert_eq!(steer.len(), 1);
+        assert_eq!(steer[0].content, "type-ahead");
     }
 
     /// P1-2/L1 · 每连接 cron 转发器:对端断连(写失败)后任务必须退出,
