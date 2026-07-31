@@ -9,6 +9,7 @@ use crate::palaces::kun_config::SecuritySection;
 
 pub mod policy;
 pub mod sandbox;
+pub mod verifier;
 #[cfg(feature = "sandbox-docker")]
 pub mod sandbox_docker;
 #[cfg(target_os = "linux")]

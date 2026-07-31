@@ -46,6 +46,10 @@ pub struct HumanPlate {
     /// Test-only: when set, `request_confirmation` returns this value immediately.
     #[doc(hidden)]
     pub confirmation_override: Option<bool>,
+    /// #15 · Verifier 子代理 shell 硬约束:true 时本实例的 shell 调用逐段过
+    /// `qian_permission::verifier` 验证命令白名单(默认拒绝;只收紧)。
+    /// 仅 run_subagent 为 Verifier 子代理置位;主 agent 恒为 false。
+    pub verifier_shell_only: bool,
 }
 
 impl Clone for HumanPlate {
@@ -57,6 +61,7 @@ impl Clone for HumanPlate {
             pending_confirmations: self.pending_confirmations.clone(),
             session_approvals: self.session_approvals.clone(),
             confirmation_override: self.confirmation_override,
+            verifier_shell_only: self.verifier_shell_only,
         }
     }
 }
@@ -108,6 +113,7 @@ impl HumanPlate {
             pending_confirmations: session_bus.pending_confirmations.clone(),
             session_approvals: session_bus.session_approvals.clone(),
             confirmation_override: None,
+            verifier_shell_only: false,
         }
     }
 
@@ -189,6 +195,23 @@ impl HumanPlate {
         tx: &tokio::sync::mpsc::UnboundedSender<AgentEvent>,
         exec_ctx: &ExecContext,
     ) -> Result<PreparedCall, DispatchError> {
+        // #15 · Verifier shell 硬约束(只收紧):白名单外一律 Denied,先于
+        // 策略链与模式判定(Direct/Sandbox 自动执行路径同样覆盖)。
+        if self.verifier_shell_only && tool.name() == "shell" {
+            let cmd = input["command"].as_str().unwrap_or("");
+            if let Err(reason) =
+                crate::palaces::qian_permission::verifier::verify_verifier_command(cmd)
+            {
+                tracing::warn!(cmd, reason = %reason, "HumanPlate: Verifier shell command denied by allowlist");
+                event_bus.emit(RuntimeEvent::PermissionDecision {
+                    tool: tool.name().into(),
+                    decision: "deny".into(),
+                    policy: "verifier_command_allowlist".into(),
+                    reason: reason.clone(),
+                });
+                return Err(DispatchError::Denied(reason));
+            }
+        }
         // N1 · 策略链位次 1/5:deny 规则绝对优先(无任何豁免,含 ShangMen
         // 升级路径);敏感文件强制 ask(收紧,Denied 不再加码)。
         match self.permissions.chain_check(tool.name(), &input) {
@@ -1368,5 +1391,79 @@ mod tests {
             }
         }
         assert!(allow && deny, "both allow and deny decisions must be observed");
+    }
+
+    // ── #15 · Verifier shell 命令硬约束 ──────────────────────
+
+    /// Verifier 人盘实例:验证命令(cargo test 等)放行,其余一律 Denied
+    /// (含 rm / 重定向写 / git push / 管道 tee 段),且先于模式判定——
+    /// Direct 自动执行路径同样被拦。
+    #[tokio::test]
+    async fn verifier_shell_allowlist_gate() {
+        let (mut plate, eb, tx) = make_plate();
+        plate.verifier_shell_only = true;
+        let tool: Arc<dyn BaseTool> = Arc::new(DestructiveTool); // name() == "shell"
+        let geju = make_geju(ExecutionMode::Direct);
+
+        // 验证命令放行(真实经门禁到达执行)。
+        let ok = plate
+            .dispatch(
+                &geju,
+                &tool,
+                serde_json::json!({"command": "cargo test -p kernel --lib"}),
+                &eb,
+                &tx,
+                &make_ctx(),
+            )
+            .await;
+        assert!(ok.is_ok(), "cargo test must pass: {ok:?}");
+
+        for bad in [
+            "rm -rf /tmp/x",
+            "echo hi > x",
+            "git push",
+            "git commit -m x",
+            "cargo test | tee /tmp/x",
+            "cargo test && rm x",
+        ] {
+            let r = plate
+                .dispatch(
+                    &geju,
+                    &tool,
+                    serde_json::json!({"command": bad}),
+                    &eb,
+                    &tx,
+                    &make_ctx(),
+                )
+                .await;
+            match r {
+                Err(DispatchError::Denied(reason)) => assert!(
+                    reason.contains("写操作请由主 agent 执行"),
+                    "{bad}: denial must guide, got: {reason}"
+                ),
+                other => panic!("{bad} must be denied, got: {other:?}"),
+            }
+        }
+    }
+
+    /// 回归:主 agent 人盘(verifier_shell_only 默认 false)shell 行为不变。
+    #[tokio::test]
+    async fn main_agent_shell_unaffected_by_verifier_allowlist() {
+        let (plate, eb, tx) = make_plate();
+        assert!(!plate.verifier_shell_only);
+        let tool: Arc<dyn BaseTool> = Arc::new(DestructiveTool); // name() == "shell"
+        let geju = make_geju(ExecutionMode::Direct);
+        // 白名单外命令在主 agent 门禁照常到达执行(Direct 无确认)。
+        let r = plate
+            .dispatch(
+                &geju,
+                &tool,
+                serde_json::json!({"command": "git push"}),
+                &eb,
+                &tx,
+                &make_ctx(),
+            )
+            .await;
+        assert!(r.is_ok(), "main agent shell must be unaffected: {r:?}");
     }
 }

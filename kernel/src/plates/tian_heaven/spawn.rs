@@ -526,6 +526,10 @@ independently re-run the tests/checks and confirm the claimed artifacts actually
 exist and hold — do not trust the claim, trust only what you reproduce yourself. \
 You have read-only tools plus shell; use shell ONLY for verification commands \
 (tests, builds, linters, inspections) and never to modify files or state. \
+A hard gate enforces this: only allowlisted verification commands run (cargo \
+test/check/clippy/build, pytest, go test, vitest/jest, npm/pnpm/yarn/bun test, \
+git status/diff/log/show/blame, ls/cat/grep/rg/find/wc/head/tail); everything \
+else, including redirection, is denied. \
 End your report with a verdict line: \"Verdict: PASS\" (the claims hold — cite \
 the commands you ran and their results) or \"Verdict: FAIL\" (list what does \
 not hold, with the relevant command output)."
@@ -596,7 +600,8 @@ pub async fn run_subagent(
         SubagentType::Coder => earth.subagent_coder_tools.clone(),
         // #15 · Verifier 注册表 = 只读注册表 + shell(跑测试/检查)+
         // retrieve_tool_result。写工具结构性缺席(注册表层面只读);shell
-        // 只读命令约束由身份提示承载,Guarded 默认即拒(公理 4 不放宽)。
+        // 由人盘验证命令白名单硬约束(verifier_shell_only,见下),Guarded
+        // 默认即拒(公理 4 不放宽)。
         SubagentType::Verifier => {
             let mut reg = crate::palaces::zhen_tool::ToolRegistry::new();
             for t in earth.subagent_readonly_tools.list_core() {
@@ -661,6 +666,10 @@ pub async fn run_subagent(
         earth.session_bus.clone(),
     );
     human_plate.confirmation_override = Some(spec.allow_guarded);
+    // #15 · Verifier shell 硬约束:身份提示词的"只读"由人盘白名单结构承载
+    // (qian_permission::verifier,默认拒绝;只收紧)。仅 Verifier 置位——
+    // 主 agent 与 Explore/Plan/Coder 的人盘实例此位恒 false,行为不变。
+    human_plate.verifier_shell_only = matches!(spec.kind, SubagentType::Verifier);
 
     // ── aux model 路由:默认 secondary = aux_core,无 aux 配置回落 primary ──
     let core: &JiaCore = match spec.model {

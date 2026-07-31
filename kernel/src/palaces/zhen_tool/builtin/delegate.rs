@@ -46,7 +46,8 @@ pub enum SubagentType {
     Plan,
     Coder,
     /// #15 · 对抗性复核"声称完成":只读注册表 + shell(独立跑测试/检查
-    /// 声明的产物)。写工具结构性缺席;shell 只读命令约束由身份提示承载。
+    /// 声明的产物)。写工具结构性缺席;shell 由人盘验证命令白名单硬约束
+    /// (qian_permission::verifier,默认拒绝)。
     Verifier,
 }
 
