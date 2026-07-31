@@ -12,3 +12,4 @@ store.db-shm
 store.db-wal
 .jia/
 /graphify-out/
+eval-history.jsonl

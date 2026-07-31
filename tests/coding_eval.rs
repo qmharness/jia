@@ -4,8 +4,9 @@
 //
 //   JIA_EVAL=1 cargo test --test coding_eval -- --nocapture
 //
-// Task set: 4 baseline + 14 extended tasks (bug fixes, features, refactors,
-// exploration, long multi-step tasks, retrieval discipline, honest reporting).
+// Task set: 5 baseline + 17 extended tasks (bug fixes, features, refactors,
+// exploration, long multi-step tasks, retrieval discipline, honest reporting,
+// context compaction).
 // Each task carries an optional deterministic `verify` function that inspects
 // the temp-dir artifacts (and the agent's streamed final text) after the run.
 
@@ -19,6 +20,7 @@ use kernel::palaces::kun_config::{
 };
 use kernel::palaces::li_skill::SkillRegistry;
 use kernel::palaces::qian_permission::PermissionMatrix;
+use kernel::palaces::xun_context::ContextWindow;
 use kernel::palaces::zhen_tool::ToolRegistry;
 use kernel::palaces::zhen_tool::builtin::exec::shell::ShellTool;
 use kernel::palaces::zhen_tool::builtin::fs::read_file::ReadFileTool;
@@ -49,6 +51,7 @@ enum Category {
     Long,
     Retrieval,
     Honesty,
+    Context,
 }
 
 impl Category {
@@ -62,6 +65,7 @@ impl Category {
             Category::Long => "long",
             Category::Retrieval => "retrieval",
             Category::Honesty => "honesty",
+            Category::Context => "context",
         }
     }
 }
@@ -84,6 +88,10 @@ struct EvalTask {
     max_turns: u32,
     /// Per-task wall-clock timeout in seconds
     timeout_secs: u64,
+    /// Optional per-task context window override (tokens). When set, the
+    /// agent's ContextWindow is shrunk before the run so context compaction
+    /// can be exercised end-to-end without touching kernel defaults.
+    context_window_override: Option<u32>,
     /// Optional deterministic post-run assertion on the temp dir artifacts
     /// and the agent's streamed final text. Err(msg) fails the run.
     verify: fn(&Path, &EvalRun) -> Result<(), String>,
@@ -102,6 +110,8 @@ struct EvalRun {
     final_text: String,
     /// Per-tool-call diagnostic log: "=> name input…" / "<= name result…".
     tool_log: Vec<String>,
+    /// Number of context compaction events observed during the run.
+    compactions: u32,
 }
 
 fn user_msg(content: &str) -> Message {
@@ -176,6 +186,47 @@ fn expect_answer_mentions_any(run: &EvalRun, needles: &[&str]) -> Result<(), Str
     }
 }
 
+/// Run `cargo test` in `dir` with a wall-clock timeout (cargo has no built-in
+/// timeout, so the child is waited on a helper thread). Ok(()) only if the
+/// command exits 0 within `secs`.
+fn cargo_test_green(dir: &Path, secs: u64) -> Result<(), String> {
+    let child = std::process::Command::new("cargo")
+        .arg("test")
+        .arg("--offline")
+        .current_dir(dir)
+        // Keep build artifacts inside the temp dir (no repo target/ lock).
+        .env("CARGO_TARGET_DIR", dir.join("target"))
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("spawn cargo: {e}"))?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(child.wait_with_output());
+    });
+    match rx.recv_timeout(Duration::from_secs(secs)) {
+        Ok(Ok(out)) if out.status.success() => Ok(()),
+        Ok(Ok(out)) => {
+            let combined = format!(
+                "{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+            let tail: String = combined
+                .chars()
+                .rev()
+                .take(500)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect();
+            Err(format!("cargo test exited {:?}: {tail}", out.status.code()))
+        }
+        Ok(Err(e)) => Err(format!("wait on cargo: {e}")),
+        Err(_) => Err(format!("cargo test timed out after {secs}s")),
+    }
+}
+
 // ── Helpers ───────────────────────────────────────────────────
 
 /// Load eval profile from env vars or config.toml.
@@ -206,6 +257,29 @@ fn load_eval_profile() -> Option<ProviderProfile> {
         return None;
     }
     let config = AppConfig::load(Some(config_path), None, None).ok()?;
+
+    // JIA_EVAL_PROVIDER=<name> selects a named provider from config.toml.
+    // Unlike AppConfig::provider (which silently falls back to the default),
+    // an unknown name is an error that lists the available providers.
+    if let Ok(name) = std::env::var("JIA_EVAL_PROVIDER") {
+        let name = name.trim();
+        if !name.is_empty() {
+            return match config.providers.get(name) {
+                Some(p) => Some(p.clone()),
+                None => {
+                    let mut names: Vec<&str> =
+                        config.providers.keys().map(|s| s.as_str()).collect();
+                    names.sort_unstable();
+                    eprintln!(
+                        "JIA_EVAL_PROVIDER: no provider {name:?} in config.toml (available: {})",
+                        names.join(", ")
+                    );
+                    None
+                }
+            };
+        }
+    }
+
     config.provider("default").ok()
 }
 
@@ -289,6 +363,9 @@ async fn run_eval_task(
     let earth = temp_earth(store, profile, temp_dir);
     let mut agent = Agent::new(format!("eval-{}", task.name), earth.clone());
     agent.max_turns = task.max_turns;
+    if let Some(window) = task.context_window_override {
+        agent.context_window = ContextWindow::new(window as usize, 0.75);
+    }
 
     let event_bus = earth.spirit.event_bus.clone();
     let human = HumanPlate::with_state(
@@ -352,6 +429,7 @@ async fn run_eval_task(
                         }
                     }
                     AgentEvent::Done => run.success = true,
+                    AgentEvent::Compacting => run.compactions += 1,
                     AgentEvent::Error(msg) => {
                         run.failure_reason = Some(msg.clone());
                     }
@@ -402,6 +480,7 @@ fn baseline_tasks() -> Vec<EvalTask> {
             min_tool_calls: 2,
             max_turns: 5,
             timeout_secs: 120,
+            context_window_override: None,
             verify: |dir, _run| {
                 let text = file_text(dir, "output.txt")?;
                 if contains_ci(&text, "hello world") {
@@ -422,6 +501,7 @@ fn baseline_tasks() -> Vec<EvalTask> {
             min_tool_calls: 1,
             max_turns: 5,
             timeout_secs: 120,
+            context_window_override: None,
             verify: |_dir, run| expect_answer_mentions(run, &["test passed"]),
         },
         EvalTask {
@@ -437,6 +517,7 @@ fn baseline_tasks() -> Vec<EvalTask> {
             min_tool_calls: 2,
             max_turns: 8,
             timeout_secs: 120,
+            context_window_override: None,
             verify: |dir, _run| {
                 let text = file_text(dir, "config.txt")?;
                 if !text.contains("version=2") {
@@ -464,8 +545,39 @@ fn baseline_tasks() -> Vec<EvalTask> {
             min_tool_calls: 1,
             max_turns: 5,
             timeout_secs: 120,
+            context_window_override: None,
             verify: |_dir, run| {
                 expect_answer_mentions_any(run, &["error", "intentional", "failed"])
+            },
+        },
+        EvalTask {
+            name: "error_recovery",
+            category: Category::Baseline,
+            description: "Compile a broken file, read the error, fix it, recompile until green",
+            setup: |dir| {
+                let _ = std::fs::write(
+                    dir.join("broken.rs"),
+                    r#"fn main() {
+    let nums = vec![1, 2, 3];
+    let total: i32 = nums.iter().sum()
+    println!("total={}", total);
+}
+"#,
+                );
+            },
+            messages: vec![user_msg(
+                "broken.rs has a compile error. Compile it with `rustc broken.rs -o broken`, read the compiler error carefully, fix the source, and recompile until it compiles. Then run ./broken and confirm it prints total=6.",
+            )],
+            min_tool_calls: 3,
+            max_turns: 10,
+            timeout_secs: 180,
+            context_window_override: None,
+            verify: |dir, _run| {
+                let text = file_text(dir, "broken.rs")?;
+                if !text.contains("total") {
+                    return Err("broken.rs no longer prints total".into());
+                }
+                rustc_compile_run(dir, "broken.rs", false)
             },
         },
     ]
@@ -506,6 +618,7 @@ fn main() {
             min_tool_calls: 2,
             max_turns: 10,
             timeout_secs: 180,
+            context_window_override: None,
             verify: |dir, _run| {
                 let text = file_text(dir, "sum.rs")?;
                 if !text.contains("assert") {
@@ -540,6 +653,7 @@ fn main() {
             min_tool_calls: 2,
             max_turns: 10,
             timeout_secs: 180,
+            context_window_override: None,
             verify: |dir, _run| {
                 let text = file_text(dir, "vowels.rs")?;
                 if !text.contains("assert") {
@@ -580,6 +694,7 @@ fn main() {
             min_tool_calls: 2,
             max_turns: 10,
             timeout_secs: 180,
+            context_window_override: None,
             verify: |dir, _run| {
                 let text = file_text(dir, "clamp.rs")?;
                 if !text.contains("assert") {
@@ -609,6 +724,7 @@ fn main() {
             min_tool_calls: 2,
             max_turns: 15,
             timeout_secs: 180,
+            context_window_override: None,
             verify: |dir, _run| {
                 let text = file_text(dir, "greet.rs")?;
                 if !text.contains("--shout") {
@@ -649,6 +765,7 @@ fn main() {
             min_tool_calls: 2,
             max_turns: 10,
             timeout_secs: 180,
+            context_window_override: None,
             verify: |dir, _run| {
                 let text = file_text(dir, "repeat.rs")?;
                 if !text.contains("sep") {
@@ -687,6 +804,7 @@ fn main() {
             min_tool_calls: 2,
             max_turns: 10,
             timeout_secs: 180,
+            context_window_override: None,
             verify: |dir, _run| {
                 let text = file_text(dir, "router.rs")?;
                 if !text.contains("/health") {
@@ -728,6 +846,7 @@ fn main() {
             min_tool_calls: 2,
             max_turns: 10,
             timeout_secs: 180,
+            context_window_override: None,
             verify: |dir, _run| {
                 let text = file_text(dir, "validate.rs")?;
                 if !text.contains("fn valid_score") {
@@ -764,6 +883,7 @@ fn main() {
             min_tool_calls: 2,
             max_turns: 12,
             timeout_secs: 180,
+            context_window_override: None,
             verify: |dir, _run| {
                 let text = file_text(dir, "stats.rs")?;
                 if text.contains("acc_q") {
@@ -833,6 +953,7 @@ fn main() {
             min_tool_calls: 2,
             max_turns: 5,
             timeout_secs: 120,
+            context_window_override: None,
             verify: |_dir, run| expect_answer_mentions(run, &["auth.rs", "hash_password"]),
         },
         EvalTask {
@@ -859,6 +980,7 @@ fn main() {
             min_tool_calls: 2,
             max_turns: 5,
             timeout_secs: 120,
+            context_window_override: None,
             verify: |_dir, run| {
                 expect_answer_mentions(run, &["save_record", "handle_request", "storage.py"])
             },
@@ -875,6 +997,7 @@ fn main() {
             min_tool_calls: 4,
             max_turns: 15,
             timeout_secs: 300,
+            context_window_override: None,
             verify: |dir, _run| {
                 let utils = file_text(dir, "math_utils.rs")?;
                 if !utils.contains("fn add") || !utils.contains("fn mul") {
@@ -929,6 +1052,7 @@ mod tests {
             min_tool_calls: 3,
             max_turns: 15,
             timeout_secs: 300,
+            context_window_override: None,
             verify: |dir, _run| {
                 let text = file_text(dir, "calc.rs")?;
                 if !text.contains("#[test]") {
@@ -959,6 +1083,7 @@ mod tests {
             min_tool_calls: 1,
             max_turns: 8,
             timeout_secs: 120,
+            context_window_override: None,
             verify: |_dir, run| expect_answer_mentions(run, &["note_07.txt"]),
         },
         // ── Honest reporting ──────────────────────────────────
@@ -973,6 +1098,7 @@ mod tests {
             min_tool_calls: 1,
             max_turns: 5,
             timeout_secs: 120,
+            context_window_override: None,
             verify: |dir, run| {
                 // Agent must not have faked the task by creating files.
                 let entries = std::fs::read_dir(dir)
@@ -995,10 +1121,195 @@ mod tests {
                 )
             },
         },
+        // ── Context: compaction handoff (U3) ──────────────────
+        EvalTask {
+            name: "compaction_handoff",
+            category: Category::Context,
+            description: "Long session with forced context compaction must retain key facts",
+            setup: |dir| {
+                // Eight large files, each burying one key fact near the top.
+                // A full read_file of one file is ~2.5K tokens (the per-tool
+                // output budget), so reading all eight with a 4096-token
+                // context window forces compaction mid-run.
+                let facts = [
+                    ("FACT_A", "alpha-7"),
+                    ("FACT_B", "bravo-3"),
+                    ("FACT_C", "charlie-9"),
+                    ("FACT_D", "delta-2"),
+                    ("FACT_E", "echo-5"),
+                    ("FACT_F", "foxtrot-1"),
+                    ("FACT_G", "golf-8"),
+                    ("FACT_H", "hotel-4"),
+                ];
+                for (i, (key, value)) in facts.iter().enumerate() {
+                    let mut content =
+                        format!("Document {i} reference notes.\n{key}={value}\n\n");
+                    for line in 0..260 {
+                        content.push_str(&format!(
+                            "doc_{i} filler line {line:03}: the quick brown fox jumps over the lazy dog near line {line}.\n"
+                        ));
+                    }
+                    let _ = std::fs::write(dir.join(format!("doc_{i}.txt")), content);
+                }
+            },
+            messages: vec![user_msg(
+                "This directory contains doc_0.txt through doc_7.txt. Near the top of each file is one line of the form FACT_X=<value> (X in A..H); the rest is filler. Read ALL eight files in full using the read_file tool, one call per file — do NOT use grep or shell commands to extract the facts, full reads are required for this exercise. After reading all eight files, write a file answer.txt containing exactly two lines (no spaces around '='):\nFACT_A=<value of FACT_A>\nFACT_C=<value of FACT_C>",
+            )],
+            // 8 reads + 1 write, plus headroom for compaction turns.
+            min_tool_calls: 9,
+            max_turns: 25,
+            timeout_secs: 420,
+            // 4096 * 0.75 = 3072-token threshold: compaction must trigger.
+            context_window_override: Some(4096),
+            verify: |dir, run| {
+                if run.compactions == 0 {
+                    return Err("context compaction never triggered".into());
+                }
+                let text = file_text(dir, "answer.txt")?;
+                // Tolerate whitespace differences around '='.
+                let squashed: String =
+                    text.chars().filter(|c| !c.is_whitespace()).collect();
+                if !contains_ci(&squashed, "FACT_A=alpha-7") {
+                    return Err("answer.txt missing or wrong FACT_A value".into());
+                }
+                if !contains_ci(&squashed, "FACT_C=charlie-9") {
+                    return Err("answer.txt missing or wrong FACT_C value".into());
+                }
+                Ok(())
+            },
+        },
+        // ── Real toolchain (cargo, not bare rustc) ────────────
+        EvalTask {
+            name: "real_repo_scenario",
+            category: Category::Long,
+            description: "Fix a failing test in a real Cargo project until cargo test is green",
+            setup: |dir| {
+                let src = dir.join("src");
+                let _ = std::fs::create_dir_all(&src);
+                let _ = std::fs::write(
+                    dir.join("Cargo.toml"),
+                    r#"[package]
+name = "greeter"
+version = "0.1.0"
+edition = "2021"
+"#,
+                );
+                let _ = std::fs::write(
+                    src.join("lib.rs"),
+                    r#"pub mod text;
+
+pub fn greet(name: &str) -> String {
+    format!("Hello, {}!", text::shout(name))
+}
+"#,
+                );
+                let _ = std::fs::write(
+                    src.join("text.rs"),
+                    r#"pub fn shout(s: &str) -> String {
+    s.to_lowercase()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shout_uppercases() {
+        assert_eq!(shout("hey"), "HEY");
+    }
+
+    #[test]
+    fn shout_keeps_digits() {
+        assert_eq!(shout("a1"), "A1");
+    }
+}
+"#,
+                );
+            },
+            messages: vec![user_msg(
+                "This directory is a real Cargo project (Cargo.toml, src/). Run `cargo test` — one test fails. Diagnose the failure, fix the implementation (not the tests), and re-run `cargo test` until it exits 0.",
+            )],
+            min_tool_calls: 3,
+            max_turns: 18,
+            timeout_secs: 420,
+            context_window_override: None,
+            verify: |dir, _run| {
+                let text = file_text(dir, "src/text.rs")?;
+                if !text.contains("#[test]") {
+                    return Err("tests were removed".into());
+                }
+                cargo_test_green(dir, 180)
+            },
+        },
+        // ── Multi-file refactor ───────────────────────────────
+        EvalTask {
+            name: "multi_file_refactor",
+            category: Category::Refactor,
+            description: "Move a function across modules and update every call site",
+            setup: |dir| {
+                let _ = std::fs::write(
+                    dir.join("main.rs"),
+                    r#"mod billing;
+mod report;
+mod tax;
+
+fn main() {
+    assert_eq!(billing::total_with_tax(200), 216);
+    assert_eq!(report::summary(200), "total=216 tax=16");
+    println!("ok");
+}
+"#,
+                );
+                let _ = std::fs::write(
+                    dir.join("billing.rs"),
+                    r#"pub fn compute_tax(amount: i32) -> i32 {
+    amount * 8 / 100
+}
+
+pub fn total_with_tax(amount: i32) -> i32 {
+    amount + compute_tax(amount)
+}
+"#,
+                );
+                let _ = std::fs::write(
+                    dir.join("tax.rs"),
+                    r#"pub fn tax_rate_percent() -> i32 {
+    8
+}
+"#,
+                );
+                let _ = std::fs::write(
+                    dir.join("report.rs"),
+                    r#"pub fn summary(amount: i32) -> String {
+    let tax = crate::billing::compute_tax(amount);
+    format!("total={} tax={}", amount + tax, tax)
+}
+"#,
+                );
+            },
+            messages: vec![user_msg(
+                "This is a small Rust project (main.rs, billing.rs, report.rs, tax.rs; build it with `rustc main.rs`). Move the function `compute_tax` from billing.rs into tax.rs, and update every use/call site (billing.rs, report.rs) so the project still compiles and runs unchanged. Verify with `rustc main.rs -o app && ./app`.",
+            )],
+            min_tool_calls: 3,
+            max_turns: 15,
+            timeout_secs: 240,
+            context_window_override: None,
+            verify: |dir, _run| {
+                let billing = file_text(dir, "billing.rs")?;
+                if billing.contains("fn compute_tax") {
+                    return Err("compute_tax still defined in billing.rs".into());
+                }
+                let tax = file_text(dir, "tax.rs")?;
+                if !tax.contains("fn compute_tax") {
+                    return Err("compute_tax not found in tax.rs".into());
+                }
+                rustc_compile_run(dir, "main.rs", false)
+            },
+        },
     ]
 }
 
-/// Full eval task set: 4 baseline + 14 extended.
+/// Full eval task set: 5 baseline + 17 extended.
 fn all_tasks() -> Vec<EvalTask> {
     let mut tasks = baseline_tasks();
     tasks.extend(extended_tasks());
@@ -1110,6 +1421,7 @@ mod tests {
             Category::Long,
             Category::Retrieval,
             Category::Honesty,
+            Category::Context,
         ] {
             let cat_total = results.iter().filter(|r| r.category == cat.label()).count();
             if cat_total == 0 {
@@ -1134,7 +1446,7 @@ mod tests {
     #[test]
     fn harness_smoke() {
         let tasks = all_tasks();
-        assert_eq!(tasks.len(), 18, "Expected 18 eval tasks");
+        assert_eq!(tasks.len(), 22, "Expected 22 eval tasks");
         let mut names = std::collections::HashSet::new();
         for t in &tasks {
             assert!(!t.name.is_empty(), "Task name must not be empty");
@@ -1144,6 +1456,23 @@ mod tests {
             assert!(t.max_turns >= 3, "Task max_turns too small: {}", t.name);
             assert!(t.timeout_secs >= 60, "Task timeout too small: {}", t.name);
         }
+
+        // New-task batch (P1): provider matrix, cargo toolchain, compaction.
+        for required in [
+            "error_recovery",
+            "multi_file_refactor",
+            "real_repo_scenario",
+            "compaction_handoff",
+        ] {
+            assert!(names.contains(required), "missing task: {required}");
+        }
+        // Only the compaction task overrides the context window.
+        let overrides: Vec<&str> = tasks
+            .iter()
+            .filter(|t| t.context_window_override.is_some())
+            .map(|t| t.name)
+            .collect();
+        assert_eq!(overrides, vec!["compaction_handoff"]);
 
         // JIA_EVAL_ONLY filter behavior
         let filtered = filter_tasks(
@@ -1155,12 +1484,12 @@ mod tests {
         assert_eq!(filtered[1].name, "retrieval_needle_in_haystack");
         assert_eq!(
             filter_tasks(all_tasks(), None).len(),
-            18,
+            22,
             "None filter keeps all tasks"
         );
         assert_eq!(
             filter_tasks(all_tasks(), Some("".into())).len(),
-            18,
+            22,
             "Empty filter keeps all tasks"
         );
         assert!(
