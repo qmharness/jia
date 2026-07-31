@@ -104,7 +104,7 @@ impl BaseTool for ReadFileTool {
 
         if is_duplicate {
             return Ok(format!(
-                "File unchanged since last read: {}. Use read_file with a higher max_lines if you need more content.",
+                "File unchanged since last read: {}. The content from your earlier read is still current — do NOT re-read this file; proceed with your next step (e.g. patch_file) using that content. Re-read only if you need lines beyond the earlier max_lines.",
                 canonical.display()
             ));
         }
