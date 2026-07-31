@@ -59,7 +59,9 @@ impl BaseTool for ShellTool {
          `cat`/`head`/`tail` → read_file; recursive `find`/`ls` → glob; `grep`/`rg` → grep; \
          `echo > file` / `sed -i` → write_file / patch_file. \
          Set run_in_background to true for long-running commands \
-         (use the read_file tool to read the output file later)."
+         (use the read_file tool to read the output file later). \
+         The sandbox disallows command separators and substitution: `;`, `|`, `$`, backticks, `&` — \
+         chain commands with `&&` or run them in separate calls."
             .to_string()
     }
 

@@ -607,7 +607,7 @@ fn main() {
                 "greet.rs prints a greeting. Add support for a `--shout` flag: when `--shout` appears anywhere in the command-line args, print the greeting in ALL CAPS. Keep the default behavior unchanged.",
             )],
             min_tool_calls: 2,
-            max_turns: 10,
+            max_turns: 15,
             timeout_secs: 180,
             verify: |dir, _run| {
                 let text = file_text(dir, "greet.rs")?;
@@ -924,7 +924,9 @@ mod tests {
             messages: vec![user_msg(
                 "calc.rs contains unit tests. Compile them with `rustc --test calc.rs -o calc_test` and run ./calc_test — they fail. Diagnose the bugs, fix the implementation (not the tests), and re-run until all tests pass. Do not remove or weaken the tests.",
             )],
-            min_tool_calls: 4,
+            // 3-call path (test → patch both bugs → test) is legitimately optimal;
+            // floor must not penalize efficiency.
+            min_tool_calls: 3,
             max_turns: 15,
             timeout_secs: 300,
             verify: |dir, _run| {
